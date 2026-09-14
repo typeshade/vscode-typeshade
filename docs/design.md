@@ -718,25 +718,36 @@ and tsserver reported "Loading @typeshade/tsserver-plugin from <probe location> 
 The fixture project holds a directive file, a non-directive file, a directive file with real
 TypeShade errors, a pair of directive files where one imports the other, a host file that
 imports a shader, a directive file of 500 lines or more, and a second workspace with no
-`tsconfig.json` at all. The last two are fixtures for specific holes: the 500-line file is the
+`tsconfig.json` at all.
+
+One assertion this table first carried has been corrected by writing it: "no diagnostic on a
+directive file carries `ts` as its source" is false, and should be. The service's own answer is
+a MERGED list (`src/language-service/diagnostics.ts` concatenates the front end's diagnostics
+with the TypeScript ones its own program reports, after filtering), so a shader calling a
+function that does not exist correctly reports both TypeScript's TS2304 and TypeShade's TS8004.
+Replacement means the false positives are gone, not that TypeScript is silenced, and the
+assertion now says that as a contrast between a server with the plugin and one without.
+
+The last two files are fixtures for specific holes: the 500-line file is the
 only size at which `getRegionSemanticDiagnostics` fires (§3), and the config-less workspace is
 the inferred-project path most people meet first (§4). The assertions:
 
-| Assertion                                                                                      | Why it is the one worth making                                                                                 |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| On a clean directive file, zero diagnostics                                                    | The six examples measured 58 false errors without the plugin                                                   |
-| On a directive file, no diagnostic carries `ts` as its source                                  | Replacement, not merging                                                                                       |
-| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`   | The mapping of §3, end to end                                                                                  |
-| `quickinfo` on `vec4(...)` is not `any`                                                        | The probe measured `any` today, which is the user-visible symptom                                              |
-| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids  | The context completions are the service's own and must survive the mapping                                     |
-| A whole session's events on non-directive files are identical with and without the plugin      | §1.5, and the only test that can prove a pass-through has no mapping layer in it                               |
-| A syntax error is reported once                                                                | The deduplication of §3                                                                                        |
-| `references` on a shader symbol answers from the TypeShade program                             | tsserver calls `findReferences`, not `getReferencesAtPosition`; decorating only the latter fails silently (§3) |
-| A 500-line directive file reports zero diagnostics, with `geterr` twice                        | `getRegionSemanticDiagnostics` is undeclared in `typescript.d.ts` and fires only past that threshold (§3)      |
-| In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics        | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                             |
-| Deleting the directive brings TypeScript's own errors back, and the document set shrinks       | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                          |
-| A hover whose text has a fenced block and prose splits into `displayParts` and `documentation` | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                              |
-| The tsserver log contains no plugin exception                                                  | A plugin that throws degrades the whole project's TypeScript, silently                                         |
+| Assertion                                                                                                  | Why it is the one worth making                                                                                 |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| On a clean directive file, zero diagnostics                                                                | The six examples measured 58 false errors without the plugin                                                   |
+| On a clean directive file, an unhelped server reports the false-positive classes and this one reports none | Replacement, not merging, stated as the contrast it is                                                         |
+| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`               | The mapping of §3, end to end                                                                                  |
+| An import between two shaders resolves, with no TS2307                                                     | §1.7's `readDocument` rule, and the one place a cross-file answer can be checked                               |
+| `quickinfo` on `vec4(...)` is not `any`                                                                    | The probe measured `any` today, which is the user-visible symptom                                              |
+| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids              | The context completions are the service's own and must survive the mapping                                     |
+| A whole session's events on non-directive files are identical with and without the plugin                  | §1.5, and the only test that can prove a pass-through has no mapping layer in it                               |
+| A syntax error is reported once                                                                            | The deduplication of §3                                                                                        |
+| `references` on a shader symbol answers from the TypeShade program                                         | tsserver calls `findReferences`, not `getReferencesAtPosition`; decorating only the latter fails silently (§3) |
+| A 500-line directive file reports zero diagnostics, with `geterr` twice                                    | `getRegionSemanticDiagnostics` is undeclared in `typescript.d.ts` and fires only past that threshold (§3)      |
+| In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics                    | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                             |
+| Deleting the directive brings TypeScript's own errors back, and the document set shrinks                   | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                          |
+| A hover whose text has a fenced block and prose splits into `displayParts` and `documentation`             | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                              |
+| The tsserver log contains no plugin exception                                                              | A plugin that throws degrades the whole project's TypeScript, silently                                         |
 
 The harness lives in `packages/tsserver-plugin/src/` beside the code, as vitest tests, with the
 30 second timeout the root config already sets for exactly this reason.

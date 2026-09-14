@@ -22,17 +22,29 @@ The plan, the architecture and the decisions behind them are in
 | -------------------------------- | ----------------------------------------------------- |
 | Workspace, CI, conventions       | done                                                  |
 | Design document                  | done, [`docs/design.md`](./docs/design.md)            |
-| TypeScript server plugin         | next                                                  |
+| TypeScript server plugin         | done, tested against a real tsserver                  |
 | VS Code extension and preview    | after the plugin                                      |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
 
 ## Develop
 
+The compiler is a pinned git submodule under `vendor/typeshade` until it publishes to npm
+([`docs/design.md`](./docs/design.md) §2), and both artifacts bundle it, so a checkout without
+it fails at the first import:
+
 ```bash
+git clone --recurse-submodules https://github.com/typeshade/vscode-typeshade
+# or, in an existing checkout
+git submodule update --init
+
 npm install
-npm run check        # typecheck, lint, format, prose, tests
+npm run check        # build, typecheck, lint, format, prose, tests
 ```
+
+`npm run build` comes first in that list because the tsserver suite loads the built bundle: the
+plugin is what tsserver `require`s, so a suite run against stale output would be testing
+nothing.
 
 Individually: `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test`.
 `npm run format` rewrites instead of checking.

@@ -14,12 +14,11 @@
     "node": ">=20"
   },
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc --build"
+    "build": "node ../../scripts/build.mjs"
   },
   "peerDependencies": {
     "typescript": ">=5.0.0"

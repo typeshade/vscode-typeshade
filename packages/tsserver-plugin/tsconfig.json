@@ -1,12 +1,8 @@
 {
+  // Type-checking only. The artifact is built by esbuild (`scripts/build.mjs`), not by `tsc`:
+  // the compiler arrives as a vendored submodule that has to be bundled in rather than resolved
+  // at run time, and tsserver loads one CommonJS file (`docs/design.md` §2, §7).
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "composite": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "types": []
-  },
-  "include": ["src/**/*.ts"],
-  // Tests never reach `dist/`; they are type-checked by the root `tsconfig.tests.json`.
-  "exclude": ["src/**/*.test.ts"]
+  "compilerOptions": { "types": ["node"] },
+  "include": ["src/**/*.ts"]
 }
