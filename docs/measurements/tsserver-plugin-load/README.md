@@ -65,4 +65,8 @@ That the plugin can be loaded the way VS Code loads it, through
 `contributes.typescriptServerPlugins`, which passes the extension's own directory as the probe
 location. VS Code drives the same tsserver mechanism this probe drives, so the scoped name is
 expected to resolve there too, but expected is not measured: that path needs a running VS Code
-and belongs to the extension tests of `docs/design.md` §6.
+and belongs to the extension tests of `docs/design.md` §6. What VS Code does with a
+plugin-contributing extension is readable in its own sources rather than here
+(`extensions/typescript-language-features/src/tsServer/plugins.ts:79` collects
+`uri: extension.extensionUri`, and `spawner.ts:253-259` passes the locations to the server);
+this probe establishes the tsserver half.

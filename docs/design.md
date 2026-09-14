@@ -1,8 +1,9 @@
 # TypeShade in the editor: architecture and decisions
 
 Status: **proposal** for review. Written against `typeshade/typeshade` at `a2240e0`, plus two
-branches that have not merged: `claude/d1-debugging-design` (PR #28, the debugging design) and
-`claude/d1-stepping-oracle` (PR #35, the `./debug` subpath). It was first written against
+branches that have not merged: `claude/d1-debugging-design` (PR #28, the debugging design),
+`claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and `claude/d1-launch-config`
+(PR #41, the launch configuration and the value formatter, tip `0d48000`). It was first written against
 `3c0a2d7` and re-checked against `a2240e0` when that arrived: the two commits between them
 (#18, a binding read lowering to a varref, and #51, hover) change one thing in the public
 surface, an added `CompileTsSourceResult.symbols` field, and nothing in
@@ -24,8 +25,11 @@ lifecycle, diagnostics, completions, hover, definition, references, document sym
 help, prepare-rename and rename, semantic tokens, compiled output, and the two position
 conversions. It is exported as the package subpath `./language-service`
 (`package.json` `exports`), it never imports a DOM or Node API, and it holds one cached
-front-end analysis per document version that diagnostics, symbols, tokens, hover and compiled
-output all read (`docs/language-service-api.md` §8).
+front-end analysis per document that diagnostics, symbols, tokens, hover and compiled output
+all read. The cache key is `dependencyKey(uri)` (`src/language-service/service.ts`), the
+document's own script version followed by the version of every document it imports,
+transitively, so an edit to an imported shader invalidates the importer without the importer
+being touched (`docs/language-service-api.md` §8).
 
 Four properties of that service decide almost everything below.
 
@@ -49,12 +53,16 @@ Four properties of that service decide almost everything below.
    cannot: the scalar brands are optional, so TypeScript infers `let x = 1.` as plain `number`
    where the compiler means `f32`. It is also why §3 replaces quick info rather than merging it,
    and the probe measured what the unhelped answer looks like, `vec4(...)` reading as `any`.
-4. **The service decides which TypeScript diagnostics survive.** `docs/language-service-api.md`
-   §6 is a table of what the ambient lib cannot silence and what the service therefore filters:
-   TS1206 on stage and `@builtin` decorators, and TS2362, TS2363, TS2365 and TS2322 on vector
-   and matrix arithmetic, each dropped only when the operand's own type carries one of
-   `GPU_BRAND_TAGS` as the checker reports it. `tsc` on its own cannot do that filtering: the
-   same branch measured 11 TS1206 left over across the five examples.
+4. **The service decides which TypeScript diagnostics survive.** The filter table is
+   `TS_DIAGNOSTIC_FILTERS` in `src/language-service/diagnostics.ts` (lines 282 to 328), five
+   rules each carrying its own reason: TS1206 under `isDecoratorOnTopLevelFunction`, which
+   covers the stage decorator on the function and `@builtin(...)` and `@location(...)` on its
+   parameters alike, and TS2362, TS2363, TS2365 and TS2322 under four predicates that ask the
+   checker whether the operand's own type carries one of `GPU_BRAND_TAGS` (`ambient.ts`).
+   `docs/language-service-api.md` §6 is the policy behind them, and it names TS2304, TS2349,
+   TS2564 and TS1206 in prose; the arithmetic rules live only in the source file, which is why
+   this document cites the file. `tsc` on its own cannot do any of that filtering: the
+   `claude/c6-ambient-lib` branch measured 11 TS1206 left over across the five examples.
 
 On this repository's side there is the workspace of PR 0 and nothing else: a pass-through
 plugin skeleton, an extension skeleton, and the gate.
@@ -80,9 +88,27 @@ Inside, the plugin owns one `TypeshadeLanguageService` per project. Documents ar
 tsserver's own script snapshots, so the plugin never reads a file itself: on each request for a
 file it wants to answer for, it compares `info.languageServiceHost.getScriptVersion(fileName)`
 with the version it last stored and calls `openDocument` or `updateDocument` with
-`getScriptSnapshot(fileName).getText(0, length)` when they differ. Documents are pruned when
-`info.project.getProjectVersion()` changes and the file is no longer in the project's file
-names, which is the only moment the set can shrink.
+`getScriptSnapshot(fileName).getText(0, length)` when they differ.
+
+Three rules keep that document set honest, and each exists because of something in the
+service's own host (`src/language-service/host.ts`).
+
+- **A file that loses its directive is closed.** Editing `"use typeshade"` out of a file makes
+  it an ordinary TypeScript file, and from the next request the plugin passes it through; if
+  the plugin did not also call `closeDocument`, the TypeShade program would hold it forever,
+  since the file is still in the project and the pruning rule below cannot fire for it. A file
+  that gains the directive is the same transition backwards, and costs nothing: the next
+  request syncs it like any other.
+- **A file the project drops is closed.** The plugin compares
+  `info.project.getProjectVersion()` and prunes documents no longer in the project's file
+  names, which is the only other moment the set can shrink.
+- **An imported shader is opened as a document, not left to `readDocument`.** The host caches a
+  file pulled in through `readDocument` in its `imported` map on first resolution
+  (`host.ts`, `resolveModuleNameLiterals`) and never re-reads it while it stays there, so its
+  script version is frozen at the revision of that first read and an edit to it would be
+  invisible to the importer's diagnostics. The plugin therefore syncs every directive-carrying
+  file it resolves an import to, by the same version comparison as above, and `readDocument`
+  stays as the fallback for a file tsserver has no snapshot for.
 
 Every editor that runs tsserver gets the result: VS Code, Cursor, Windsurf, WebStorm, Neovim's
 `ts_ls`, Sublime's LSP-typescript. The VS Code extension's part in it is four lines of manifest,
@@ -120,38 +146,49 @@ with no tsserver, and nothing in this design forecloses it. That is §8 item 4.
 
 ### 1.3 What the two programs cost
 
-The measurement and its script are in `docs/measurements/two-program-cost/`, which reports two
-runs, on `3c0a2d7` and on `a2240e0`, so a reader can see which numbers are stable. On a fixture
-of 150 plain TypeScript modules plus the compiler's six `.shade.ts` examples, under node
-v24.3.0 with typescript 5.6.3:
+The measurement, its driver and its harness are in `docs/measurements/two-program-cost/`. It
+runs under node, because tsserver does, in a process that does nothing else, three times per
+mode, over a fixture of 150 plain TypeScript modules plus the compiler's six `.shade.ts`
+examples. The plugin's code is measured as it will ship: an esbuild CommonJS bundle of the
+compiler's `./language-service` subpath, 470 KB, with `typescript` external.
 
-| Number                                                           | Value                     |
-| ---------------------------------------------------------------- | ------------------------- |
-| Building the TypeShade program and answering for all six shaders | 59.5 to 63.3 ms           |
-| The same with 60 shader files                                    | 206.3 to 212.2 ms         |
-| Live heap the TypeShade program retains, 6 shaders               | 3.6 to 4.4 MB             |
-| The same with 60 shader files                                    | 4.0 to 8.4 MB             |
-| One edit plus diagnostics for a shader file, TypeShade program   | 5.6 to 7.2 ms             |
-| The same file answered by the project program                    | 14.4 to 40.9 ms           |
-| False semantic errors the project program reports on the six     | 58, exactly, in every run |
+The phases are separated because they are paid at different times.
 
-A range rather than a figure wherever the runs disagreed, which is the honest reading of a
-shared four-core container: the diagnostic counts are exact and identical across runs, the
-second program's cold and warm costs agree closely, and the two that wander are its retained
-heap and the project program's warm cost. What matters survives either reading, since the
-question is whether a second program is affordable and not whether it costs 3.6 MB or 4.4 MB.
+| What                                                          | When it is paid           | 6 shaders                 | 60 shaders                |
+| ------------------------------------------------------------- | ------------------------- | ------------------------- | ------------------------- |
+| Requiring the plugin's bundle                                 | once per tsserver process | 78.9 to 90.5 ms, 11.8 MB  | 76.0 to 83.7 ms, 11.8 MB  |
+| Building the TypeShade program and answering for every shader | once per project          | 119.7 to 129.7 ms, 5.1 MB | 234.9 to 264.8 ms, 8.0 MB |
+| Retained in tsserver, both phases together                    |                           | 16.9 MB                   | 19.8 MB                   |
+| One edit plus diagnostics for a shader file                   | once per keystroke        | 5.9 to 6.2 ms             | 5.6 to 5.7 ms             |
 
-The cost is small for a structural reason rather than a lucky one: the second program holds the
-shader files and `SHADE_DTS`, and nothing else. The fixture's 150 host modules are not in it,
-which is why both the time and the memory scale on the shader count alone (§1.7 is why that is a
-language fact and not a configuration choice). A project ten times larger costs the second
-program nothing.
+Beside them, what the editor does today with no plugin, on the same fixture: 1048.7 to
+1088.5 ms to build the project and answer for all 156 files, 63.8 MB of heap for that program,
+14.7 to 15.6 ms for one edit to a shader file, and **58 semantic errors on the six examples,
+every one of them false**, exactly 58 in every run.
 
-Warm cost being lower than the project program's for the same file is worth one sentence, since
-it looks like a mistake: the TypeShade program re-checks one small file against a 265-line
-ambient lib (`SHADE_DTS` is 11015 characters over 265 lines, measured through the subpath),
-while the project program re-checks the same file against `lib.es2022` plus `lib.dom` inside a
-156-file program.
+So the plugin adds about 17 MB and about 200 ms, once, to a process that is already holding
+63.8 MB for the project itself, and answers a keystroke in a shader file faster than the
+project program does. The keystroke figure looks like a mistake and is not: the TypeShade
+program re-checks one small file against a 265-line ambient lib (`SHADE_DTS` is 11015
+characters over 265 lines, measured through the subpath), while the project program re-checks
+the same file against `lib.es2022` plus `lib.dom` inside a 156-file program.
+
+**Where the cost lives, and what it scales on.** The fixed half is the larger one: loading the
+plugin's own code costs 11.8 MB whatever the project holds, flat between the two fixtures. The
+per-project half scales on shader files alone, and gently: ten times the shaders costs 2.9 MB
+more and roughly twice the time, while the 150 host modules contribute nothing to either, since
+a TypeShade program holds the shader files and `SHADE_DTS` and nothing else (§1.7 is why that
+is a language fact rather than a configuration choice). The fixture's host count was not varied,
+so "a larger project costs the second program nothing" is an argument from what is in the
+program, not a measurement of two project sizes.
+
+**The method is part of the finding.** An earlier version of this section reported 63.3 ms and
+4.4 MB, and neither reproduced: measured in one process that also held the project program, the
+same heap quantity came back as 5.1, 13.1 and 40.3 MB on three runs. Measured in isolation it
+is 5.1 MB in every run, to the tenth. The README records the four method faults and the fifth
+found during the rewrite, that charging the plugin for loading `typescript` (which tsserver has
+loaded before it asks for a plugin) tripled the require phase. An independent run of the
+corrected method, in this pull request's review, reproduced the heap figures to 0.1 MB.
 
 ### 1.4 How a TypeShade file is recognized
 
@@ -223,12 +260,44 @@ statements for the directive, and returns the text only when the directive is th
 resulting message ("Cannot find module './util.js'") is honest but unhelpful, and improving it
 needs a diagnostic the compiler owns rather than one the adapter invents, which is §8 item 3.
 
+### 1.8 The editor goes green while `tsc` stays red
+
+This is the most visible cost of the decision, and it will be the first bug report.
+
+The plugin replaces the language service's answers, and nothing else. A project whose
+`tsconfig.json` includes its `.shade.ts` files keeps compiling them as ordinary TypeScript, so
+`tsc --noEmit` on the command line and in CI keeps reporting the same errors §1.3 measured, 58
+of them across the six examples, while the editor shows a clean file. An editor and a build
+that disagree about whether the code compiles is worse than either being wrong on its own.
+
+The remedy exists and is measured, on `claude/c6-ambient-lib`: the shader sources go in a
+project of their own, a `tsconfig.shade.json` with `lib: []`, `types: ["typeshade/shade"]`,
+`experimentalDecorators` and `strictPropertyInitialization: false`, which leaves 11 TS1206 and
+one TS2542 across the five examples there (the TS2542 is fixed on `main`, since the ambient
+`array<T, N>` index signature is writable now). `lib: []` is not a preference in that file
+either, for §0 point 2's reason.
+
+**Decision: the extension notices and offers, and never edits a `tsconfig.json` on its own.**
+Concretely: when a directive file is open and the workspace has a `tsconfig.json` whose
+`include` reaches it, the status bar item (§4) says so, and a command,
+`typeshade.createShaderTsconfig`, writes `tsconfig.shade.json` beside it and prints the one
+line the user must add to the main config's `exclude`. Writing into an existing `tsconfig.json`
+unasked is the kind of help that loses trust the first time it reformats a file.
+
+The residual TS1206 is not something this repository can close: it is a grammar rule, and only
+the language service filters it (§0 point 4). A project that wants a silent `tsc` filters that
+code in its own build. That is §8 item 9.
+
 ## 2. The compiler dependency before 0.1.0
 
 The compiler is not on npm. Its `package.json` `exports` point at TypeScript sources
 (`"." : "./src/index.ts"`), its name becomes `typeshade` on the publishing branches
-(`claude/c6-rename` through `claude/c6-publish`), and a `dist/` layout arrives with the
-`./shade` subpath on `claude/c6-ambient-lib`.
+(`claude/c6-rename` through `claude/c6-publish`), and the `dist/` layout arrives on
+`claude/c6-dist-exports`, which `claude/c6-ambient-lib` inherits and adds one entry to
+(`"./shade": "./dist/shade.d.ts"`). The checked-in `exports` stay on `./src/*.ts` even there:
+`scripts/publish-manifest.ts --write` rewrites them onto `dist/` at publish time, in a checkout
+that is thrown away. That is what makes "the compiler's exports pointing at `.ts` costs us
+nothing" true, before and after it publishes.
 
 **Decision: a pinned git submodule at `vendor/typeshade`, bundled from sources with esbuild,
 replaced by the npm dependency `typeshade` on the day it publishes.**
@@ -244,15 +313,27 @@ How it is wired:
 
 - `vendor/typeshade` is a submodule pinned to a commit of `typeshade/typeshade`. CI checks out
   with `submodules: true`.
-- `packages/tsserver-plugin` and `packages/vscode-typeshade` import `typeshade` and
-  `typeshade/language-service` as package specifiers. The workspace root maps those two
-  specifiers to `vendor/typeshade` through `tsconfig` `paths` for type-checking and through an
-  esbuild alias for the bundle, in one place each, so the eventual npm dependency deletes two
-  entries and changes no source file.
-- The bundle is esbuild with `platform: 'node'`, `format: 'cjs'`, `target: 'node20'`, and
-  `external: ['typescript', 'vscode']`. `typescript` is external because the plugin must use
-  the host's instance (§3) and the extension must not ship a second copy; `vscode` is external
-  because the extension host provides it.
+- `packages/tsserver-plugin` and `packages/vscode-typeshade` import three package specifiers:
+  `typeshade`, `typeshade/language-service`, and, once PR 4 needs it, `typeshade/debug`. The
+  workspace root maps them to `vendor/typeshade` through `tsconfig` `paths` for type-checking
+  and through an esbuild alias for the bundle, in one place each, so the eventual npm
+  dependency deletes three entries and changes no source file. `./debug` exists only on
+  `claude/d1-stepping-oracle` and `claude/d1-launch-config` today, on none of the publishing
+  branches, so PR 4's switch to npm waits on that subpath reaching the published `exports` and
+  `files` list, separately from the other two.
+- **The two bundles are not configured alike, and the difference is load-bearing.** The plugin
+  bundle marks `typescript` external, because tsserver hands the plugin its own instance
+  (`modules.typescript`, §1.1 and §3) and a second copy would build nodes a different `ts`
+  cannot recognise. The extension bundle **inlines** `typescript`, because the VS Code
+  extension host injects only `vscode` and resolves everything else from what the `.vsix`
+  ships, and §4's preview panel runs a `TypeshadeLanguageService` of its own, whose first
+  `require('typescript')` would otherwise throw at runtime in a packaged extension while
+  working perfectly in the development host, where `node_modules` is on disk. Inlining is the
+  choice rather than planting a real `node_modules/typescript` in the `.vsix` because esbuild
+  drops what the language service does not reach, and one artifact is easier to reason about
+  than a directory the packaging step has to keep in sync. §7 carries the weight it adds.
+- Both bundles are esbuild with `platform: 'node'`, `format: 'cjs'`, `target: 'node20'`, and
+  `vscode` external in the extension's, because the extension host provides it.
 - One measured fact that a reader will otherwise lose a day to: the vendored checkout must
   resolve the workspace's own `typescript`. With the checkout outside the workspace, `typescript`
   resolved to a global 7.0.2 install in this container, and the compiler's sources then failed at
@@ -280,9 +361,14 @@ project's method and returns its result unchanged (§1.5). For a file with the d
 plugin answers from the TypeShade service and never merges the two, because merging is how a
 false positive survives.
 
+Which methods matter was read off `typescript.js` rather than off the type declarations: every
+`getLanguageService().<method>` and `languageService.<method>` call site in the pinned 5.6.3 was
+listed, so a row here names something tsserver actually calls.
+
 | `ts.LanguageService` method                                                             | Directive file                                                        | Service call                        |
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------- |
 | `getSemanticDiagnostics`                                                                | replaced, minus the entries the syntactic pass already reported       | `getDiagnostics(uri)`               |
+| `getRegionSemanticDiagnostics`                                                          | replaced with nothing (below)                                         | none                                |
 | `getSyntacticDiagnostics`                                                               | passed through                                                        | none                                |
 | `getSuggestionDiagnostics`                                                              | replaced with nothing                                                 | none                                |
 | `getQuickInfoAtPosition`                                                                | replaced, so the compiler's own type reaches the tooltip (§0 point 3) | `getHover(uri, position)`           |
@@ -290,13 +376,49 @@ false positive survives.
 | `getCompletionEntryDetails`                                                             | replaced, from the same list matched by name                          | `getCompletions(uri, position)`     |
 | `getSignatureHelpItems`                                                                 | replaced                                                              | `getSignatureHelp(uri, position)`   |
 | `getDefinitionAndBoundSpan`                                                             | replaced                                                              | `getDefinition(uri, position)`      |
-| `getReferencesAtPosition`                                                               | replaced                                                              | `getReferences(uri, position)`      |
+| `findReferences`                                                                        | replaced, regrouped per file with a `definition` per group            | `getReferences(uri, position)`      |
+| `getReferencesAtPosition`                                                               | replaced, for clients that call it                                    | `getReferences(uri, position)`      |
 | `findRenameLocations`, `getRenameInfo`                                                  | replaced                                                              | `rename(...)`, `prepareRename(...)` |
-| `getNavigationTree`                                                                     | replaced                                                              | `getDocumentSymbols(uri)`           |
+| `getNavigationTree`, `getNavigationBarItems`                                            | replaced                                                              | `getDocumentSymbols(uri)`           |
 | `getEncodedSemanticClassifications`                                                     | replaced, lossily (below)                                             | `getSemanticTokens(uri, range)`     |
-| `getCodeFixesAtPosition`                                                                | replaced with nothing, for now                                        | none                                |
+| `getCodeFixesAtPosition`, `getCombinedCodeFix`                                          | replaced with nothing, for now                                        | none                                |
 | `getDefinitionAtPosition`, `getTypeDefinitionAtPosition`, `getImplementationAtPosition` | replaced, from the same definition list                               | `getDefinition(uri, position)`      |
-| everything else                                                                         | passed through                                                        | none                                |
+
+**`findReferences` is the one tsserver actually calls**, at `typescript.js:189656` in
+`getReferencesWorker`, the `references` command path; `getReferencesAtPosition` has no call site
+in the server at all. A matrix that decorated only the latter would leave Find All References on
+a shader symbol answered by the project's program, silently, with no test failing, which is why
+§6 asserts it.
+
+**"Everything else is passed through" was wrong, and the leak is quiet.** A decoration that
+spreads the public `LanguageService` and overrides a few members passes the rest through, and
+some of the rest answer from the project's program for a directive file. So the remainder is two
+explicit lists rather than one sentence.
+
+_Passed through, because they are syntactic and a shader file is still TypeScript syntax:_
+`getFormattingEditsForDocument`, `getFormattingEditsForRange`,
+`getFormattingEditsAfterKeystroke`, `getIndentationAtPosition`, `getOutliningSpans`,
+`getBraceMatchingAtPosition`, `isValidBraceCompletionAtPosition`, `getSmartSelectionRange`,
+`getTodoComments`, `getSpanOfEnclosingComment`, `getNameOrDottedNameSpan`,
+`getBreakpointStatementAtPosition`, `getLinkedEditingRangeAtPosition`,
+`getEncodedSyntacticClassifications`, the comment toggles, and `getProgram`.
+
+_Answered with nothing for a directive file, because the project's program would answer from the
+wrong program:_ `getRegionSemanticDiagnostics`, `getDocumentHighlights`, `provideInlayHints`,
+`getApplicableRefactors`, `getEditsForRefactor`, `prepareCallHierarchy`,
+`provideCallHierarchyIncomingCalls`, `provideCallHierarchyOutgoingCalls`, `getNavigateToItems`,
+`organizeImports`, `getFileReferences`, `getPasteEdits`, `getEditsForFileRename`,
+`getSupportedCodeFixes`, `getDocCommentTemplateAtPosition`, `getJsxClosingTagAtPosition`,
+`mapCode`. Each is a place a wrong answer is worse than none, and each becomes a real row when
+the service grows a method for it.
+
+`getRegionSemanticDiagnostics` deserves its own sentence because it is invisible from the types.
+tsserver calls it at `typescript.js:190872`, guarded by `shouldDoRegionCheck`, whose threshold is
+`regionDiagLineCountThreshold = 500` (line 189923), and it is **not declared in
+`typescript.d.ts`**. So a plugin that only overrides declared members leaks TypeScript's own
+errors back into any shader of 500 lines or more, and only into those, which is the worst
+possible size for a bug to appear at. The plugin overrides it through one cast, with the cast's
+reason in a comment, and §6 carries a 500-line fixture.
 
 The service's methods already take a uri and a zero-based position and return data
 (`src/language-service/service.ts`), and its internal per-feature functions already take a
@@ -307,19 +429,25 @@ and the position helpers), and they do not need to be: the plugin talks to the f
 instance, never to the compiler's private walk. **The subpath as it stands is sufficient for
 every row above.** No compiler change is required for PR 2.
 
-Six conversions carry all the risk, and each is a decision.
+Seven conversions carry all the risk, and each is a decision.
 
-**Diagnostic codes collide with TypeScript's own.** TypeShade's codes are the strings `TS8003`
-to `TS8030` (`src/compiler/ts/codes.ts`), and TypeScript uses 8001 to 8039 for its own
-"can only be used in TypeScript files" family: TS8003 is `TYPE_MISMATCH` in TypeShade and
-"export can only be used in TypeScript files" in TypeScript, verified by extracting every
-`diag(...)` code from `typescript/lib/typescript.js` (2063 distinct codes, 8001 to 8039 present,
-maximum 95195). A `ts.Diagnostic.code` is a number, so something has to give. **Decision: the
-numeric part, with `source: 'typeshade'`.** TS8003 reports as `typeshade(8003)`, which is the
-spelling the compiler's own documentation uses, and the source field is what tells the two
-apart. The collision is then only dangerous through code-keyed behavior, which is why
-`getCodeFixesAtPosition` answers nothing for a directive file: VS Code asks for fixes by error
-code, and a fix TypeScript registered for its own 8003 must never be offered for TypeShade's.
+**Diagnostic codes collide with TypeScript's own, across the whole range.** TypeShade's codes
+run from `TS8001` (`MISSING_DIRECTIVE`) to `TS8030` (`SYNTAX`) with 8011 retired, plus `TS8099`
+(`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`. TypeScript's own family occupies 8001 to
+8039, verified by extracting every `diag(...)` code from `typescript/lib/typescript.js`: 2063
+distinct codes, maximum 95195. So the overlap is total except for TS8099, and it starts at the
+first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
+TypeScript library", which is a rename diagnostic, and this document maps `findRenameLocations`
+and `getRenameInfo`. A `ts.Diagnostic.code` is a number, so something has to give.
+
+**Decision: the numeric part, with `source: 'typeshade'`.** TS8003 reports as
+`typeshade(8003)`, the spelling the compiler's own documentation uses, and the source field is
+what tells the two apart. The collision is then only dangerous through code-keyed behavior,
+which is why `getCodeFixesAtPosition` and `getCombinedCodeFix` answer nothing for a directive
+file: VS Code asks for fixes by error code, and a fix TypeScript registered for its own 8003
+must never be offered for TypeShade's. Open PRs #49 and #50 add TS8031 and TS8032 on the
+compiler side, so this range is written as "TS8001 upward" and re-checked when the pin moves
+(§2).
 
 **Severity maps to category.** `'error' | 'warning' | 'information' | 'hint'` to
 `ts.DiagnosticCategory.Error | Warning | Message | Suggestion`.
@@ -351,14 +479,35 @@ item 6.
 approximate.
 
 **Semantic classifications are lossy in the same way, and worse.** The plugin can only speak
-the 2020 classifier legend (`ts.classifier.v2020.TokenType`), whose types are class, enum,
-interface, namespace, typeParameter, type, parameter, variable, enumMember, property, function
-and member. TypeShade's `decorator`, `builtin`, `resource`, `operator`, `number` and `string`
-have no place in it, and the legend belongs to VS Code's built-in TypeScript extension, so an
-extension cannot widen it. **Decision: map what maps (`type` and `struct` to type, `function` to
-function, `parameter` to parameter, `variable` to variable, `property` to property), drop what
-does not rather than mislabel it, and leave the richer token set to §8 item 2.** A dropped token
-is not an unpainted token: TextMate still colors it.
+the 2020 classifier legend, whose twelve token types are class, enum, interface, namespace,
+typeParameter, type, parameter, variable, enumMember, property, function and member
+(`typescript.js:148594`), encoded as `(type + 1) << typeOffset | modifiers` with `typeOffset`
+8 and `modifierMask` 255 (line 148590). `TypeshadeSemanticTokenType` has thirteen members
+(`src/language-service/types.ts`), so seven have no counterpart: `decorator`, `builtin`,
+`resource`, `operator`, `number`, `string` and `keyword`. The modifier legend is narrower
+still: TypeScript's is declaration, static, async, readonly, defaultLibrary and local, so
+TypeShade's `entry` and `gpu` have nowhere to go either, while `declaration`, `readonly` and
+`defaultLibrary` map across. The legend belongs to VS Code's built-in TypeScript extension, so
+an extension cannot widen it.
+
+**Decision: map what maps (`type` and `struct` to type, `function` to function, `parameter` to
+parameter, `variable` to variable, `property` to property), drop what does not rather than
+mislabel it, and leave the richer token set to §8 item 2.** A dropped token is not an unpainted
+token: TextMate still colors it. One implementation note, because it is invisible from the
+types: `ts.classifier.v2020` exists only at runtime (`typescript.js:152086`) and
+`typescript.d.ts` declares no `classifier` namespace, so the plugin hard-codes the twelve
+indices and the two encoding constants rather than importing them, with this paragraph's line
+numbers as the comment.
+
+**Hover is Markdown on one side and display parts on the other.** `TypeshadeHover.contents` is
+one Markdown string (`src/language-service/types.ts`), while `ts.QuickInfo` wants
+`displayParts` and `documentation` as `SymbolDisplayPart[]`, and VS Code renders the display
+parts inside a TypeScript code fence, so Markdown put there renders as code rather than as
+prose. **Decision: the first fenced code block of `contents` becomes `displayParts` with its
+fence stripped, and everything after it becomes `documentation`; a hover with no fenced block
+puts all of it in `documentation` and leaves `displayParts` empty.** That is what makes the
+compiler's type signature read as a signature and its prose read as prose. §6 pins it with an
+assertion on a hover whose text has both halves.
 
 ## 4. The extension surface
 
@@ -373,9 +522,20 @@ repository that pins its own `typescript` (which every repository with a `.shade
 does) would silently get nothing.
 
 **Activation events.** `onLanguage:typescript` only. A `"use typeshade"` file is a TypeScript
-file, so that is the event that fires for it, and commands activate implicitly in VS Code 1.74
-and later. No `workspaceContains:**/*.shade.ts`: it would fire the extension in projects that
-have shaders but no open shader, for no benefit.
+file, so that is the event that fires for it, and contributed commands activate implicitly from
+VS Code 1.74 onward. The manifest's floor is higher than that anyway,
+`engines.vscode: ^1.90.0`, chosen so the extension can rely on implicit activation, on the
+stable `DebugAdapterInlineImplementation` API §5 uses, and on a TypeScript extension recent
+enough to pass an extension directory as a plugin probe location without caveats. Lowering it
+would buy users on releases from 2022, at the cost of guarding three APIs; §8 item 10 keeps the
+question open with that answer. No `workspaceContains:**/*.shade.ts`: it would fire the
+extension in projects that have shaders but no open shader, for no benefit.
+
+**A workspace with no `tsconfig.json` still works**, which is worth stating because it is how
+most people first open a `.shade.ts` file. tsserver puts such a file in an inferred project, and
+`InferredProject`'s constructor calls `enableGlobalPlugins` (`typescript.js:184978`), so a
+plugin passed through `--globalPlugins`, which is how `contributes.typescriptServerPlugins`
+arrives, is enabled there too. §6 carries a fixture with no `tsconfig.json` for exactly this.
 
 **The preview panel.** One `WebviewPanel`, opened beside the editor, with four tabs: WGSL, GLSL
 vertex, GLSL fragment, and reflection. Diagnostics are not a tab: they belong to the Problems
@@ -390,11 +550,18 @@ process. VS Code gives an extension no supported request channel to a tsserver p
 built-in TypeScript extension's exported API carries `configurePlugin(pluginId, config)`, which
 is one-way, and the `typescript.tsserverRequest` command that some extensions use for this is
 not part of its API surface. **Decision: the extension runs its own `TypeshadeLanguageService`,
-in the extension host, holding only the documents the panel is showing.** One document, not a
-project, so the cost is below the 4.4 MB and 63.3 ms that six files measured (§1.3). The two
-services are pure functions of the text they hold, so two of them cannot disagree, only
-duplicate work. The alternative, an unsupported command, would put the panel's correctness on an
-API that can be removed in a VS Code patch release.
+in the extension host, holding only the documents the panel is showing.** The two services are
+pure functions of the text they hold, so two of them cannot disagree, only duplicate work. The
+alternative, an unsupported command, would put the panel's correctness on an API that can be
+removed in a VS Code patch release.
+
+What it costs is mostly fixed rather than mostly per-document, measured with the same harness
+as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 76.8 to 96.8 ms and 11.8 MB, then
+building a one-document program and compiling it 87.3 to 94.7 ms and 3.7 MB, for **15.5 MB
+retained** against 16.9 MB for the six-document case. So the panel's marginal cost per file is
+small and its fixed cost is what matters, and §7 has to count it twice: the plugin's copy in
+tsserver and the extension's copy in the extension host, roughly 33 MB across the two processes
+on top of what each already holds.
 
 **Commands.**
 
@@ -445,42 +612,55 @@ one-way channel is for.
 
 ## 5. The debugger
 
-Designed here, implemented in PR 4, after PR #35 merges. Its engine is the compiler's, on the
-`./debug` subpath (`src/debug.ts` on `claude/d1-stepping-oracle`), and its design is
-`docs/debugging.md`, whose §5 decision 8 puts the adapter in this repository and decision 7 puts
-the engine on that subpath. The adapter holds no TypeShade semantics: per that document's §2.3,
-its size is a measure of drift.
+Designed here, implemented in PR 4, after PR #35 and PR #41 merge. Its engine is the
+compiler's, on the `./debug` subpath (`src/debug.ts`), and its design is `docs/debugging.md`,
+whose §5 decision 8 puts the adapter in this repository and decision 7 puts the engine on that
+subpath. The adapter holds no TypeShade semantics: per that document's §2.3, its size is a
+measure of drift.
 
-**What the engine offers.** `startDebugSession(module, entry, args, opts)` returns a
-`DebugSession` with `stepOver`, `stepIn`, `stepOut`, `continue` and `setBreakpoints`, plus
-`pause`, `done`, `result`, `discarded`, `stubbedIntrinsics` and `precision`. A `DebugPause`
-carries a reason (`entry`, `step`, `breakpoint`), the statement's `SourceSpan`, the `stmt`, the
-frames innermost first, and the run's bindings as their own map. A `DebugStackFrame` carries the
-function name, the function's span, the call's span, the current statement's span, and the
-frame's locals as a name-to-value map. A `DebugBreakpoint` is a zero-based line plus an optional
-file.
+**What the engine offers**, across the two branches. PR #35 has
+`startDebugSession(module, entry, args, opts)`, returning a `DebugSession` with `stepOver`,
+`stepIn`, `stepOut`, `continue` and `setBreakpoints`, plus `pause`, `done`, `result`,
+`discarded`, `stubbedIntrinsics` and `precision`. A `DebugPause` carries a reason (`entry`,
+`step`, `breakpoint`), the statement's `SourceSpan`, the `stmt`, the frames innermost first,
+and the run's bindings as their own map. A `DebugStackFrame` carries the function name, the
+function's span, the call's span, the current statement's span, and the frame's locals as a
+name-to-value map. A `DebugBreakpoint` is a zero-based line plus an optional file.
+
+PR #41 adds the layer this adapter actually talks to, and it removes work this document
+previously assigned to PR 4: `startDebugSessionFromConfig(module, config)`, described in its own
+source as "the one call an adapter makes"; `DebugLaunchConfig` and the frozen
+`DEBUG_LAUNCH_SCHEMA`, written "for an extension to contribute verbatim"; `resolveInvocation`
+and `resolveBindings`, which turn an invocation keyed by WGSL builtin id into the positional
+arguments the engine takes; `DebugConfigError`, which collects every fault in a configuration
+as sentences before anything runs; and `formatCpuValue` with `createValueFormatter` for
+rendering a value in the type the author wrote. The adapter uses all of them rather than
+re-implementing any, which is the layering rule this section opened with.
 
 **The adapter, request by request.**
 
-| DAP request                             | Implementation                                                                                                                                                                                                                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialize`                            | Declares `supportsConfigurationDoneRequest`, `supportsEvaluateForHovers`, `supportsSetVariable: false`, and, importantly, reads the client's `linesStartAt1` and `columnsStartAt1`                                                                                                          |
-| `launch`                                | Reads the program text, compiles it with the compiler's `compile()`, then `startDebugSession` with the mapped invocation and bindings                                                                                                                                                       |
-| `setBreakpoints`                        | Converts the client's lines to zero-based and calls `setBreakpoints`; a breakpoint is `verified` when the module has a statement whose span starts on that line, which is the engine's own resolution rule                                                                                  |
-| `configurationDone`                     | Either stays on the entry statement (`stopOnEntry`) or calls `continue`                                                                                                                                                                                                                     |
-| `threads`                               | One thread, id 1, named after the entry and its stage                                                                                                                                                                                                                                       |
-| `stackTrace`                            | `pause.frames`, mapped one for one, spans converted back to the client's base                                                                                                                                                                                                               |
-| `scopes`                                | Three per frame: Locals (the frame's own locals), Parameters (the entry's parameters, from the outermost frame), Bindings (`pause.bindings`)                                                                                                                                                |
-| `variables`                             | The CPU value model rendered in shader types: a vector as its components, a matrix column-major as the IR is, a struct by field name, an array by index. A value that came from `stubbedIntrinsics` is labelled a stand-in rather than a number, which is `docs/debugging.md` §5 decision 4 |
-| `next`, `stepIn`, `stepOut`, `continue` | The four engine methods, then a `stopped` event with the new pause's reason                                                                                                                                                                                                                 |
-| `evaluate`                              | `docs/debugging.md` §4.5's synthesised snippet, which is the compiler's own work and not the adapter's. Until it lands, `evaluate` answers only a bare name that the frame has, and says so for anything else                                                                               |
-| `disconnect`, `terminate`               | Drops the session                                                                                                                                                                                                                                                                           |
+| DAP request                             | Implementation                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize`                            | Declares `supportsConfigurationDoneRequest`, `supportsEvaluateForHovers`, `supportsSetVariable: false`, and, importantly, reads the client's `linesStartAt1` and `columnsStartAt1`                                                                                                                                                                                                                                        |
+| `launch`                                | Reads the program text, compiles it with the compiler's `compile()`, then hands the module and the launch configuration to `startDebugSessionFromConfig`. A `DebugConfigError` becomes one `output` event per sentence and a failed launch response, because a configuration is wrong in several ways at once                                                                                                             |
+| `setBreakpoints`                        | Converts the client's lines to zero-based and calls `setBreakpoints`; a breakpoint is `verified` when the module has a statement whose span starts on that line, which is the engine's own resolution rule                                                                                                                                                                                                                |
+| `configurationDone`                     | Either stays on the entry statement (`stopOnEntry`) or calls `continue`                                                                                                                                                                                                                                                                                                                                                   |
+| `threads`                               | One thread, id 1, named after the entry and its stage                                                                                                                                                                                                                                                                                                                                                                     |
+| `stackTrace`                            | `pause.frames`, mapped one for one, spans converted back to the client's base. `DebugStackFrame.span` is `SourceSpan \| undefined`, and it is undefined for a statement the compiler synthesised (a `while` loop's counter), so a frame with no span reports the function's own `fnSpan` and, failing that, line 0 with a name saying the statement is compiler-generated: a frame that cannot be placed is still a frame |
+| `scopes`                                | Three per frame: Locals (the frame's own locals), Parameters (the entry's parameters, from the outermost frame), Bindings (`pause.bindings`)                                                                                                                                                                                                                                                                              |
+| `variables`                             | `createValueFormatter` once per session and `formatCpuValue` per value, so a vector, a column-major matrix, a struct and an array read as the author wrote them, in the compiler's own rendering rather than the adapter's. A value that came from `stubbedIntrinsics` is labelled a stand-in rather than a number, which is `docs/debugging.md` §5 decision 4                                                            |
+| `next`, `stepIn`, `stepOut`, `continue` | The four engine methods, then a `stopped` event with the new pause's reason                                                                                                                                                                                                                                                                                                                                               |
+| `evaluate`                              | `docs/debugging.md` §4.5's synthesised snippet, which is the compiler's own work and not the adapter's. Until it lands, `evaluate` answers only a bare name that the frame has, and says so for anything else                                                                                                                                                                                                             |
+| (no request) `terminated`, `exited`     | When a step or `continue` leaves `session.done` true, the adapter emits `output` with `session.result` (or "discarded" when `session.discarded`), then `terminated`. Without this row a finished invocation looks like a hung one: the engine simply stops handing back pauses                                                                                                                                            |
+| `disconnect`, `terminate`               | Drops the session                                                                                                                                                                                                                                                                                                                                                                                                         |
 
-**The launch configuration.** The schema is `docs/debugging.md` §4, and the compiler's milestone
-M3 bakes it as a published type plus a JSON Schema. Until then, the extension contributes the
-same shape by hand, and PR 4's body says which fields it covers. The contributed
-`debuggers` entry is `type: "typeshade"`, with `program` and `entry` required and everything
-else defaulted:
+**The launch configuration is contributed verbatim.** `contributes.debuggers[0].type` is
+`typeshade`, and its `configurationAttributes.launch` is `DEBUG_LAUNCH_SCHEMA`, imported from
+`typeshade/debug` and written into the manifest by the build rather than copied by hand. A
+schema the extension retyped would drift from the engine that validates against it, and the
+frozen export exists precisely so it cannot. `entry` is the only required field there; the
+extension adds `program` to its own required list, since the engine is handed a compiled module
+and only an adapter needs to know which file to compile.
 
 ```jsonc
 {
@@ -491,20 +671,18 @@ else defaulted:
   "entry": "fs",
   "stopOnEntry": true,
   "precision": "f32",
+  "derivatives": "zero",
   "invocation": { "position": [100.5, 50.5, 0, 1], "inputs": { "uv": [0.5, 0.25] } },
   "bindings": { "camera": { "pos": [0, 0, 5] } },
 }
 ```
 
-**The one gap worth naming now.** `startDebugSession` takes the entry's parameters
-**positionally** (`args`, "short or sparse is filled with zeros"), while the launch
-configuration is keyed by WGSL builtin id and by input name, because that is what
-`docs/debugging.md` §4.2 decided and what `reflect()` reports. Something has to map one to the
-other, and until the compiler's M3 ships the invocation builder, that something is the adapter,
-using `reflect(module)`'s entry IO to order the keys. That is a piece of TypeShade knowledge in
-an adapter, which §2.3 of the debugging document says should not happen, so PR 4 writes it as
-one function with a comment naming M3 as its replacement, and the pull request tells the
-orchestrator.
+`derivatives` is in that snippet deliberately, and the generated configuration the code lens
+starts sets it too. `startDebugSessionFromConfig` passes `gpuStubs: config.derivatives ===
+'zero'`, so a configuration that omits it leaves GPU stubs off, and the first step through a
+fragment shader calling `fwidth` or `dpdx` throws instead of returning a marked stand-in. The
+`stubbedIntrinsics` label in the `variables` row can only ever fire when this field is set,
+which is what makes the field part of the contract rather than a nicety.
 
 **The code lens.** "Debug this entry" over every `@vertex`, `@fragment` and `@compute` function,
 built from `getDocumentSymbols`, whose entry symbols carry the stage in `detail` and the kind
@@ -538,19 +716,27 @@ and tsserver reported "Loading @typeshade/tsserver-plugin from <probe location> 
 <probe location>/node_modules)", with the same events as before.
 
 The fixture project holds a directive file, a non-directive file, a directive file with real
-TypeShade errors, a pair of directive files where one imports the other, and a host file that
-imports a shader. The assertions, on each:
+TypeShade errors, a pair of directive files where one imports the other, a host file that
+imports a shader, a directive file of 500 lines or more, and a second workspace with no
+`tsconfig.json` at all. The last two are fixtures for specific holes: the 500-line file is the
+only size at which `getRegionSemanticDiagnostics` fires (§3), and the config-less workspace is
+the inferred-project path most people meet first (§4). The assertions:
 
-| Assertion                                                                                     | Why it is the one worth making                                                   |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| On a clean directive file, zero diagnostics                                                   | The six examples measured 58 false errors without the plugin                     |
-| On a directive file, no diagnostic carries `ts` as its source                                 | Replacement, not merging                                                         |
-| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`  | The mapping of §3, end to end                                                    |
-| `quickinfo` on `vec4(...)` is not `any`                                                       | The probe measured `any` today, which is the user-visible symptom                |
-| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids | The context completions are the service's own and must survive the mapping       |
-| A whole session's events on non-directive files are identical with and without the plugin     | §1.5, and the only test that can prove a pass-through has no mapping layer in it |
-| A syntax error is reported once                                                               | The deduplication of §3                                                          |
-| The tsserver log contains no plugin exception                                                 | A plugin that throws degrades the whole project's TypeScript, silently           |
+| Assertion                                                                                      | Why it is the one worth making                                                                                 |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| On a clean directive file, zero diagnostics                                                    | The six examples measured 58 false errors without the plugin                                                   |
+| On a directive file, no diagnostic carries `ts` as its source                                  | Replacement, not merging                                                                                       |
+| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`   | The mapping of §3, end to end                                                                                  |
+| `quickinfo` on `vec4(...)` is not `any`                                                        | The probe measured `any` today, which is the user-visible symptom                                              |
+| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids  | The context completions are the service's own and must survive the mapping                                     |
+| A whole session's events on non-directive files are identical with and without the plugin      | §1.5, and the only test that can prove a pass-through has no mapping layer in it                               |
+| A syntax error is reported once                                                                | The deduplication of §3                                                                                        |
+| `references` on a shader symbol answers from the TypeShade program                             | tsserver calls `findReferences`, not `getReferencesAtPosition`; decorating only the latter fails silently (§3) |
+| A 500-line directive file reports zero diagnostics, with `geterr` twice                        | `getRegionSemanticDiagnostics` is undeclared in `typescript.d.ts` and fires only past that threshold (§3)      |
+| In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics        | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                             |
+| Deleting the directive brings TypeScript's own errors back, and the document set shrinks       | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                          |
+| A hover whose text has a fenced block and prose splits into `displayParts` and `documentation` | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                              |
+| The tsserver log contains no plugin exception                                                  | A plugin that throws degrades the whole project's TypeScript, silently                                         |
 
 The harness lives in `packages/tsserver-plugin/src/` beside the code, as vitest tests, with the
 30 second timeout the root config already sets for exactly this reason.
@@ -580,18 +766,35 @@ Marketplace publish must not wait on them being flaky.
 
 ## 7. Packaging and release
 
-**The plugin ships inside the extension, as a real directory.** VS Code passes the extension's
-own path as a plugin probe location, and tsserver resolves the plugin name against
-`node_modules` under it, which the probe run shows verbatim ("Loading
-@typeshade/tsserver-plugin from /home/user/vscode-typeshade (resolved to
-/home/user/vscode-typeshade/node_modules)"). In this workspace that path is a symlink npm
-created, and a symlink is not what should end up in a `.vsix`. So the package step builds the
-plugin to a single bundled CommonJS file and copies it, with a minimal `package.json`, into
+**The plugin ships inside the extension, as a real directory.** Two halves make that work, and
+each is verified in a different place. VS Code passes the extension's own directory as a plugin
+probe location: `plugins.ts:79` in `extensions/typescript-language-features` collects
+`uri: extension.extensionUri` for every extension contributing
+`typescriptServerPlugins`, and `spawner.ts:253-259` passes the collected locations to the
+server. What tsserver then does with such a location is what this repository's probe measures
+directly, and its log says it verbatim: "Loading @typeshade/tsserver-plugin from
+/home/user/vscode-typeshade (resolved to /home/user/vscode-typeshade/node_modules)". The probe
+passes the flag itself, so it establishes the tsserver half and not the VS Code half, which is
+what its own README says under "What is not established".
+
+In this workspace that `node_modules` path is a symlink npm created, and a symlink is not what
+should end up in a `.vsix`. So the package step builds the plugin to a single bundled CommonJS
+file and copies it, with a minimal `package.json`, into
 `packages/vscode-typeshade/node_modules/@typeshade/tsserver-plugin/` as a real directory before
-`vsce package` runs. The `.vsix` then carries one copy of the compiler bundle in the plugin and
-one in the extension, which is the price of the §4 decision to run a service in the extension
-host; if that grows uncomfortable, the two can share a bundled module later, and nothing about
-the layout prevents it.
+`vsce package` runs.
+
+**What the `.vsix` weighs, counted honestly.** It carries the compiler's language service
+twice, once in the plugin bundle and once in the extension bundle, at 470 KB each as measured in
+§1.3, plus `typescript` inlined into the extension bundle (§2), whose source is 8.5 MB before
+esbuild drops what the service never reaches. At run time that is roughly 33 MB of live heap
+across two processes: about 17 MB in tsserver (§1.3) and about 15.5 MB in the extension host
+(§4). Sharing one bundled module between the two is possible later and nothing in this layout
+prevents it; it is not worth doing before the numbers are a complaint.
+
+**The `.vsix` needs its own LICENSE.** `vsce` packages the directory its manifest sits in, and
+`packages/vscode-typeshade/` has no LICENSE file, so the extension would ship without one while
+the repository root has MIT. The package step copies the root `LICENSE` in beside the manifest
+before packaging.
 
 **The publish workflow is PR 5**, and it is gated three ways: it runs only on a published GitHub
 release, only when the release tag matches the extension's `version`, and only with the
@@ -668,8 +871,9 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    snippet entries TypeScript would add?** _Suggested: yes, entirely._ A merged list is a list
    where `Promise` and `document` are offered inside a shader. The TypeShade service's own
    completions already include keywords (`docs/language-service-api.md` §5).
-2. **The semantic token legend is VS Code's, and TypeShade's `decorator`, `builtin` and
-   `resource` have no place in it (§3).** _Suggested: drop those tokens for now, and revisit with
+2. **The semantic token legend is VS Code's, and seven of TypeShade's thirteen token types
+   have no place in it (`decorator`, `builtin`, `resource`, `operator`, `number`, `string`,
+   `keyword`), nor do the `entry` and `gpu` modifiers (§3).** _Suggested: drop those tokens for now, and revisit with
    a measurement of what the editor actually looks like, not with a second token provider._ Two
    providers on one document is a coin flip about which one paints.
 3. **A `"use typeshade"` file that imports a plain `.ts` file reports "Cannot find module"
@@ -693,6 +897,16 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 8. **Whether the extension's own service should be dropped once VS Code offers a supported
    request channel to a tsserver plugin (§4).** _Suggested: only if it becomes API, and the
    panel is not worth an unsupported command in the meantime._
+9. **The residual TS1206 on a `tsconfig.shade.json` build (§1.8).** A project that wants a
+   silent `tsc` has to filter that code itself, because only the language service can drop it.
+   _Suggested: document the one-line filter in the extension's README when PR 3 ships the
+   command that writes the file, and do not build a `tsc` wrapper._ A wrapper is a second build
+   tool to maintain for one diagnostic code.
+10. **The `engines.vscode` floor of `^1.90.0` (§4).** _Suggested: keep it._ It buys implicit
+    activation events, the stable inline debug adapter API, and a TypeScript extension that
+    passes extension directories as probe locations without caveats; lowering it would guard
+    three APIs to reach users on 2022 releases. Revisit if a real user reports being stuck
+    below it.
 
 ## Decisions for the owner
 
