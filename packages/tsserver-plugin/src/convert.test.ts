@@ -8,9 +8,30 @@ import {
   withoutSyntacticDuplicates,
 } from './convert.js'
 import type { ConvertContext } from './convert.js'
+import type { TypeshadeDiagnostic } from './compiler.js'
+import type ts from 'typescript'
 import { CLEAN } from './fixtures.js'
 
 const URI = '/p/a.shade.ts'
+
+/** One diagnostic, filled out enough for the filter to read. The range is not used there and is
+ *  derived from the span so the object is still a whole `TypeshadeDiagnostic`. */
+function diagnostic(
+  code: string | number,
+  start: number,
+  length: number,
+  source: TypeshadeDiagnostic['source'],
+): TypeshadeDiagnostic {
+  return {
+    uri: URI,
+    span: { start, length },
+    range: { start: { line: 0, character: start }, end: { line: 0, character: start + length } },
+    severity: 'error',
+    message: 'nope',
+    code,
+    source,
+  }
+}
 
 function context(): ConvertContext {
   const shade = createTypeshadeLanguageService()
@@ -68,11 +89,23 @@ describe('diagnostics', () => {
     expect(converted.source).toBeUndefined()
   })
 
-  it('drops what the syntactic pass already reported', () => {
-    const shared = { code: 1005, start: 10, length: 1 }
-    const semantic = [shared, { code: 2322, start: 20, length: 3 }] as never[]
-    const syntactic = [shared] as never[]
-    expect(withoutSyntacticDuplicates(semantic, syntactic)).toHaveLength(1)
+  it('drops what the syntactic pass already reported, and only from TypeScript', () => {
+    // The filter runs before conversion, where `source` is still readable, and that is the
+    // whole point: a TypeShade code that shares a number and a span with a TypeScript one is
+    // not a duplicate of it. `shared` and `collides` sit at the same span with the same number
+    // and only the first is dropped.
+    const shared = diagnostic(1005, 10, 1, 'typescript')
+    const collides = diagnostic('TS1005', 10, 1, 'typeshade')
+    const other = diagnostic(2322, 20, 3, 'typescript')
+    const syntactic = [{ code: 1005, start: 10, length: 1 }] as ts.DiagnosticWithLocation[]
+
+    const kept = withoutSyntacticDuplicates([shared, collides, other], syntactic)
+    expect(kept).toEqual([collides, other])
+  })
+
+  it('keeps everything when the syntactic pass reported nothing', () => {
+    const only = diagnostic(1005, 10, 1, 'typescript')
+    expect(withoutSyntacticDuplicates([only], [])).toEqual([only])
   })
 })
 

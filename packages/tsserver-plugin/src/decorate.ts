@@ -36,11 +36,27 @@ import {
  *  only overrides declared members therefore leaks TypeScript's own errors back into any shader
  *  of 500 lines or more, and only into those, which is the worst possible size for a bug to
  *  appear at. This is the shape the cast asserts. */
-interface RegionDiagnosticsService {
+interface UndeclaredMembers {
   getRegionSemanticDiagnostics?(
     fileName: string,
     ranges: readonly ts.TextRange[],
   ): { diagnostics: ts.Diagnostic[]; spans?: readonly ts.TextSpan[] } | undefined
+  /** `mapCode` is the other member tsserver calls that `typescript.d.ts` does not declare
+   *  (`typescript.js:150931`, and `mapCode` appears in the declarations only as a private
+   *  session method). It rewrites pasted code to fit its destination, which for a shader means
+   *  the project's program writing TypeScript into a `"use typeshade"` file. */
+  mapCode?(
+    fileName: string,
+    contents: readonly string[],
+    focusLocations: readonly (readonly ts.TextSpan[])[] | undefined,
+    formatOptions: ts.FormatCodeSettings,
+    preferences: ts.UserPreferences,
+  ): readonly ts.FileTextChanges[]
+}
+
+/** A `ts.TextRange` as the `ts.TextSpan` tsserver's event formatter expects. */
+function toTextSpan(range: ts.TextRange): ts.TextSpan {
+  return { start: range.pos, length: range.end - range.pos }
 }
 
 /** What the plugin writes to the tsserver log, so a failure is findable rather than silent. */
@@ -87,14 +103,26 @@ export function decorate(
     return inner.getProgram()?.getSourceFile(fileName)
   }
 
-  /** The identifier text at `position`, for the name a definition or reference carries. */
-  function nameAt(fileName: string, position: number): string {
+  /** The identifier CONTAINING `position`, as a name and a span.
+   *
+   *  Containing, not starting at: an earlier version sliced the text from the cursor, so a
+   *  request in the middle of `tint` named the symbol `nt` and gave the bound span the last two
+   *  characters. The token comes from the file tsserver already parsed, which is the same
+   *  syntax the service sees. */
+  function identifierAt(fileName: string, position: number): { name: string; span: ts.TextSpan } {
     const sourceFile = sourceFileOf(fileName)
-    if (!sourceFile) return ''
-    const match = /[A-Za-z_$][\w$]*/.exec(sourceFile.text.slice(position).split(/\W/)[0] ?? '')
-    if (match) return match[0]
-    const before = /[A-Za-z_$][\w$]*$/.exec(sourceFile.text.slice(0, position))
-    return before ? before[0] : ''
+    const empty = { name: '', span: { start: position, length: 0 } }
+    if (!sourceFile) return empty
+    let found: ts.Node | undefined
+    const visit = (node: ts.Node): void => {
+      if (node.getStart(sourceFile) > position || node.end < position) return
+      if (typescript.isIdentifier(node) || typescript.isStringLiteral(node)) found = node
+      node.forEachChild(visit)
+    }
+    sourceFile.forEachChild(visit)
+    if (!found) return empty
+    const start = found.getStart(sourceFile)
+    return { name: found.getText(sourceFile), span: { start, length: found.end - start } }
   }
 
   /** The span a signature help popup stays open over: the argument list of the call the cursor
@@ -140,6 +168,26 @@ export function decorate(
     Object.defineProperty(proxy, key, { value, writable: true, enumerable: true })
   }
 
+  /** The file a request is about, for a method whose first argument is the file name. Most of
+   *  them are, and the ones that are not are the reason this is a parameter at all: an earlier
+   *  version tested `typeof args[0] === 'string'` and so silently forwarded every method that
+   *  takes an options object first, which is how Fix All wrote a TypeScript function stub into
+   *  a shader. */
+  const firstArgument = (args: readonly unknown[]): string | undefined =>
+    typeof args[0] === 'string' ? args[0] : undefined
+
+  /** The file name inside an options object, by property. `getCombinedCodeFix` and
+   *  `organizeImports` carry `scope.fileName` / `args.fileName` (`CombinedCodeFixScope`), and
+   *  `getPasteEdits` carries `args.targetFile`. */
+  const namedProperty =
+    (property: 'fileName' | 'targetFile') =>
+    (args: readonly unknown[]): string | undefined => {
+      const first = args[0]
+      if (typeof first !== 'object' || first === null) return undefined
+      const value = (first as Record<string, unknown>)[property]
+      return typeof value === 'string' ? value : undefined
+    }
+
   /** Answers nothing for a TypeShade file, and forwards otherwise. The list of methods that get
    *  this treatment is the second of the two explicit lists: each would otherwise answer from
    *  the project's program, where a shader's names do not resolve. */
@@ -148,11 +196,12 @@ export function decorate(
     empty: (
       ...args: Parameters<Extract<ts.LanguageService[K], (...a: never[]) => unknown>>
     ) => unknown,
+    fileOf: (args: readonly unknown[]) => string | undefined = firstArgument,
   ): void {
     const member = inner[key] as unknown as (...a: unknown[]) => unknown
     override(key, ((...args: unknown[]) => {
-      const fileName = args[0]
-      if (typeof fileName === 'string' && isShade(fileName)) {
+      const fileName = fileOf(args)
+      if (fileName !== undefined && isShade(fileName)) {
         return (empty as (...a: unknown[]) => unknown)(...args)
       }
       return member.apply(inner, args)
@@ -165,10 +214,13 @@ export function decorate(
     if (!isShade(fileName)) return inner.getSemanticDiagnostics(fileName)
     const sourceFile = sourceFileOf(fileName)
     if (!sourceFile) return inner.getSemanticDiagnostics(fileName)
-    const diagnostics = shade
-      .getDiagnostics(fileName)
-      .map((d) => toTsDiagnostic(ctx, sourceFile, d))
-    return withoutSyntacticDuplicates(diagnostics, inner.getSyntacticDiagnostics(fileName))
+    // Deduplicated BEFORE conversion, while `source` still says which half a diagnostic came
+    // from: the syntactic pass is passed through untouched, and the service's own answer carries
+    // the TypeShade program's copy of the same parse errors.
+    return withoutSyntacticDuplicates(
+      shade.getDiagnostics(fileName),
+      inner.getSyntacticDiagnostics(fileName),
+    ).map((d) => toTsDiagnostic(ctx, sourceFile, d))
   })
 
   // Syntactic diagnostics are passed through untouched: a parse error does not depend on the
@@ -181,15 +233,33 @@ export function decorate(
   )
 
   {
-    // The undeclared region method. Overridden through one cast, because the alternative is a
-    // 500-line shader quietly getting TypeScript's errors back.
-    const region = inner as unknown as RegionDiagnosticsService
-    if (typeof region.getRegionSemanticDiagnostics === 'function') {
-      const forward = region.getRegionSemanticDiagnostics.bind(inner)
-      ;(proxy as unknown as RegionDiagnosticsService).getRegionSemanticDiagnostics = (
-        fileName,
-        ranges,
-      ) => (isShade(fileName) ? { diagnostics: [] } : forward(fileName, ranges))
+    // The two members tsserver calls that `typescript.d.ts` does not declare. Overridden through
+    // one cast each, because the alternative is a 500-line shader quietly getting TypeScript's
+    // errors back, and a paste into a shader quietly getting TypeScript's rewrite.
+    const undeclared = inner as unknown as UndeclaredMembers
+    const proxied = proxy as unknown as UndeclaredMembers
+    if (typeof undeclared.getRegionSemanticDiagnostics === 'function') {
+      const forward = undeclared.getRegionSemanticDiagnostics.bind(inner)
+      proxied.getRegionSemanticDiagnostics = (fileName, ranges) =>
+        // The requested ranges are echoed back as the answer's spans: tsserver publishes them
+        // on the `regionSemanticDiag` event so a client knows which part of the file the empty
+        // answer covers, and an answer with no spans is one a client cannot place.
+        //
+        // The conversion is not cosmetic. tsserver maps every span with `toProtocolTextSpan`
+        // (`typescript.js:190895`), which reads `start` and `length`; echoing the ranges as they
+        // arrive, which are `{ pos, end }`, threw inside the event send and cost the whole
+        // `regionSemanticDiag` event, visible only as one `Exception on executing command`
+        // line in the server log.
+        isShade(fileName)
+          ? { diagnostics: [], spans: ranges.map(toTextSpan) }
+          : forward(fileName, ranges)
+    }
+    if (typeof undeclared.mapCode === 'function') {
+      const forward = undeclared.mapCode.bind(inner)
+      proxied.mapCode = (fileName, contents, focusLocations, formatOptions, preferences) =>
+        isShade(fileName)
+          ? []
+          : forward(fileName, contents, focusLocations, formatOptions, preferences)
     }
   }
 
@@ -241,12 +311,12 @@ export function decorate(
 
   override('getDefinitionAndBoundSpan', (fileName, position) => {
     if (!isShade(fileName)) return inner.getDefinitionAndBoundSpan(fileName, position)
-    const name = nameAt(fileName, position)
+    const identifier = identifierAt(fileName, position)
     const definitions = shade.getDefinition(fileName, shade.positionAt(fileName, position))
     if (definitions.length === 0) return undefined
     return {
-      definitions: toDefinitionInfos(ctx, definitions, name),
-      textSpan: { start: position, length: name.length },
+      definitions: toDefinitionInfos(ctx, definitions, identifier.name),
+      textSpan: identifier.span,
     }
   })
 
@@ -261,7 +331,7 @@ export function decorate(
       const definitions = shade.getDefinition(fileName, shade.positionAt(fileName, position))
       return definitions.length === 0
         ? undefined
-        : toDefinitionInfos(ctx, definitions, nameAt(fileName, position))
+        : toDefinitionInfos(ctx, definitions, identifierAt(fileName, position).name)
     }) as unknown as ts.LanguageService[typeof key])
   }
 
@@ -271,15 +341,15 @@ export function decorate(
     const references = shade.getReferences(fileName, at, { includeDeclaration: true })
     if (references.length === 0) return undefined
     const declarations = shade.getDefinition(fileName, at)
-    return toReferencedSymbols(ctx, references, declarations, nameAt(fileName, position))
+    return toReferencedSymbols(ctx, references, declarations, identifierAt(fileName, position).name)
   })
 
   override('getReferencesAtPosition', (fileName, position) => {
     if (!isShade(fileName)) return inner.getReferencesAtPosition(fileName, position)
-    const references = shade.getReferences(fileName, shade.positionAt(fileName, position), {
-      includeDeclaration: true,
-    })
-    return references.length === 0 ? undefined : toReferenceEntries(ctx, references)
+    const at = shade.positionAt(fileName, position)
+    const references = shade.getReferences(fileName, at, { includeDeclaration: true })
+    if (references.length === 0) return undefined
+    return toReferenceEntries(ctx, references, shade.getDefinition(fileName, at))
   })
 
   override('getRenameInfo', (fileName, position, preferences) => {
@@ -332,7 +402,13 @@ export function decorate(
   override('getNavigationTree', (fileName) => {
     if (!isShade(fileName)) return inner.getNavigationTree(fileName)
     const symbols = shade.getDocumentSymbols(fileName)
-    return toNavigationTree(ctx, fileName, symbols, fileName.split('/').pop() ?? fileName)
+    return toNavigationTree(
+      ctx,
+      fileName,
+      symbols,
+      fileName.split('/').pop() ?? fileName,
+      sourceFileOf(fileName)?.text.length ?? 0,
+    )
   })
 
   override('getNavigationBarItems', (fileName) => {
@@ -342,6 +418,12 @@ export function decorate(
 
   override('getEncodedSemanticClassifications', (fileName, span, format) => {
     if (!isShade(fileName)) return inner.getEncodedSemanticClassifications(fileName, span, format)
+    // The conversion encodes the 2020 legend and nothing else, so a client asking for the
+    // Original one would read those numbers against a different table. Dropping rather than
+    // mislabelling is the same rule the token mapping follows.
+    if (format !== typescript.SemanticClassificationFormat.TwentyTwenty) {
+      return { spans: [], endOfLineState: typescript.EndOfLineState.None }
+    }
     const range = {
       start: shade.positionAt(fileName, span.start),
       end: shade.positionAt(fileName, span.start + span.length),
@@ -357,7 +439,7 @@ export function decorate(
       : inner.getCodeFixesAtPosition(fileName, start, end, codes, formatting, preferences),
   )
 
-  nothingForShaders('getCombinedCodeFix', () => ({ changes: [] }))
+  nothingForShaders('getCombinedCodeFix', () => ({ changes: [] }), namedProperty('fileName'))
   nothingForShaders('getDocumentHighlights', () => undefined)
   nothingForShaders('provideInlayHints', () => [])
   nothingForShaders('getApplicableRefactors', () => [])
@@ -365,11 +447,12 @@ export function decorate(
   nothingForShaders('prepareCallHierarchy', () => undefined)
   nothingForShaders('provideCallHierarchyIncomingCalls', () => [])
   nothingForShaders('provideCallHierarchyOutgoingCalls', () => [])
-  nothingForShaders('organizeImports', () => [])
+  nothingForShaders('organizeImports', () => [], namedProperty('fileName'))
   nothingForShaders('getFileReferences', () => [])
   nothingForShaders('getDocCommentTemplateAtPosition', () => undefined)
   nothingForShaders('getJsxClosingTagAtPosition', () => undefined)
   nothingForShaders('getSupportedCodeFixes', () => [])
+  nothingForShaders('getPasteEdits', () => ({ edits: [] }), namedProperty('targetFile'))
 
   // `getNavigateToItems` and `getEditsForFileRename` are project-wide rather than per-file, so
   // they cannot be filtered the way the list above is: their first argument is a search string

@@ -150,7 +150,12 @@ The measurement, its driver and its harness are in `docs/measurements/two-progra
 runs under node, because tsserver does, in a process that does nothing else, three times per
 mode, over a fixture of 150 plain TypeScript modules plus the compiler's six `.shade.ts`
 examples. The plugin's code is measured as it will ship: an esbuild CommonJS bundle of the
-compiler's `./language-service` subpath, 470 KB, with `typescript` external.
+compiler's `./language-service` subpath, 470 KB (481,235 bytes), with `typescript` external.
+
+That 470 KB is the language service alone, which is what the measurement is about. The plugin's
+own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, is 498 KB
+(509,564 bytes) as built today. The two numbers are close enough to be mistaken for each other
+and they measure different things, so both are spelled out wherever either appears.
 
 The phases are separated because they are paid at different times.
 
@@ -406,11 +411,27 @@ _Passed through, because they are syntactic and a shader file is still TypeScrip
 _Answered with nothing for a directive file, because the project's program would answer from the
 wrong program:_ `getRegionSemanticDiagnostics`, `getDocumentHighlights`, `provideInlayHints`,
 `getApplicableRefactors`, `getEditsForRefactor`, `prepareCallHierarchy`,
-`provideCallHierarchyIncomingCalls`, `provideCallHierarchyOutgoingCalls`, `getNavigateToItems`,
-`organizeImports`, `getFileReferences`, `getPasteEdits`, `getEditsForFileRename`,
-`getSupportedCodeFixes`, `getDocCommentTemplateAtPosition`, `getJsxClosingTagAtPosition`,
-`mapCode`. Each is a place a wrong answer is worse than none, and each becomes a real row when
-the service grows a method for it.
+`provideCallHierarchyIncomingCalls`, `provideCallHierarchyOutgoingCalls`, `organizeImports`,
+`getFileReferences`, `getPasteEdits`, `getSupportedCodeFixes`,
+`getDocCommentTemplateAtPosition`, `getJsxClosingTagAtPosition`, `mapCode`. Each is a place a
+wrong answer is worse than none, and each becomes a real row when the service grows a method for
+it.
+
+_Still forwarding, because they are project-wide:_ `getNavigateToItems` and
+`getEditsForFileRename`. The rule that decides the two lists above is that a method names one
+file, so the plugin can ask whether that file carries the directive and answer for it from the
+right program; the TypeShade service answers per document and has no workspace-wide method at
+all. These two name no file: the first takes a search string, the second an old path and a new
+one, and both are expected to answer across every file in the project. Filtering them would mean
+either dropping the whole answer, which breaks workspace symbol search and file rename for the
+plain TypeScript the project is mostly made of, or splitting it per file, which needs a
+workspace-wide answer from the service to splice back in. The cost of forwarding is named
+exactly: a workspace symbol search lists a shader's symbols as the project's program sees them,
+which for a `.shade.ts` file means TypeScript's reading of it, and renaming a file rewrites
+import specifiers inside shaders using TypeScript's module resolution rather than the service's
+`.shade.js` rewriting (§1.7). Both are cosmetic wrong answers in a list the user is scanning,
+not a wrong diagnostic or a wrong edit written into a shader, which is the line §3 draws. This
+becomes a real row the day the service answers workspace-wide.
 
 `getRegionSemanticDiagnostics` deserves its own sentence because it is invisible from the types.
 tsserver calls it at `typescript.js:190872`, guarded by `shouldDoRegionCheck`, whose threshold is
@@ -795,9 +816,10 @@ file and copies it, with a minimal `package.json`, into
 `vsce package` runs.
 
 **What the `.vsix` weighs, counted honestly.** It carries the compiler's language service
-twice, once in the plugin bundle and once in the extension bundle, at 470 KB each as measured in
-§1.3, plus `typescript` inlined into the extension bundle (§2), whose source is 8.5 MB before
-esbuild drops what the service never reaches. At run time that is roughly 33 MB of live heap
+twice, once in the plugin bundle and once in the extension bundle. The plugin bundle is 498 KB
+(509,564 bytes) as built today, of which the language service is the 470 KB measured in §1.3;
+the extension bundle carries the same service plus `typescript` inlined into it (§2), whose
+source is 8.5 MB before esbuild drops what the service never reaches. At run time that is roughly 33 MB of live heap
 across two processes: about 17 MB in tsserver (§1.3) and about 15.5 MB in the extension host
 (§4). Sharing one bundled module between the two is possible later and nothing in this layout
 prevents it; it is not worth doing before the numbers are a complaint.

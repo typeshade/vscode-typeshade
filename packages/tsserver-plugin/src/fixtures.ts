@@ -72,6 +72,23 @@ export function fs(): f32 {
 }
 `
 
+/** A shader whose struct field carries a `@builtin(...)`, for the one completion no TypeScript
+ *  program could produce. The cursor goes inside that string, and a STRUCT FIELD is the right
+ *  place for it rather than an entry point's parameter: the service filters the ids to the
+ *  enclosing function's stage, so a parameter would offer the vertex pair or the fragment four
+ *  but never both, and the assertion wants the whole vocabulary. */
+export const BUILTIN = `"use typeshade"
+
+class Clip {
+  @builtin("position") pos: vec4
+}
+
+@vertex
+export function vs(): Clip {
+  return { pos: vec4(0., 0., 0., 1.) }
+}
+`
+
 /** A plain TypeScript file, for the pass-through equality assertion. Nothing about it is
  *  TypeShade, and the plugin must leave every answer about it byte for byte as it was. */
 export const HOST = `export interface Frame {
@@ -135,6 +152,7 @@ export const PROJECT: Readonly<Record<string, string>> = {
   'syntax.shade.ts': SYNTAX,
   'lib.shade.ts': LIB,
   'main.shade.ts': MAIN,
+  'builtin.shade.ts': BUILTIN,
   'host.ts': HOST,
   'host-imports-shader.ts': HOST_IMPORTS_SHADER,
   'big.shade.ts': longShader(520),

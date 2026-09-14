@@ -145,12 +145,20 @@ function categoryOf(ctx: ConvertContext, severity: TypeshadeDiagnostic['severity
  * @returns the semantic answer with the duplicates removed.
  */
 export function withoutSyntacticDuplicates(
-  diagnostics: readonly ts.Diagnostic[],
+  diagnostics: readonly TypeshadeDiagnostic[],
   syntactic: readonly ts.DiagnosticWithLocation[],
-): ts.Diagnostic[] {
+): TypeshadeDiagnostic[] {
   if (syntactic.length === 0) return [...diagnostics]
   const seen = new Set(syntactic.map((d) => `${d.code}:${d.start}:${d.length}`))
-  return diagnostics.filter((d) => !seen.has(`${d.code}:${d.start ?? -1}:${d.length ?? -1}`))
+  // Only a TypeScript-sourced diagnostic can be a duplicate of the syntactic pass, and this
+  // runs BEFORE conversion so that is still visible: converting first erased `source`, and a
+  // TypeShade code that happened to share a number and a span with a TypeScript one would have
+  // been dropped as a duplicate of something it has nothing to do with.
+  return diagnostics.filter(
+    (d) =>
+      d.source !== 'typescript' ||
+      !seen.has(`${numericCode(d.code)}:${d.span.start}:${d.span.length}`),
+  )
 }
 
 /**
@@ -359,13 +367,29 @@ export function toDefinitionInfos(
 export function toReferenceEntries(
   ctx: ConvertContext,
   locations: readonly TypeshadeLocation[],
+  declarations: readonly TypeshadeLocation[] = [],
 ): ts.ReferenceEntry[] {
   return locations.map((location) => ({
     fileName: location.uri,
     textSpan: spanOf(ctx, location.uri, location.range),
     isWriteAccess: false,
-    isDefinition: false,
+    // The editor heads its list with the declaration and marks it in the peek view, so a list
+    // where nothing is the definition reads worse than the wrong answer it replaced.
+    isDefinition: isDeclaration(location, declarations),
   }))
+}
+
+/** Whether `location` is one of the declarations, by uri and start position. */
+function isDeclaration(
+  location: TypeshadeLocation,
+  declarations: readonly TypeshadeLocation[],
+): boolean {
+  return declarations.some(
+    (declaration) =>
+      declaration.uri === location.uri &&
+      declaration.range.start.line === location.range.start.line &&
+      declaration.range.start.character === location.range.start.character,
+  )
 }
 
 /**
@@ -403,12 +427,19 @@ export function toReferencedSymbols(
         textSpan: spanOf(ctx, uri, declaration.range),
         displayParts: [{ text: name, kind: 'text' }],
       },
-      references: group.map((location) => ({
-        fileName: uri,
-        textSpan: spanOf(ctx, uri, location.range),
-        isWriteAccess: false,
-        isDefinition: false,
-      })),
+      references: group.map((location) => {
+        const textSpan = spanOf(ctx, uri, location.range)
+        return {
+          fileName: uri,
+          textSpan,
+          // The context span is what the peek view shows around a hit. The service reports the
+          // name's range and nothing wider, so the context is the name: a narrow context is
+          // honest, an absent one makes the preview fall back to the raw line.
+          contextSpan: textSpan,
+          isWriteAccess: false,
+          isDefinition: isDeclaration(location, declarations),
+        }
+      }),
     }
   })
 }
@@ -470,8 +501,11 @@ export function toNavigationTree(
   uri: string,
   symbols: readonly TypeshadeDocumentSymbol[],
   rootText: string,
+  fileLength: number,
 ): ts.NavigationTree {
-  const fullSpan: ts.TextSpan = { start: 0, length: 0 }
+  // The root stands for the whole file, so its span is the whole file: a zero-length root makes
+  // an outline whose top entry cannot be revealed.
+  const fullSpan: ts.TextSpan = { start: 0, length: fileLength }
   return {
     text: rootText,
     kind: ctx.typescript.ScriptElementKind.moduleElement,

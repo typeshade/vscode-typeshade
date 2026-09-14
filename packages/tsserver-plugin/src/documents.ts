@@ -70,7 +70,7 @@ export class DocumentSync {
       if (this.open.delete(fileName)) this.shade.closeDocument(fileName)
       return false
     }
-    this.refreshServed()
+    this.refreshOthers(fileName)
     return this.send(fileName)
   }
 
@@ -118,10 +118,19 @@ export class DocumentSync {
     return true
   }
 
-  /** Promotes every file served through `readDocument` into a real document, and keeps it
-   *  current afterwards. */
-  private refreshServed(): void {
-    if (this.served.size === 0) return
+  /** Re-sends every other document whose text moved, and promotes anything served through
+   *  `readDocument` into a real document.
+   *
+   *  Walking the OPEN set, not just the served one, is the fix for a leak the first version had:
+   *  `send` removes a file from `served` once it becomes a document, so a loop over `served`
+   *  alone touched an imported shader exactly once and never again. Editing `lib.shade.ts` then
+   *  left `main.shade.ts`'s diagnostics stale until something asked about `lib` itself, which is
+   *  precisely what §1.1's third rule exists to prevent. The cost of the wider walk is one map
+   *  lookup and one string comparison per open document per request. */
+  private refreshOthers(except: string): void {
+    for (const uri of [...this.open.keys()]) {
+      if (uri !== except) this.send(uri)
+    }
     for (const uri of [...this.served]) this.send(uri)
   }
 
