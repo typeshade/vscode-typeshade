@@ -20,9 +20,9 @@ The plan, the architecture and the decisions behind them are in
 
 | Piece                            | State                                                 |
 | -------------------------------- | ----------------------------------------------------- |
-| Workspace, CI, conventions       | this commit                                           |
-| Design document                  | next                                                  |
-| TypeScript server plugin         | after the design document                             |
+| Workspace, CI, conventions       | done                                                  |
+| Design document                  | done, [`docs/design.md`](./docs/design.md)            |
+| TypeScript server plugin         | next                                                  |
 | VS Code extension and preview    | after the plugin                                      |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
