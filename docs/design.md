@@ -1,8 +1,12 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. Written against `typeshade/typeshade` at `3c0a2d7`, plus two
+Status: **proposal** for review. Written against `typeshade/typeshade` at `a2240e0`, plus two
 branches that have not merged: `claude/d1-debugging-design` (PR #28, the debugging design) and
-`claude/d1-stepping-oracle` (PR #35, the `./debug` subpath). Every claim about the compiler
+`claude/d1-stepping-oracle` (PR #35, the `./debug` subpath). It was first written against
+`3c0a2d7` and re-checked against `a2240e0` when that arrived: the two commits between them
+(#18, a binding read lowering to a varref, and #51, hover) change one thing in the public
+surface, an added `CompileTsSourceResult.symbols` field, and nothing in
+`src/language-service/index.ts`, so every mapping in §3 stands as written. Every claim about the compiler
 names the file it comes from. Nothing here is frozen, and §8 lists what is still open with the
 answer this document would take.
 
@@ -23,7 +27,7 @@ conversions. It is exported as the package subpath `./language-service`
 front-end analysis per document version that diagnostics, symbols, tokens, hover and compiled
 output all read (`docs/language-service-api.md` §8).
 
-Three properties of that service decide almost everything below.
+Four properties of that service decide almost everything below.
 
 1. **It builds its own program, with its own options.** `typeshadeCompilerOptions()` in
    `src/language-service/host.ts` is `lib: []`, `types: []`, `strict: true`,
@@ -38,7 +42,14 @@ Three properties of that service decide almost everything below.
    (duplicate `Pick`, `Math` redeclared, duplicate index signature for `number`), measured on
    `claude/c6-ambient-lib` and written up in that branch's README section "Type-checking
    `.shade.ts` with tsc".
-3. **The service decides which TypeScript diagnostics survive.** `docs/language-service-api.md`
+3. **It knows types TypeScript cannot.** Since #51 the front end records every name a document
+   declares, with its `ShaderType` and the span of the declared identifier
+   (`src/compiler/ts/symbols.ts`, reaching the service as `CompileTsSourceResult.symbols`), and
+   `getHover` renders the compiler's type for those names. That closes a gap the ambient lib
+   cannot: the scalar brands are optional, so TypeScript infers `let x = 1.` as plain `number`
+   where the compiler means `f32`. It is also why §3 replaces quick info rather than merging it,
+   and the probe measured what the unhelped answer looks like, `vec4(...)` reading as `any`.
+4. **The service decides which TypeScript diagnostics survive.** `docs/language-service-api.md`
    §6 is a table of what the ambient lib cannot silence and what the service therefore filters:
    TS1206 on stage and `@builtin` decorators, and TS2362, TS2363, TS2365 and TS2322 on vector
    and matrix arithmetic, each dropped only when the operand's own type carries one of
@@ -109,19 +120,26 @@ with no tsserver, and nothing in this design forecloses it. That is §8 item 4.
 
 ### 1.3 What the two programs cost
 
-The measurement and its script are in `docs/measurements/two-program-cost/`. On a fixture of 150
-plain TypeScript modules plus the compiler's six `.shade.ts` examples, under node v24.3.0 with
-typescript 5.6.3:
+The measurement and its script are in `docs/measurements/two-program-cost/`, which reports two
+runs, on `3c0a2d7` and on `a2240e0`, so a reader can see which numbers are stable. On a fixture
+of 150 plain TypeScript modules plus the compiler's six `.shade.ts` examples, under node
+v24.3.0 with typescript 5.6.3:
 
-| Number                                                           | Value                       |
-| ---------------------------------------------------------------- | --------------------------- |
-| Building the TypeShade program and answering for all six shaders | 63.3 ms                     |
-| The same with 60 shader files                                    | 206.3 ms                    |
-| Live heap the TypeShade program retains, 6 shaders               | 4.4 MB (82.0 MB to 86.4 MB) |
-| The same with 60 shader files                                    | 8.4 MB (80.7 MB to 89.1 MB) |
-| One edit plus diagnostics for a shader file, TypeShade program   | 5.6 ms                      |
-| The same file answered by the project program                    | 14.4 ms                     |
-| False semantic errors the project program reports on the six     | 58                          |
+| Number                                                           | Value                     |
+| ---------------------------------------------------------------- | ------------------------- |
+| Building the TypeShade program and answering for all six shaders | 59.5 to 63.3 ms           |
+| The same with 60 shader files                                    | 206.3 to 212.2 ms         |
+| Live heap the TypeShade program retains, 6 shaders               | 3.6 to 4.4 MB             |
+| The same with 60 shader files                                    | 4.0 to 8.4 MB             |
+| One edit plus diagnostics for a shader file, TypeShade program   | 5.6 to 7.2 ms             |
+| The same file answered by the project program                    | 14.4 to 40.9 ms           |
+| False semantic errors the project program reports on the six     | 58, exactly, in every run |
+
+A range rather than a figure wherever the runs disagreed, which is the honest reading of a
+shared four-core container: the diagnostic counts are exact and identical across runs, the
+second program's cold and warm costs agree closely, and the two that wander are its retained
+heap and the project program's warm cost. What matters survives either reading, since the
+question is whether a second program is affordable and not whether it costs 3.6 MB or 4.4 MB.
 
 The cost is small for a structural reason rather than a lucky one: the second program holds the
 shader files and `SHADE_DTS`, and nothing else. The fixture's 150 host modules are not in it,
@@ -262,23 +280,23 @@ project's method and returns its result unchanged (§1.5). For a file with the d
 plugin answers from the TypeShade service and never merges the two, because merging is how a
 false positive survives.
 
-| `ts.LanguageService` method                                                             | Directive file                                                  | Service call                        |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------- |
-| `getSemanticDiagnostics`                                                                | replaced, minus the entries the syntactic pass already reported | `getDiagnostics(uri)`               |
-| `getSyntacticDiagnostics`                                                               | passed through                                                  | none                                |
-| `getSuggestionDiagnostics`                                                              | replaced with nothing                                           | none                                |
-| `getQuickInfoAtPosition`                                                                | replaced                                                        | `getHover(uri, position)`           |
-| `getCompletionsAtPosition`                                                              | replaced                                                        | `getCompletions(uri, position)`     |
-| `getCompletionEntryDetails`                                                             | replaced, from the same list matched by name                    | `getCompletions(uri, position)`     |
-| `getSignatureHelpItems`                                                                 | replaced                                                        | `getSignatureHelp(uri, position)`   |
-| `getDefinitionAndBoundSpan`                                                             | replaced                                                        | `getDefinition(uri, position)`      |
-| `getReferencesAtPosition`                                                               | replaced                                                        | `getReferences(uri, position)`      |
-| `findRenameLocations`, `getRenameInfo`                                                  | replaced                                                        | `rename(...)`, `prepareRename(...)` |
-| `getNavigationTree`                                                                     | replaced                                                        | `getDocumentSymbols(uri)`           |
-| `getEncodedSemanticClassifications`                                                     | replaced, lossily (below)                                       | `getSemanticTokens(uri, range)`     |
-| `getCodeFixesAtPosition`                                                                | replaced with nothing, for now                                  | none                                |
-| `getDefinitionAtPosition`, `getTypeDefinitionAtPosition`, `getImplementationAtPosition` | replaced, from the same definition list                         | `getDefinition(uri, position)`      |
-| everything else                                                                         | passed through                                                  | none                                |
+| `ts.LanguageService` method                                                             | Directive file                                                        | Service call                        |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------- |
+| `getSemanticDiagnostics`                                                                | replaced, minus the entries the syntactic pass already reported       | `getDiagnostics(uri)`               |
+| `getSyntacticDiagnostics`                                                               | passed through                                                        | none                                |
+| `getSuggestionDiagnostics`                                                              | replaced with nothing                                                 | none                                |
+| `getQuickInfoAtPosition`                                                                | replaced, so the compiler's own type reaches the tooltip (§0 point 3) | `getHover(uri, position)`           |
+| `getCompletionsAtPosition`                                                              | replaced                                                              | `getCompletions(uri, position)`     |
+| `getCompletionEntryDetails`                                                             | replaced, from the same list matched by name                          | `getCompletions(uri, position)`     |
+| `getSignatureHelpItems`                                                                 | replaced                                                              | `getSignatureHelp(uri, position)`   |
+| `getDefinitionAndBoundSpan`                                                             | replaced                                                              | `getDefinition(uri, position)`      |
+| `getReferencesAtPosition`                                                               | replaced                                                              | `getReferences(uri, position)`      |
+| `findRenameLocations`, `getRenameInfo`                                                  | replaced                                                              | `rename(...)`, `prepareRename(...)` |
+| `getNavigationTree`                                                                     | replaced                                                              | `getDocumentSymbols(uri)`           |
+| `getEncodedSemanticClassifications`                                                     | replaced, lossily (below)                                             | `getSemanticTokens(uri, range)`     |
+| `getCodeFixesAtPosition`                                                                | replaced with nothing, for now                                        | none                                |
+| `getDefinitionAtPosition`, `getTypeDefinitionAtPosition`, `getImplementationAtPosition` | replaced, from the same definition list                               | `getDefinition(uri, position)`      |
+| everything else                                                                         | passed through                                                        | none                                |
 
 The service's methods already take a uri and a zero-based position and return data
 (`src/language-service/service.ts`), and its internal per-feature functions already take a
@@ -576,7 +594,18 @@ release, only when the release tag matches the extension's `version`, and only w
 `VSCE_PAT` secret present. It runs the full gate first, then `vsce package`, then
 `vsce publish --packagePath`, and it uploads the `.vsix` to the release as an asset so a
 publish can be reproduced from the exact artifact that was published. No publish on a push to
-`main`, ever.
+`main`, ever. Beside it, one `workflow_dispatch` job packages and never uploads, so the
+packaging step can be exercised without a release and without touching the Marketplace. The
+token reaches `vsce` through the environment, read from `secrets.VSCE_PAT`, never as a
+command-line argument, so it cannot land in a log line.
+
+**The publisher and the token exist.** The owner has created the Marketplace publisher
+(display name TypeShade, id `typeshade`, website `https://typeshade.dev`, support
+`https://github.com/typeshade/vscode-typeshade/issues`) and added the repository secret
+`VSCE_PAT`, an Azure DevOps personal access token scoped to Marketplace Manage across all
+accessible organizations. `packages/vscode-typeshade/package.json` already carries
+`"publisher": "typeshade"`, that same `homepage` and that same `bugs.url`, so PR 5 needs no
+manifest change to match what was registered.
 
 **Version policy.** The extension's version is its own, and it starts at `0.1.0` on the first
 Marketplace release. The compiler's version is not the extension's: a bug fix in the panel
@@ -594,11 +623,7 @@ submodule and an npm package cannot carry one honestly.
 
 **What the owner must do once, and nobody else can.**
 
-1. Create a Visual Studio Marketplace publisher named `typeshade` (through the Visual Studio
-   Marketplace management page, which needs a Microsoft account and an Azure DevOps
-   organization), then create a personal access token scoped to Marketplace publish and add it
-   to this repository as the `VSCE_PAT` secret. The manifest already names
-   `"publisher": "typeshade"`, so nothing in the code changes when it exists.
+1. ~~Create the Marketplace publisher and the `VSCE_PAT` secret.~~ Done on 2026-09-14, as above.
 2. Decide whether the extension is also published to Open VSX, for Cursor, VSCodium and
    Gitpod. It is one more job and one more token (`OVSX_PAT`), and it is the difference between
    Cursor users installing the extension and side-loading it. §8 item 7.
@@ -638,11 +663,12 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 
 ## Decisions for the owner
 
-Nothing in this document is blocked on an answer, but three of the above are the owner's rather
-than an implementer's, and they are cheap to answer now:
+Nothing in this document is blocked on an answer. Of the three that were the owner's rather than
+an implementer's, one is now answered:
 
-1. The Marketplace publisher and the `VSCE_PAT` secret (§7 item 1). PR 5 can be written without
-   them, but it cannot be run.
+1. ~~The Marketplace publisher and the `VSCE_PAT` secret.~~ **Answered 2026-09-14**: publisher
+   `typeshade` (display name TypeShade) exists and the repository secret `VSCE_PAT` is set, so
+   PR 5 can be run as well as written (§7).
 2. Open VSX, yes or no (§8 item 7).
 3. The npm package name for the plugin, `typeshade-tsserver-plugin` as written here or a scoped
    `@typeshade/tsserver-plugin` if an npm organization is wanted. The compiler's own name is

@@ -32,19 +32,22 @@ reported the process holding 294.2 MB of RSS before the second program and 263.8
 which says something about when the allocator returns pages and nothing about what the second
 program retains.
 
-## The run the design document reports
+## The runs the design document reports
 
-2026-09-14, in the session's container: 4 cores, node v24.3.0 under bun 1.3.11, typescript
-5.6.3, compiler at `3c0a2d7`.
+Two runs, on two compiler revisions, in the session's container: 4 cores, node v24.3.0 under
+bun 1.3.11, typescript 5.6.3. Two, because one sample hides how noisy a shared container is:
+the numbers that matter agree between them, and the ones that wander are named below.
+
+Compiler at `a2240e0` (the current `main`), 2026-09-14:
 
 ```
 node v24.3.0, typescript 5.6.3, bun 1.3.11
 fixture: 150 .ts files, 6 .shade.ts files
 
 ## project program only (no plugin)
-cold        1211.7 ms
-warm/edit   14.4 ms
-heap        83.2 MB
+cold        1511.7 ms
+warm/edit   40.9 ms
+heap        81.3 MB
             58 diagnostics over 156 files
             hello.shade.ts: 10 semantic (TS1206 TS2304 TS2349)
             hello-uniform.shade.ts: 5 semantic (TS1206 TS2304)
@@ -54,10 +57,10 @@ heap        83.2 MB
             compute-reduction-twin.shade.ts: 12 semantic (TS1206 TS2304)
 
 ## project program plus the TypeShade program
-cold        63.3 ms
-warm/edit   5.6 ms
-heap        86.4 MB
-            heap 82 MB with the project program alone, 86.4 MB once the
+cold        59.5 ms
+warm/edit   6 ms
+heap        86.3 MB
+            heap 82.7 MB with the project program alone, 86.3 MB once the
               TypeShade program was built and had answered for every shader file
             0 diagnostics over 6 shader files
             hello.shade.ts: 0 (-)
@@ -68,35 +71,47 @@ heap        86.4 MB
             compute-reduction-twin.shade.ts: 0 (-)
 ```
 
-With the shader files copied ten times, so the fixture holds 60 of them:
+The same fixture with the shader files copied ten times, so it holds 60 of them:
 
 ```
 fixture: 150 .ts files, 60 .shade.ts files
 
 ## project program only (no plugin)
-cold        1350.6 ms
-warm/edit   20.7 ms
-heap        126.5 MB
+cold        1316.9 ms
+warm/edit   20 ms
+heap        120.2 MB
             580 diagnostics over 210 files
 
 ## project program plus the TypeShade program
-cold        206.3 ms
-warm/edit   4.9 ms
-heap        89.1 MB
-            heap 80.7 MB with the project program alone, 89.1 MB once the
+cold        212.2 ms
+warm/edit   7.2 ms
+heap        89.3 MB
+            heap 85.3 MB with the project program alone, 89.3 MB once the
               TypeShade program was built and had answered for every shader file
             0 diagnostics over 60 shader files
 ```
 
+Compiler at `3c0a2d7`, the earlier run, quoted for the same rows only: 6 shaders cold 63.3 ms,
+warm 5.6 ms, heap 82.0 MB to 86.4 MB, project warm 14.4 ms, 58 false diagnostics; 60 shaders
+cold 206.3 ms, warm 4.9 ms, heap 80.7 MB to 89.1 MB, 580 false diagnostics.
+
+**What is stable across the two, and what is not.** The diagnostic counts are exact and
+identical: 58 and 580, the same codes on the same files, and zero from the TypeShade service.
+The second program's cold build agrees closely (59.5 and 63.3 ms for 6, 212.2 and 206.3 ms for 60) and so does its warm cost (6.0 and 5.6 ms, 7.2 and 4.9 ms). Two numbers wander and should
+be read as bounds, not as values: the heap the second program retains (3.6 to 4.4 MB for 6
+shaders, 4.0 to 8.4 MB for 60, so under 10 MB in every run) and the project program's warm cost
+for the same file (14.4, 20.7, 20.0 and 40.9 ms across four runs), which is a 156-file program
+re-checking against the full standard library on a shared four-core container.
+
 ## What the numbers say
 
-| Question                                             | Answer                                                                                            |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Why a second program at all                          | tsserver alone reports 58 semantic errors on the six examples, and every one is false             |
-| What the second program costs to build               | 63.3 ms for 6 shader files, 206.3 ms for 60                                                       |
-| What it retains                                      | 4.4 MB for 6 shader files, 8.4 MB for 60                                                          |
-| What a keystroke in a shader file costs              | 5.6 ms in the TypeShade program, against 14.4 ms for the same file in the project program         |
-| Whether the project's size enters the second program | No: the fixture's 150 host modules are not in it, so both numbers scale on the shader count alone |
+| Question                                             | Answer                                                                                                   |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Why a second program at all                          | tsserver alone reports 58 semantic errors on the six examples, and every one is false                    |
+| What the second program costs to build               | 59.5 to 63.3 ms for 6 shader files, 206.3 to 212.2 ms for 60                                             |
+| What it retains                                      | under 10 MB in every run: 3.6 to 4.4 MB for 6 shader files, 4.0 to 8.4 MB for 60                         |
+| What a keystroke in a shader file costs              | 5.6 to 7.2 ms in the TypeShade program, against 14.4 to 40.9 ms for the same file in the project program |
+| Whether the project's size enters the second program | No: the fixture's 150 host modules are not in it, so both numbers scale on the shader count alone        |
 
 The last row is the reason the cost is small, and it is a consequence of a language rule rather
 than an optimization: a TypeShade program holds the shader files and `SHADE_DTS`, and nothing
