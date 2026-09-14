@@ -595,15 +595,20 @@ release, only when the release tag matches the extension's `version`, and only w
 `vsce publish --packagePath`, and it uploads the `.vsix` to the release as an asset so a
 publish can be reproduced from the exact artifact that was published. No publish on a push to
 `main`, ever. Beside it, one `workflow_dispatch` job packages and never uploads, so the
-packaging step can be exercised without a release and without touching the Marketplace. The
-token reaches `vsce` through the environment, read from `secrets.VSCE_PAT`, never as a
-command-line argument, so it cannot land in a log line.
+packaging step can be exercised without a release and without touching either registry.
 
-**The publisher and the token exist.** The owner has created the Marketplace publisher
+**Both registries, in one run.** The same job publishes to the Visual Studio Marketplace with
+`npx @vscode/vsce publish` and then to Open VSX with `npx ovsx publish`, over the one `.vsix`
+it already built, so the two registries cannot end up carrying different bytes for one version.
+Each token reaches its tool through the environment, `VSCE_PAT` and `OVSX_PAT` read from
+`secrets`, never as a command-line argument, so neither can land in a log line. Open VSX second
+rather than first because the Marketplace is the one whose failure should stop the run.
+
+**The publishers and the tokens exist.** The owner has created the Marketplace publisher
 (display name TypeShade, id `typeshade`, website `https://typeshade.dev`, support
-`https://github.com/typeshade/vscode-typeshade/issues`) and added the repository secret
+`https://github.com/typeshade/vscode-typeshade/issues`) and added two repository secrets:
 `VSCE_PAT`, an Azure DevOps personal access token scoped to Marketplace Manage across all
-accessible organizations. `packages/vscode-typeshade/package.json` already carries
+accessible organizations, and `OVSX_PAT`, an open-vsx.org access token. `packages/vscode-typeshade/package.json` already carries
 `"publisher": "typeshade"`, that same `homepage` and that same `bugs.url`, so PR 5 needs no
 manifest change to match what was registered.
 
@@ -621,12 +626,9 @@ editor that is not VS Code can install it with two lines in a `tsconfig.json`. T
 it waits on the compiler publishing, because until then the plugin's own dependency is a
 submodule and an npm package cannot carry one honestly.
 
-**What the owner must do once, and nobody else can.**
-
-1. ~~Create the Marketplace publisher and the `VSCE_PAT` secret.~~ Done on 2026-09-14, as above.
-2. Decide whether the extension is also published to Open VSX, for Cursor, VSCodium and
-   Gitpod. It is one more job and one more token (`OVSX_PAT`), and it is the difference between
-   Cursor users installing the extension and side-loading it. §8 item 7.
+**What the owner had to do once, and nobody else could.** Both are done, on 2026-09-14:
+the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its `OVSX_PAT`.
+Nothing in PR 5 waits on a person now.
 
 ## 8. Open questions
 
@@ -655,23 +657,27 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 6. **Unused locals in a shader file get no hint, because the suggestion pass is replaced with
    nothing (§3).** _Suggested: ask the compiler for an `UNUSED` diagnostic rather than borrowing
    TypeScript's, since only the compiler knows whether a binding is dead in GPU terms._
-7. **Open VSX as well as the Marketplace (§7).** _Suggested: yes, in the same workflow, once the
-   owner has the token._ Cursor is a first-class target of this design and it reads Open VSX.
+7. ~~**Open VSX as well as the Marketplace (§7).**~~ **Decided 2026-09-14: yes**, in the same
+   run, with `OVSX_PAT` added beside `VSCE_PAT`. Cursor is a first-class target of this design
+   and it reads Open VSX.
 8. **Whether the extension's own service should be dropped once VS Code offers a supported
    request channel to a tsserver plugin (§4).** _Suggested: only if it becomes API, and the
    panel is not worth an unsupported command in the meantime._
 
 ## Decisions for the owner
 
-Nothing in this document is blocked on an answer. Of the three that were the owner's rather than
-an implementer's, one is now answered:
+All three that were the owner's rather than an implementer's were answered on 2026-09-14,
+through the orchestrating session. They are kept here as a record of what was decided, not as a
+list of what is waiting.
 
-1. ~~The Marketplace publisher and the `VSCE_PAT` secret.~~ **Answered 2026-09-14**: publisher
-   `typeshade` (display name TypeShade) exists and the repository secret `VSCE_PAT` is set, so
-   PR 5 can be run as well as written (§7).
-2. Open VSX, yes or no (§8 item 7).
-3. The npm package name for the plugin, `typeshade-tsserver-plugin` as written here or a scoped
-   `@typeshade/tsserver-plugin` if an npm organization is wanted. The compiler's own name is
-   unscoped `typeshade` on the publishing branches, which is why this document matches it.
+1. **The Marketplace publisher and the `VSCE_PAT` secret.** Publisher `typeshade`, display name
+   TypeShade, and the secret is set, so PR 5 can be run as well as written (§7).
+2. **Open VSX: yes.** `OVSX_PAT` is set beside `VSCE_PAT`, and one run publishes to both
+   registries over the same `.vsix` (§7).
+3. **The plugin's npm name is the unscoped `typeshade-tsserver-plugin`**, matching the
+   compiler's unscoped `typeshade`. That is the name this document already used and the one
+   `packages/tsserver-plugin/package.json` already carries, so nothing changes.
+
+Nothing in this document is blocked on an answer.
 
 Last updated: 2026-09-14
