@@ -1,9 +1,7 @@
 {
-  // The solution file: `tsc --build` here builds every package in dependency order. It holds no
-  // sources of its own, so `files` is empty and each package's own tsconfig owns its inputs.
+  // The solution file holds no sources of its own; `npm run typecheck` runs each project.
+  // There are no project references because nothing here emits through `tsc`: every package is
+  // checked with `noEmit` and built with esbuild (`docs/design.md` §2).
   "files": [],
-  "references": [
-    { "path": "./packages/tsserver-plugin" },
-    { "path": "./packages/vscode-typeshade" }
-  ]
+  "include": []
 }

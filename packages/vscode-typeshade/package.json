@@ -24,7 +24,7 @@
   "activationEvents": [],
   "contributes": {},
   "scripts": {
-    "build": "tsc --build"
+    "build": "node ../../scripts/build.mjs"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0"

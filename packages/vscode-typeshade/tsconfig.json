@@ -1,12 +1,6 @@
 {
+  // Type-checking only, for the same reason as the plugin's: esbuild builds the artifact.
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "composite": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "types": ["vscode", "node"]
-  },
-  "include": ["src/**/*.ts"],
-  // Tests never reach `dist/`; they are type-checked by the root `tsconfig.tests.json`.
-  "exclude": ["src/**/*.test.ts"]
+  "compilerOptions": { "types": ["vscode", "node"] },
+  "include": ["src/**/*.ts"]
 }

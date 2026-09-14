@@ -1,18 +1,25 @@
 {
   // The baseline every package in this workspace extends.
   //
-  // `module: node16` rather than the compiler repository's `nodenext`: both artifacts here are
-  // loaded by a CommonJS host and neither can be ESM. tsserver `require`s a server plugin, and
-  // the VS Code extension host loads the extension's `main` the same way. Neither package
-  // declares `"type": "module"`, so `node16` emits CommonJS while still reading `exports` maps,
-  // which `node10` resolution would ignore.
+  // `module: esnext` with `moduleResolution: bundler` describes how these sources are actually
+  // consumed: esbuild bundles them (`docs/design.md` §2), and esbuild is what decides the
+  // output format. Both artifacts are still CommonJS, because tsserver `require`s a plugin and
+  // the VS Code extension host loads the extension's `main` the same way, but that is the
+  // BUNDLER's job now rather than `tsc`'s, and `scripts/build.mjs` sets it.
+  //
+  // The earlier `module: node16` setting could not survive the compiler arriving as a vendored
+  // submodule: `vendor/typeshade/package.json` declares `"type": "module"`, so under node16
+  // every reference to it from a CommonJS file is TS1479 ("cannot be imported with require"),
+  // including a type-only import. That error is about a `require` at run time, and after
+  // bundling there is no such `require`.
   //
   // Relative specifiers still carry an explicit `.js`, as the compiler's sources do, so a file
-  // can move between the two repositories without its imports being rewritten.
+  // can move between the two repositories without its imports being rewritten; bundler
+  // resolution reads `./x.js` as `./x.ts` exactly as node16 did.
   "compilerOptions": {
     "target": "ES2022",
-    "module": "node16",
-    "moduleResolution": "node16",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "lib": ["ES2022"],
     "strict": true,
     "noUnusedLocals": true,
@@ -21,8 +28,18 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "sourceMap": true,
-    "skipLibCheck": true
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // The compiler is a pinned submodule until it publishes (`docs/design.md` §2). These are
+    // the specifiers the published package will serve, mapped in ONE place, so the switch to
+    // the npm dependency deletes these entries and changes no source file. `scripts/build.mjs`
+    // gives esbuild the same three as aliases.
+    "paths": {
+      "typeshade": ["./vendor/typeshade/src/index.ts"],
+      "typeshade/language-service": ["./vendor/typeshade/src/language-service/index.ts"],
+      "typeshade/debug": ["./vendor/typeshade/src/debug.ts"]
+    }
   }
 }

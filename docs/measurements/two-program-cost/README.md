@@ -63,7 +63,7 @@ six `.shade.ts` examples, under a `tsconfig.json` with `lib: ["ES2022", "DOM"]`.
 ## The runs the design document reports
 
 2026-09-14, in the session's container: 4 cores, node v22.22.2 doing the measuring, bun 1.3.11
-driving, typescript 5.6.3, compiler at `a2240e0`, bundle 470 KB.
+driving, typescript 5.6.3, compiler at `a2240e0`, bundle 470 KB (481,235 bytes).
 
 ```
 ## the editor today, no plugin (node v22.22.2)
@@ -111,8 +111,10 @@ diagnostics on shaders     0 (0, 0, 0)
 
 An independent run of the same method, in the review of this pull request, reported the heap
 figures identically (11.7 MB for the require phase, 5.1 MB for the build phase, 16.8 MB
-retained) and higher times (117.8 to 128.5 ms and 171.1 to 280.5 ms). Heap is what the two
-agree on to the tenth of a megabyte; time is what a shared four-core container moves.
+retained) and higher times (117.8 to 128.5 ms and 171.1 to 280.5 ms). A third run, once the
+plugin's own sources were finished, landed between the two (93.5 to 100.5 ms and 141 to 145 ms)
+with the heap figures identical again to the tenth. Heap is what every run agrees on to the
+tenth of a megabyte; time is what a shared four-core container moves, by a quarter or so.
 
 ## What the numbers say
 

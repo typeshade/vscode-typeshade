@@ -1,0 +1,3 @@
+[submodule "vendor/typeshade"]
+	path = vendor/typeshade
+	url = https://github.com/typeshade/typeshade

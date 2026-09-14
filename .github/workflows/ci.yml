@@ -31,11 +31,19 @@ jobs:
         node: [20, 22]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The compiler is a pinned submodule until it publishes (`docs/design.md` §2), and
+          # every artifact here bundles it, so a checkout without it fails at the first import
+          # rather than at a later, more confusing step.
+          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # Before the type check, because the tsserver test loads the built bundle: the plugin is
+      # what tsserver `require`s, so the suite would otherwise test a stale one or none at all.
+      - run: npm run build
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check

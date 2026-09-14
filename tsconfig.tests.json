@@ -1,13 +1,9 @@
 {
-  // The noEmit pass over the tests, scripts and fixtures the emitting projects exclude. Tests
-  // live beside the code they cover, so they would otherwise be compiled into `dist/`; this is
-  // the compiler repository's own split (its `tsconfig.tests.json`) applied here.
+  // The pass over what no package's own project covers: the root's own configuration files, and
+  // any script written in TypeScript. Test files are NOT here: each package checks its own
+  // `src/**/*.ts`, tests included, because nothing is emitted through `tsc` any more and so
+  // there is no `dist/` for a test to be kept out of.
   "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "declaration": false,
-    "sourceMap": false,
-    "types": ["node"]
-  },
-  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "vitest.config.mts"]
+  "compilerOptions": { "types": ["node"] },
+  "include": ["scripts/**/*.ts", "vitest.config.mts"]
 }

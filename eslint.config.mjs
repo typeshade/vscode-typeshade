@@ -13,6 +13,11 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': 'error',
+      // `ignoreReadBeforeAssign` is on because two objects here refer to each other: the
+      // TypeShade service asks for an imported file through a callback, and the document sync
+      // that answers it needs the service. The callback is created before the sync exists, so
+      // the binding is genuinely read before it is assigned and cannot be a `const`.
+      'prefer-const': ['error', { ignoreReadBeforeAssign: true }],
     },
   },
 )
