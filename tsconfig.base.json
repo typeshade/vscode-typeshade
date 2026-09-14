@@ -1,0 +1,28 @@
+{
+  // The baseline every package in this workspace extends.
+  //
+  // `module: node16` rather than the compiler repository's `nodenext`: both artifacts here are
+  // loaded by a CommonJS host and neither can be ESM. tsserver `require`s a server plugin, and
+  // the VS Code extension host loads the extension's `main` the same way. Neither package
+  // declares `"type": "module"`, so `node16` emits CommonJS while still reading `exports` maps,
+  // which `node10` resolution would ignore.
+  //
+  // Relative specifiers still carry an explicit `.js`, as the compiler's sources do, so a file
+  // can move between the two repositories without its imports being rewritten.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true
+  }
+}

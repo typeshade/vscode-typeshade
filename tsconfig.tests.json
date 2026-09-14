@@ -1,0 +1,13 @@
+{
+  // The noEmit pass over the tests, scripts and fixtures the emitting projects exclude. Tests
+  // live beside the code they cover, so they would otherwise be compiled into `dist/`; this is
+  // the compiler repository's own split (its `tsconfig.tests.json`) applied here.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "vitest.config.mts"]
+}

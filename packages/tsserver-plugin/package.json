@@ -1,0 +1,27 @@
+{
+  "name": "typeshade-tsserver-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A TypeScript server plugin that gives \"use typeshade\" files TypeShade's own diagnostics, hover, completions and navigation.",
+  "license": "MIT",
+  "author": "Seungup Noh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typeshade/vscode-typeshade.git",
+    "directory": "packages/tsserver-plugin"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  }
+}

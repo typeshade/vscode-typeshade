@@ -1,0 +1,40 @@
+{
+  "name": "typeshade-editor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Editor support for TypeShade: a TypeScript server plugin and a VS Code extension.",
+  "license": "MIT",
+  "author": "Seungup Noh",
+  "homepage": "https://typeshade.dev",
+  "bugs": {
+    "url": "https://github.com/typeshade/vscode-typeshade/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typeshade/vscode-typeshade.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build && tsc -p tsconfig.tests.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "check:prose": "node scripts/check-prose.mjs",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run check:prose && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "5.6.3",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^3.0.0"
+  }
+}

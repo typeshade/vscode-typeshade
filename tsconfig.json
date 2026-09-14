@@ -1,0 +1,9 @@
+{
+  // The solution file: `tsc --build` here builds every package in dependency order. It holds no
+  // sources of its own, so `files` is empty and each package's own tsconfig owns its inputs.
+  "files": [],
+  "references": [
+    { "path": "./packages/tsserver-plugin" },
+    { "path": "./packages/vscode-typeshade" }
+  ]
+}

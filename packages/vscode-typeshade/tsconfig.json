@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["vscode", "node"]
+  },
+  "include": ["src/**/*.ts"],
+  // Tests never reach `dist/`; they are type-checked by the root `tsconfig.tests.json`.
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "vscode-typeshade",
+  "displayName": "TypeShade",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TypeShade language support for VS Code: diagnostics, hover, completions and navigation for \"use typeshade\" files, with a WGSL and GLSL preview.",
+  "license": "MIT",
+  "publisher": "typeshade",
+  "author": "Seungup Noh",
+  "homepage": "https://typeshade.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typeshade/vscode-typeshade.git",
+    "directory": "packages/vscode-typeshade"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {},
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}
