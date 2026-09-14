@@ -848,19 +848,22 @@ like the real cause.
 compiler's choice too. With npm's OIDC flow the workflow needs no secret at all: the job asks
 for `id-token: write` and npm verifies it against a publisher the package owner registers once
 on npmjs.com, naming this repository and this workflow file. With an `NPM_ACCESS_TOKEN` secret
-present instead, the workflow writes it to `.npmrc` and npm uses that. Two things follow, and
+present instead, the workflow writes it to `.npmrc` and npm uses that, and that secret is
+already here: it is set at the organization level and shared to this repository, so the token
+path works on the first release with no further setup, while trusted publishing stays the
+better end state to register whenever someone wants to stop having a publish-capable secret
+readable by every future workflow. Two things follow, and
 both are the kind that are only ever learned the expensive way. Trusted publishing needs
 npm 11.5.1 or newer, so the job upgrades npm before publishing rather than trusting the
 runner's bundled 10.x. And **renaming the workflow file breaks trusted publishing**, because
 the registered publisher names the filename, so the file is named once and left alone.
 
-**What the owner had to do once, and nobody else could.** Two of three are done, on
-2026-09-14: the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its
-`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5:
-either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-`typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret here.
-Trusted publishing is the better end state, since there is nothing to leak and nothing to
-rotate, and it has to be registered BEFORE the first release: a release that fails on a missing
+**What the owner had to do once, and nobody else could.** All of it is done, on 2026-09-14: the
+Marketplace publisher with its `VSCE_PAT`, the Open VSX decision with its `OVSX_PAT`, and
+`NPM_ACCESS_TOKEN`, which is an organization-level secret already shared to this repository.
+PR 5 can be written, run and released without waiting on a person. Trusted publishing is still
+worth registering later, since there is then nothing to leak and nothing to rotate, and it has
+to be registered BEFORE whichever release first relies on it: a release that fails on a missing
 publisher is a tag already pushed with nothing on the registry.
 
 ## 8. Open questions
@@ -910,9 +913,8 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 
 ## Decisions for the owner
 
-Three of these were answered on 2026-09-14, through the orchestrating session, and are kept
-here as a record of what was decided rather than a list of what is waiting. One item, the last,
-is still open and is not needed until after PR 5.
+All four were answered on 2026-09-14, through the orchestrating session, and are kept here as a
+record of what was decided rather than a list of what is waiting.
 
 1. **The Marketplace publisher and the `VSCE_PAT` secret.** Publisher `typeshade`, display name
    TypeShade, and the secret is set, so PR 5 can be run as well as written (§7).
@@ -925,12 +927,12 @@ is still open and is not needed until after PR 5.
    revision of this document recorded the unscoped name; `packages/tsserver-plugin/package.json`
    and the probe now carry the scoped one, and the probe was re-run to confirm tsserver resolves
    it (§6).
-4. **Still open: how the plugin authenticates to npm**, which matters only when it publishes,
-   after PR 5. Either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-   `typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret to
-   this repository. Trusted publishing is the better end state and has to be registered before
-   the first release; the workflow is designed to take either (§7).
+4. **How the plugin authenticates to npm.** `NPM_ACCESS_TOKEN` is an organization-level secret
+   shared to this repository, so the token path is available today and nothing is owed before
+   the first release. Registering trusted publishing for `@typeshade/tsserver-plugin`, naming
+   `typeshade/vscode-typeshade` and the workflow file, remains the better end state and can
+   happen whenever the owner wants; the workflow takes either (§7).
 
-Nothing before that step is blocked on an answer.
+Nothing here is blocked on an answer, and nothing is owed before the first release.
 
 Last updated: 2026-09-14
