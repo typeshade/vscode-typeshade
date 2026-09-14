@@ -150,36 +150,54 @@ The measurement, its driver and its harness are in `docs/measurements/two-progra
 runs under node, because tsserver does, in a process that does nothing else, three times per
 mode, over a fixture of 150 plain TypeScript modules plus the compiler's six `.shade.ts`
 examples. The plugin's code is measured as it will ship: an esbuild CommonJS bundle of the
-compiler's `./language-service` subpath, 470 KB (481,235 bytes), with `typescript` external.
+compiler's `./language-service` subpath, 9.7 MB (10,219,538 bytes), **carrying its own
+`typescript`**.
 
-That 470 KB is the language service alone, which is what the measurement is about. The plugin's
-own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, is 498 KB
-(509,564 bytes) as built today. The two numbers are close enough to be mistaken for each other
-and they measure different things, so both are spelled out wherever either appears.
+That last part is a correction, and it is the largest number in this section. Until PR 3 the
+bundle left `typescript` external, and this measurement loaded `typescript` before its baseline
+so the plugin was not charged for a copy tsserver already had. A real VS Code showed the
+argument was wrong: external means node resolves the require by walking up from wherever the
+bundle sits, which finds a DIFFERENT copy in a development checkout and nothing at all in a
+packaged extension. §2 has what that cost and how it was found. The plugin therefore does carry
+a second `typescript`, it does pay for it, and the numbers below say so.
+
+The plugin's own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, is
+9.8 MB (10,248,391 bytes) as built today. The two numbers measure different things and are
+close enough to be mistaken for each other, so both are spelled out wherever either appears.
 
 The phases are separated because they are paid at different times.
 
-| What                                                          | When it is paid           | 6 shaders                 | 60 shaders                |
-| ------------------------------------------------------------- | ------------------------- | ------------------------- | ------------------------- |
-| Requiring the plugin's bundle                                 | once per tsserver process | 78.9 to 90.5 ms, 11.8 MB  | 76.0 to 83.7 ms, 11.8 MB  |
-| Building the TypeShade program and answering for every shader | once per project          | 119.7 to 129.7 ms, 5.1 MB | 234.9 to 264.8 ms, 8.0 MB |
-| Retained in tsserver, both phases together                    |                           | 16.9 MB                   | 19.8 MB                   |
-| One edit plus diagnostics for a shader file                   | once per keystroke        | 5.9 to 6.2 ms             | 5.6 to 5.7 ms             |
+| What                                                          | When it is paid           | 6 shaders                  | 60 shaders                 |
+| ------------------------------------------------------------- | ------------------------- | -------------------------- | -------------------------- |
+| Requiring the plugin's bundle                                 | once per tsserver process | 310.9 to 319.6 ms, 35.4 MB | 309.3 to 341.6 ms, 35.4 MB |
+| Building the TypeShade program and answering for every shader | once per project          | 141.0 to 151.8 ms, 5.2 MB  | 276.9 to 311.3 ms, 8.1 MB  |
+| Retained in tsserver, both phases together                    |                           | 40.6 MB                    | 43.5 MB                    |
+| One edit plus diagnostics for a shader file                   | once per keystroke        | 6.7 to 7.2 ms              | 6.9 to 8.6 ms              |
 
-Beside them, what the editor does today with no plugin, on the same fixture: 1048.7 to
-1088.5 ms to build the project and answer for all 156 files, 63.8 MB of heap for that program,
-14.7 to 15.6 ms for one edit to a shader file, and **58 semantic errors on the six examples,
+Beside them, what the editor does today with no plugin, on the same fixture: 1235.0 to
+1299.9 ms to build the project and answer for all 156 files, 63.9 MB of heap for that program,
+18.2 to 18.8 ms for one edit to a shader file, and **58 semantic errors on the six examples,
 every one of them false**, exactly 58 in every run.
 
-So the plugin adds about 17 MB and about 200 ms, once, to a process that is already holding
-63.8 MB for the project itself, and answers a keystroke in a shader file faster than the
+So the plugin adds about 41 MB and about 460 ms, once, to a process that is already holding
+63.9 MB for the project itself, and answers a keystroke in a shader file faster than the
 project program does. The keystroke figure looks like a mistake and is not: the TypeShade
 program re-checks one small file against a 265-line ambient lib (`SHADE_DTS` is 11015
 characters over 265 lines, measured through the subpath), while the project program re-checks
 the same file against `lib.es2022` plus `lib.dom` inside a 156-file program.
 
-**Where the cost lives, and what it scales on.** The fixed half is the larger one: loading the
-plugin's own code costs 11.8 MB whatever the project holds, flat between the two fixtures. The
+**Is 41 MB still worth it?** Yes, and the comparison that settles it is the alternative, not
+zero. A standalone language server runs the same service in a process of its own, so it holds
+the same second `typescript` and the same second program, plus a process and a client per
+editor, and it publishes its diagnostics BESIDE TypeScript's rather than replacing them (§1.2).
+Nothing about this number moves the delivery-vehicle decision. What it does raise is a new
+question, §8 item 11: sharing one `typescript` between the plugin's service and the host's
+tsserver would give back about 24 of the 41 MB, and the only thing standing in the way is that
+the host's version is not one the compiler is tested against.
+
+**Where the cost lives, and what it scales on.** The fixed half is by far the larger one:
+loading the plugin's own code costs 35.4 MB whatever the project holds, flat to the tenth of a
+megabyte between the two fixtures, and about 24 MB of that is the bundled `typescript`. The
 per-project half scales on shader files alone, and gently: ten times the shaders costs 2.9 MB
 more and roughly twice the time, while the 150 host modules contribute nothing to either, since
 a TypeShade program holds the shader files and `SHADE_DTS` and nothing else (§1.7 is why that
@@ -191,9 +209,15 @@ program, not a measurement of two project sizes.
 4.4 MB, and neither reproduced: measured in one process that also held the project program, the
 same heap quantity came back as 5.1, 13.1 and 40.3 MB on three runs. Measured in isolation it
 is 5.1 MB in every run, to the tenth. The README records the four method faults and the fifth
-found during the rewrite, that charging the plugin for loading `typescript` (which tsserver has
-loaded before it asks for a plugin) tripled the require phase. An independent run of the
-corrected method, in this pull request's review, reproduced the heap figures to 0.1 MB.
+found during the rewrite, that charging the plugin for loading the HOST's `typescript` (which
+tsserver has loaded before it asks for a plugin) tripled the require phase. An independent run
+of the corrected method, in PR 2's review, reproduced the heap figures to 0.1 MB.
+
+The fifth fault then came back with the opposite sign, which is the most useful thing this
+measurement has done. Not charging the plugin for the host's copy was right; concluding from
+that that the plugin needs no copy of its own was not, and the measurement encoded the wrong
+half of it for two pull requests. The number only moved when a real VS Code proved the bundle
+could not reach the host's instance at all.
 
 ### 1.4 How a TypeShade file is recognized
 
@@ -326,17 +350,40 @@ How it is wired:
   `claude/d1-stepping-oracle` and `claude/d1-launch-config` today, on none of the publishing
   branches, so PR 4's switch to npm waits on that subpath reaching the published `exports` and
   `files` list, separately from the other two.
-- **The two bundles are not configured alike, and the difference is load-bearing.** The plugin
-  bundle marks `typescript` external, because tsserver hands the plugin its own instance
-  (`modules.typescript`, §1.1 and §3) and a second copy would build nodes a different `ts`
-  cannot recognise. The extension bundle **inlines** `typescript`, because the VS Code
-  extension host injects only `vscode` and resolves everything else from what the `.vsix`
-  ships, and §4's preview panel runs a `TypeshadeLanguageService` of its own, whose first
-  `require('typescript')` would otherwise throw at runtime in a packaged extension while
-  working perfectly in the development host, where `node_modules` is on disk. Inlining is the
-  choice rather than planting a real `node_modules/typescript` in the `.vsix` because esbuild
-  drops what the language service does not reach, and one artifact is easier to reason about
-  than a directory the packaging step has to keep in sync. §7 carries the weight it adds.
+- **Both bundles inline `typescript`, and the plugin's copy is a correction PR 3 made.** The
+  extension bundle always inlined it: the VS Code extension host injects only `vscode` and
+  resolves everything else from what the `.vsix` ships, and §4's preview panel runs a
+  `TypeshadeLanguageService` of its own, whose first `require('typescript')` would otherwise
+  throw at runtime in a packaged extension while working perfectly in the development host,
+  where `node_modules` is on disk.
+
+  The plugin bundle marked `typescript` external, on the argument that tsserver hands the plugin
+  its own instance as `modules.typescript` (§1.1 and §3) and a second copy would build nodes a
+  different `ts` cannot recognise. **Half of that is right and the conclusion drawn from it was
+  wrong.** The half that is right is about NODES: every node the plugin reads that came from
+  tsserver must be read with the host's instance, because a `ts.is*` predicate compares
+  `node.kind` against its own module's `SyntaxKind` table.
+  `packages/tsserver-plugin/src/directive.ts` is where that rule now lives. What does not follow
+  is that the bundle needs no `typescript` of its own: the bundled compiler builds a TypeScript
+  program of its own, with `lib: []` and the ambient `SHADE_DTS`, so it requires `typescript` at
+  run time whatever the plugin does, and `external` means node resolves that by walking up from
+  wherever the bundle sits. In this repository it finds the workspace's own 5.6.3 and everything
+  appears to work; in a packaged `.vsix` it finds nothing.
+
+  A real VS Code is what settled it. `packages/vscode-typeshade/test-electron/` ran the plugin
+  in VS Code 1.137, whose tsserver is TypeScript 6.0.3, against a bundle that resolved 5.6.3:
+  `isExpressionStatement` accepted a node it should not have, the very first `navtree` request
+  died with `Cannot read properties of undefined (reading 'kind')`, and the window then reported
+  no diagnostics at all, on shaders or on plain TypeScript. A suite that asserted only "a shader
+  reports nothing" would have called that a pass, which is why the electron suite checks a plain
+  file with a real TypeScript error first (§6).
+
+  So both bundles carry `typescript`, and every host node is read with `modules.typescript`.
+  Inlining is the choice rather than planting a real `node_modules/typescript` beside each
+  artifact because esbuild drops what is not reached, and one file is easier to reason about
+  than a directory the packaging step has to keep in sync. §1.3 carries the memory it costs, §7
+  the bytes, and §8 item 11 the way to get both back.
+
 - Both bundles are esbuild with `platform: 'node'`, `format: 'cjs'`, `target: 'node20'`, and
   `vscode` external in the extension's, because the extension host provides it.
 - One measured fact that a reader will otherwise lose a day to: the vendored checkout must
@@ -577,12 +624,13 @@ alternative, an unsupported command, would put the panel's correctness on an API
 removed in a VS Code patch release.
 
 What it costs is mostly fixed rather than mostly per-document, measured with the same harness
-as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 76.8 to 96.8 ms and 11.8 MB, then
-building a one-document program and compiling it 87.3 to 94.7 ms and 3.7 MB, for **15.5 MB
-retained** against 16.9 MB for the six-document case. So the panel's marginal cost per file is
+as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 305.2 to 340.3 ms and 35.4 MB, then
+building a one-document program and compiling it 101.2 to 109.4 ms and 3.8 MB, for **39.2 MB
+retained** against 40.6 MB for the six-document case. So the panel's marginal cost per file is
 small and its fixed cost is what matters, and §7 has to count it twice: the plugin's copy in
-tsserver and the extension's copy in the extension host, roughly 33 MB across the two processes
-on top of what each already holds.
+tsserver and the extension's copy in the extension host, roughly **80 MB across the two
+processes** on top of what each already holds. About 24 MB of each copy is the bundled
+`typescript` that §1.3 explains and §8 item 11 asks about.
 
 **Commands.**
 
@@ -773,16 +821,29 @@ the inferred-project path most people meet first (§4). The assertions:
 The harness lives in `packages/tsserver-plugin/src/` beside the code, as vitest tests, with the
 30 second timeout the root config already sets for exactly this reason.
 
-**The extension is tested with `@vscode/test-electron`, and here is what this container could
-verify.** The download works: `downloadAndUnzipVSCode('stable')` fetched VS Code 1.137.0,
-327.10 MB, in 11.8 s. Launching it did not: `xvfb-run -a code --version --no-sandbox
---disable-gpu` produced no output and had not exited after 300 s, and without `xvfb-run` the
-binary exits immediately with "Missing X server or $DISPLAY". So the plan is: CI runs the
-electron tests under `xvfb-run` on `ubuntu-latest`, which is the environment the VS Code team
-documents for it, and PR 3 reports whether they pass there. Meanwhile the extension's logic
-lives in modules that do not import `vscode` (the compiled-output model, the invocation form's
-validation, the launch configuration mapping), each unit-tested with vitest, so a blocked
-electron run is a gap in integration coverage and not in coverage.
+**The extension is tested with `@vscode/test-electron`, and PR 3 got it running.** This
+document predicted the launch would not work here, on the evidence that
+`xvfb-run -a code --version` produced no output and had not exited after 300 s. That was a wrong
+conclusion from a real observation: `code --version` on a fresh download stalls, and
+`runTests` from `@vscode/test-electron` under `xvfb-run` does not. VS Code 1.137.0 starts,
+loads the extension from `extensionDevelopmentPath`, runs the suite and exits, in about 40 s
+after the one-time 327 MB download. `npm run test:electron` is the command, and CI runs it as
+its own job under `xvfb-run` on `ubuntu-latest`.
+
+That job earned its place immediately. The plugin loaded into VS Code's own tsserver, which is
+TypeScript 6.0.3 where this repository pins 5.6.3, threw on the first `navtree` request and
+left the window with no diagnostics at all; §2 has the cause. **A suite that only asserted "a
+shader reports nothing" would have called that a pass**, which is why the first assertion about
+a shader is preceded by one about a plain `.ts` file with a real type error: TS2322 has to
+arrive before silence on a shader means anything. The suite is seven cases and uses no test
+framework, because the runner's contract is a module exporting `run()` and `node:assert` covers
+the rest.
+
+The extension's logic lives in modules that do not import `vscode` (the compiled-output model,
+the invocation form's validation, the panel's HTML, the launch configuration mapping), each
+unit-tested with vitest, so the electron suite is left with exactly what only a real host can
+answer: that the extension activates, that its commands register, that the panel opens beside
+the editor, and that the plugin the manifest contributes actually loaded.
 
 **The debug adapter is tested at the protocol level**, with `@vscode/debugadapter-testsupport`'s
 `DebugClient` over a pipe: launch a fixture shader, set a breakpoint on a known line, assert the
@@ -816,13 +877,14 @@ file and copies it, with a minimal `package.json`, into
 `vsce package` runs.
 
 **What the `.vsix` weighs, counted honestly.** It carries the compiler's language service
-twice, once in the plugin bundle and once in the extension bundle. The plugin bundle is 498 KB
-(509,564 bytes) as built today, of which the language service is the 470 KB measured in §1.3;
-the extension bundle carries the same service plus `typescript` inlined into it (§2), whose
-source is 8.5 MB before esbuild drops what the service never reaches. At run time that is roughly 33 MB of live heap
-across two processes: about 17 MB in tsserver (§1.3) and about 15.5 MB in the extension host
-(§4). Sharing one bundled module between the two is possible later and nothing in this layout
-prevents it; it is not worth doing before the numbers are a complaint.
+twice, and `typescript` twice with it (§2). The plugin bundle is 9.8 MB (10,248,391 bytes) and
+the extension bundle 9.8 MB (10,273,566 bytes) as built today, so the `.vsix` carries about
+20 MB of JavaScript before compression and before anything else. At run time that is roughly
+**80 MB of live heap across two processes**: about 40.6 MB in tsserver (§1.3) and about 39.2 MB
+in the extension host (§4). Sharing one bundled module between the two is possible later and
+nothing in this layout prevents it; the larger saving is §8 item 11, which is about not bundling
+`typescript` at all. Neither is worth doing before the numbers are a complaint, and both are now
+written down so a complaint has something to point at.
 
 **The `.vsix` needs its own LICENSE.** `vsce` packages the directory its manifest sits in, and
 `packages/vscode-typeshade/` has no LICENSE file, so the extension would ship without one while
@@ -940,6 +1002,16 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     passes extension directories as probe locations without caveats; lowering it would guard
     three APIs to reach users on 2022 releases. Revisit if a real user reports being stuck
     below it.
+11. **Whether the plugin's bundled `typescript` could be the host's instead (§1.3, §2).** The
+    plugin carries its own copy, which is 24 of the 41 MB it adds to a tsserver process and
+    about 9.7 MB of the `.vsix`. tsserver hands every plugin its own instance as
+    `modules.typescript`, and feeding that to the bundled compiler instead of a bundled copy
+    would give all of it back. _Suggested: no, until the compiler is tested against the
+    versions editors actually ship._ The saving is real and the risk is specific: the TypeShade
+    program's checking would then vary with the editor's TypeScript rather than with the pinned
+    compiler, and the host VS Code 1.137 tested here runs TypeScript 6.0.3 while the compiler
+    pins 5.6.3. A CI matrix over the TypeScript versions the compiler must accept is the thing
+    that would change this answer, and it is cheap to build once anyone wants the megabytes.
 
 ## Decisions for the owner
 

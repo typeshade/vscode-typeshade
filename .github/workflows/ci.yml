@@ -49,3 +49,22 @@ jobs:
       - run: npm run format:check
       - run: npm run check:prose
       - run: npm run test
+
+  electron:
+    name: extension tests in a real VS Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # `xvfb-run` because VS Code is an Electron application and exits immediately with
+      # "Missing X server or $DISPLAY" without one. This is the environment the VS Code team
+      # documents for the runner, and the reason this is a separate job: it downloads a 327 MB
+      # build, and a Marketplace publish must not wait on it (`docs/design.md` §6).
+      - run: xvfb-run -a npm run test:electron

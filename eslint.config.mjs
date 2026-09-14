@@ -6,7 +6,18 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/out/**', '**/node_modules/**', 'vendor/**', 'coverage/**'],
+    // The electron suite's fixture is a shader, not TypeScript this repository writes: linting
+    // it would report the same false positives the plugin exists to remove.
+    ignores: [
+      '**/dist/**',
+      '**/out/**',
+      '**/node_modules/**',
+      'vendor/**',
+      'coverage/**',
+      // The VS Code build the electron job downloads, 327 MB of someone else's JavaScript.
+      '.vscode-test/**',
+      'packages/vscode-typeshade/test-electron/fixture/**',
+    ],
   },
   ...tseslint.configs.recommended,
   {

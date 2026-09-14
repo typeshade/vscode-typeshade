@@ -26,6 +26,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:electron": "npm run build && node packages/vscode-typeshade/dist/test-electron/main.js",
     "check:prose": "node scripts/check-prose.mjs",
     "check": "npm run build && npm run typecheck && npm run lint && npm run format:check && npm run check:prose && npm run test"
   },

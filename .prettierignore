@@ -5,3 +5,5 @@ coverage
 vendor
 *.tsbuildinfo
 package-lock.json
+packages/vscode-typeshade/test-electron/fixture
+.vscode-test

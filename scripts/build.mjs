@@ -5,16 +5,30 @@
 // with them: it is a pinned submodule rather than an installed dependency until it publishes
 // (`docs/design.md` §2). `tsc` does the type-checking and emits nothing.
 //
-// The two bundles are NOT configured alike, and the difference is load-bearing.
+// The two bundles differ only in what the host injects: `vscode` for the extension, nothing for
+// the plugin.
 //
-//   plugin      `typescript` is EXTERNAL. tsserver hands the plugin its own instance through
-//               `modules.typescript`, and a second copy would build nodes the host's `ts.is*`
-//               checks do not recognise.
-//   extension   `typescript` is INLINED. The VS Code extension host injects `vscode` and
-//               resolves everything else from what the `.vsix` ships, and the preview panel
-//               runs a language service of its own (§4), so an external `typescript` would
-//               throw on its first require in a packaged extension while working perfectly in
-//               the development host, where `node_modules` is on disk.
+// Both INLINE `typescript`, and the plugin's copy is a correction: it was external until a real
+// VS Code proved it could not be.
+//
+//   why it is inlined   The bundled compiler builds a TypeScript program of its own, with
+//               `lib: []` and the ambient `SHADE_DTS`, so the bundle requires `typescript` at
+//               run time whatever the plugin itself does. External, that require resolves by
+//               node walking up from wherever the bundle sits: in this repository it finds the
+//               workspace's own 5.6.3, and in a packaged `.vsix` it finds nothing at all.
+//               Neither is the host's instance, and the first is worse than the second, because
+//               it works. `packages/vscode-typeshade/test-electron/` ran the plugin in
+//               VS Code 1.137, whose tsserver is TypeScript 6.0.3, and the two `SyntaxKind`
+//               tables disagreed on the first request.
+//   what stays host-owned   Every node that came from tsserver. The plugin reads those with
+//               `modules.typescript`, the instance tsserver handed it, and never with the
+//               bundled copy; `packages/tsserver-plugin/src/directive.ts` is where that rule
+//               lives and what it cost when it was broken.
+//   extension   The VS Code extension host injects `vscode` and resolves everything else from
+//               what the `.vsix` ships, and the preview panel runs a language service of its
+//               own (§4), so an external `typescript` would throw on its first require in a
+//               packaged extension while working perfectly in the development host, where
+//               `node_modules` is on disk.
 
 import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
@@ -78,7 +92,7 @@ built.push(
   await bundle({
     entry: 'packages/tsserver-plugin/src/index.ts',
     outfile: 'packages/tsserver-plugin/dist/index.js',
-    external: ['typescript'],
+    external: [],
     // tsserver calls the module object itself. esbuild emits ESM exports as a namespace object,
     // and a namespace object is not callable, so this is the line that makes the package's
     // export the factory. `index.test.ts` pins the source shape and `build.test.ts` the built
@@ -92,6 +106,26 @@ built.push(
     entry: 'packages/vscode-typeshade/src/extension.ts',
     outfile: 'packages/vscode-typeshade/dist/extension.js',
     external: ['vscode'],
+  }),
+)
+
+// The electron suite and its launcher, built the same way for the same reason: the extension
+// host loads the suite with `require`, and the launcher runs under plain node. Neither belongs in
+// the `.vsix` (§7's `.vscodeignore` keeps `dist/test-electron/` out), and both are built here
+// rather than in their own script so there is one place that knows how a bundle is made.
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/test-electron/suite.ts',
+    outfile: 'packages/vscode-typeshade/dist/test-electron/suite.js',
+    external: ['vscode'],
+  }),
+)
+
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/test-electron/main.ts',
+    outfile: 'packages/vscode-typeshade/dist/test-electron/main.js',
+    external: ['@vscode/test-electron'],
   }),
 )
 

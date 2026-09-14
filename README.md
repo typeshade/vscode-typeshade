@@ -23,7 +23,7 @@ The plan, the architecture and the decisions behind them are in
 | Workspace, CI, conventions       | done                                                  |
 | Design document                  | done, [`docs/design.md`](./docs/design.md)            |
 | TypeScript server plugin         | done, tested against a real tsserver                  |
-| VS Code extension and preview    | after the plugin                                      |
+| VS Code extension and preview    | done, tested in a real VS Code                        |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
 
@@ -50,6 +50,12 @@ Individually: `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm 
 `npm run format` rewrites instead of checking.
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs the same steps on every push and
 pull request.
+
+`npm run test:electron` is separate, and separate on purpose. It launches a real VS Code with
+the extension loaded and asserts what only a real host can answer, including that the server
+plugin loaded at all. It downloads VS Code once (327 MB) and needs a display, so on a headless
+machine run it as `xvfb-run -a npm run test:electron`; CI runs it as its own job for the same
+reason, and a Marketplace publish must not wait on it.
 
 ## Conventions
 
