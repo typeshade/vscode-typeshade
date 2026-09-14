@@ -6,10 +6,10 @@ GLSL ES 3.00.
 
 This repository holds two packages:
 
-| Package                                                    | What it is                                                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `typeshade-tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server. |
-| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                             |
+| Package                                                    | What it is                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `@typeshade/tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server. |
+| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                              |
 
 ## Status
 
@@ -20,9 +20,9 @@ The plan, the architecture and the decisions behind them are in
 
 | Piece                            | State                                                 |
 | -------------------------------- | ----------------------------------------------------- |
-| Workspace, CI, conventions       | this commit                                           |
-| Design document                  | next                                                  |
-| TypeScript server plugin         | after the design document                             |
+| Workspace, CI, conventions       | done                                                  |
+| Design document                  | done, [`docs/design.md`](./docs/design.md)            |
+| TypeScript server plugin         | next                                                  |
 | VS Code extension and preview    | after the plugin                                      |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |

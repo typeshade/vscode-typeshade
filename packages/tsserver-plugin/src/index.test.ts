@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type ts from 'typescript/lib/tsserverlibrary'
+import type ts from 'typescript'
 import typescript from 'typescript'
 import init from './index.js'
 
@@ -24,7 +24,7 @@ describe('the plugin entry point', () => {
 
   it('returns the host language service unchanged, for now', () => {
     const service = {} as ts.LanguageService
-    const plugin = init({ typescript: typescript as unknown as typeof ts })
+    const plugin = init({ typescript })
     expect(plugin.create(fakeCreateInfo(service))).toBe(service)
   })
 })

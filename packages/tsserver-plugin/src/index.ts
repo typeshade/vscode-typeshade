@@ -1,4 +1,4 @@
-// === typeshade-tsserver-plugin: the plugin entry point tsserver loads ===
+// === @typeshade/tsserver-plugin: the plugin entry point tsserver loads ===
 //
 // tsserver `require`s this module and calls the exported factory once per project that names
 // the plugin, then uses the `LanguageService` the factory returns in place of its own. This
@@ -11,7 +11,12 @@
 // cannot share a module with named exports, so every type this file needs is imported, never
 // re-exported from here.
 
-import type ts from 'typescript/lib/tsserverlibrary'
+// Types from `typescript`, not from `typescript/lib/tsserverlibrary`: the server-side
+// declarations (`ts.server.PluginModule`, `ts.server.PluginCreateInfo`, `ts.server.Project`)
+// have been in the main `typescript.d.ts` since 5.0, and the `tsserverlibrary` entry point is
+// a deprecated re-export that a future TypeScript may drop. A type-only import, so nothing
+// here pins a `typescript` instance at runtime.
+import type ts from 'typescript'
 
 /**
  * The plugin factory tsserver calls. `modules.typescript` is the server's own `typescript`
