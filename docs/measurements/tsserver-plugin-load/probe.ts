@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 /** The repository root, which is also the plugin probe location: npm workspaces already links
- *  `node_modules/typeshade-tsserver-plugin` to `packages/tsserver-plugin`, which is exactly
+ *  `node_modules/@typeshade/tsserver-plugin` to `packages/tsserver-plugin`, which is exactly
  *  the layout tsserver resolves a plugin name against. */
 const ROOT = resolve(import.meta.dir, '../../..')
 
@@ -144,7 +144,7 @@ async function main(): Promise<number> {
   const logFile = join(WORK_DIR, 'tsserver.log')
   const server = startServer([
     '--globalPlugins',
-    'typeshade-tsserver-plugin',
+    '@typeshade/tsserver-plugin',
     '--pluginProbeLocations',
     ROOT,
     ...(allowLocal ? ['--allowLocalPluginLoads'] : []),
@@ -173,14 +173,14 @@ async function main(): Promise<number> {
 
   const log = readFileSync(logFile, 'utf8')
   const loaded = log.includes('[typeshade] plugin loaded')
-  const enabled = /Enabling plugin typeshade-tsserver-plugin/.test(log)
+  const enabled = log.includes('Enabling plugin @typeshade/tsserver-plugin')
 
   console.log(`tsserver     ${join(ROOT, 'node_modules/typescript/lib/tsserver.js')}`)
   console.log(
     `flags        --globalPlugins --pluginProbeLocations${allowLocal ? ' --allowLocalPluginLoads' : ''}`,
   )
   console.log(`plugin       enabled=${enabled} create-ran=${loaded}`)
-  for (const line of log.split('\n').filter((l) => l.includes('typeshade-tsserver-plugin'))) {
+  for (const line of log.split('\n').filter((l) => l.includes('@typeshade/tsserver-plugin'))) {
     console.log(`             ${line.replace(/^Info \d+\s+\[[^\]]+\]\s*/, '')}`)
   }
   console.log(

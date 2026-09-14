@@ -69,7 +69,7 @@ over it plus the pieces tsserver cannot carry.**
 
 ### 1.1 The shape
 
-`typeshade-tsserver-plugin` is a CommonJS module whose module export is the factory tsserver
+`@typeshade/tsserver-plugin` is a CommonJS module whose module export is the factory tsserver
 calls (`ts.server.PluginModule` and `ts.server.PluginCreateInfo` are declared in
 `typescript/lib/typescript.d.ts`, not only in the deprecated `tsserverlibrary.d.ts`). tsserver
 hands it the project's `LanguageService`, the project's `LanguageServiceHost`, and its own
@@ -367,7 +367,7 @@ tsserver has no protocol for: showing generated shader code, running an entry, a
 one.
 
 **Activating the plugin.** `contributes.typescriptServerPlugins` with
-`{ "name": "typeshade-tsserver-plugin", "enableForWorkspaceTypeScriptVersions": true }`. The
+`{ "name": "@typeshade/tsserver-plugin", "enableForWorkspaceTypeScriptVersions": true }`. The
 second flag matters: without it the plugin loads only under VS Code's bundled TypeScript, and a
 repository that pins its own `typescript` (which every repository with a `.shade.ts` file in it
 does) would silently get nothing.
@@ -527,11 +527,15 @@ configuration) would use. Neither carrier holds logic, which is the same rule §
 **The plugin is tested against a real tsserver.** Not against a hand-built
 `ts.LanguageService`: the part most likely to break is the loading and decoration contract, and
 only the real server exercises it. The harness spawns
-`node_modules/typescript/lib/tsserver.js` with `--globalPlugins typeshade-tsserver-plugin
+`node_modules/typescript/lib/tsserver.js` with `--globalPlugins @typeshade/tsserver-plugin
 --pluginProbeLocations <repo root>` and drives the protocol over stdio, newline-delimited JSON
 in and `Content-Length`-framed JSON out. `docs/measurements/tsserver-plugin-load/` already
 proves that works here: the plugin loads, `create` runs, and `open`, `geterr` and `quickinfo`
 answer. `--allowLocalPluginLoads` turned out not to be needed, and both runs are identical.
+The scoped name resolves too, which was worth checking rather than assuming, since a scope puts
+a path separator inside what looks like a module name: the probe was re-run after the rename
+and tsserver reported "Loading @typeshade/tsserver-plugin from <probe location> (resolved to
+<probe location>/node_modules)", with the same events as before.
 
 The fixture project holds a directive file, a non-directive file, a directive file with real
 TypeShade errors, a pair of directive files where one imports the other, and a host file that
@@ -579,11 +583,11 @@ Marketplace publish must not wait on them being flaky.
 **The plugin ships inside the extension, as a real directory.** VS Code passes the extension's
 own path as a plugin probe location, and tsserver resolves the plugin name against
 `node_modules` under it, which the probe run shows verbatim ("Loading
-typeshade-tsserver-plugin from /home/user/vscode-typeshade (resolved to
+@typeshade/tsserver-plugin from /home/user/vscode-typeshade (resolved to
 /home/user/vscode-typeshade/node_modules)"). In this workspace that path is a symlink npm
 created, and a symlink is not what should end up in a `.vsix`. So the package step builds the
 plugin to a single bundled CommonJS file and copies it, with a minimal `package.json`, into
-`packages/vscode-typeshade/node_modules/typeshade-tsserver-plugin/` as a real directory before
+`packages/vscode-typeshade/node_modules/@typeshade/tsserver-plugin/` as a real directory before
 `vsce package` runs. The `.vsix` then carries one copy of the compiler bundle in the plugin and
 one in the extension, which is the price of the §4 decision to run a service in the extension
 host; if that grows uncomfortable, the two can share a bundled module later, and nothing about
@@ -621,14 +625,40 @@ value the extension reports in its status bar tooltip and its output channel, re
 vendored package's own `package.json` at build time. Once the compiler reaches 1.0 the
 extension's major follows it, because a compiler major means the language moved.
 
-**The plugin package publishes to npm separately**, as `typeshade-tsserver-plugin`, so an
+**The plugin package publishes to npm separately**, as `@typeshade/tsserver-plugin`, so an
 editor that is not VS Code can install it with two lines in a `tsconfig.json`. That is not PR 5:
 it waits on the compiler publishing, because until then the plugin's own dependency is a
 submodule and an npm package cannot carry one honestly.
 
-**What the owner had to do once, and nobody else could.** Both are done, on 2026-09-14:
-the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its `OVSX_PAT`.
-Nothing in PR 5 waits on a person now.
+When it does publish, the workflow is the shape the compiler's own
+`.github/workflows/publish.yml` uses (typeshade/typeshade#33), for the reason that file gives:
+npm forbids republishing a version, so one bad upload burns the number permanently. Concretely:
+the release event is the trigger, a `workflow_call` into this repository's `ci.yml` re-runs the
+gate rather than restating it, the release tag must equal the package's `version`, the packed
+tarball is installed into a scratch directory and imported before anything is uploaded, and the
+publish is `npm publish --provenance --access public`. `--access public` is not optional here
+the way it was for an unscoped name: a scoped package defaults to restricted, and a first
+publish without it fails on a private-package payment error rather than on anything that reads
+like the real cause.
+
+**Authentication prefers trusted publishing, with a token as the fallback**, which is the
+compiler's choice too. With npm's OIDC flow the workflow needs no secret at all: the job asks
+for `id-token: write` and npm verifies it against a publisher the package owner registers once
+on npmjs.com, naming this repository and this workflow file. With an `NPM_ACCESS_TOKEN` secret
+present instead, the workflow writes it to `.npmrc` and npm uses that. Two things follow, and
+both are the kind that are only ever learned the expensive way. Trusted publishing needs
+npm 11.5.1 or newer, so the job upgrades npm before publishing rather than trusting the
+runner's bundled 10.x. And **renaming the workflow file breaks trusted publishing**, because
+the registered publisher names the filename, so the file is named once and left alone.
+
+**What the owner had to do once, and nobody else could.** Two of three are done, on
+2026-09-14: the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its
+`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5:
+either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
+`typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret here.
+Trusted publishing is the better end state, since there is nothing to leak and nothing to
+rotate, and it has to be registered BEFORE the first release: a release that fails on a missing
+publisher is a tag already pushed with nothing on the registry.
 
 ## 8. Open questions
 
@@ -666,18 +696,27 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 
 ## Decisions for the owner
 
-All three that were the owner's rather than an implementer's were answered on 2026-09-14,
-through the orchestrating session. They are kept here as a record of what was decided, not as a
-list of what is waiting.
+Three of these were answered on 2026-09-14, through the orchestrating session, and are kept
+here as a record of what was decided rather than a list of what is waiting. One item, the last,
+is still open and is not needed until after PR 5.
 
 1. **The Marketplace publisher and the `VSCE_PAT` secret.** Publisher `typeshade`, display name
    TypeShade, and the secret is set, so PR 5 can be run as well as written (§7).
 2. **Open VSX: yes.** `OVSX_PAT` is set beside `VSCE_PAT`, and one run publishes to both
    registries over the same `.vsix` (§7).
-3. **The plugin's npm name is the unscoped `typeshade-tsserver-plugin`**, matching the
-   compiler's unscoped `typeshade`. That is the name this document already used and the one
-   `packages/tsserver-plugin/package.json` already carries, so nothing changes.
+3. **The plugin's npm name is `@typeshade/tsserver-plugin`.** The owner holds the `@typeshade`
+   npm organization (`@typeshade/core` is already reserved there), and the pattern is
+   TypeScript's own: the main package stays unscoped (`typeshade`, as `typescript` is) and the
+   satellites take the scope, as `@typescript/vfs` and `@typescript/twoslash` do. An earlier
+   revision of this document recorded the unscoped name; `packages/tsserver-plugin/package.json`
+   and the probe now carry the scoped one, and the probe was re-run to confirm tsserver resolves
+   it (§6).
+4. **Still open: how the plugin authenticates to npm**, which matters only when it publishes,
+   after PR 5. Either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
+   `typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret to
+   this repository. Trusted publishing is the better end state and has to be registered before
+   the first release; the workflow is designed to take either (§7).
 
-Nothing in this document is blocked on an answer.
+Nothing before that step is blocked on an answer.
 
 Last updated: 2026-09-14

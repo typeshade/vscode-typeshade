@@ -1,4 +1,4 @@
-// === typeshade-tsserver-plugin: the plugin entry point tsserver loads ===
+// === @typeshade/tsserver-plugin: the plugin entry point tsserver loads ===
 //
 // tsserver `require`s this module and calls the exported factory once per project that names
 // the plugin, then uses the `LanguageService` the factory returns in place of its own. This
