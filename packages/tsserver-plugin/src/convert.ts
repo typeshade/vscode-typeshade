@@ -372,14 +372,23 @@ export function toReferenceEntries(
   return locations.map((location) => ({
     fileName: location.uri,
     textSpan: spanOf(ctx, location.uri, location.range),
-    isWriteAccess: false,
     // The editor heads its list with the declaration and marks it in the peek view, so a list
     // where nothing is the definition reads worse than the wrong answer it replaced.
     isDefinition: isDeclaration(location, declarations),
+    isWriteAccess: isDeclaration(location, declarations),
   }))
 }
 
-/** Whether `location` is one of the declarations, by uri and start position. */
+/** Whether `location` is one of the declarations, by uri and start position.
+ *
+ *  This answers `isWriteAccess` as well as `isDefinition`, and the equality is a measured
+ *  approximation rather than a shortcut. TypeScript's own `references` on a function declaration
+ *  reports `isWriteAccess: true` with `isDefinition: true`, and `false` on every call site, so
+ *  for the two kinds of location the service reports the two flags do coincide. What it cannot
+ *  see is an assignment to a variable, which TypeScript would call a write and this calls a
+ *  read: the service reports a name's range and nothing about what is done to it. A constant
+ *  `false` was the previous answer and was wrong about the declaration, which is the entry the
+ *  editor actually decorates. */
 function isDeclaration(
   location: TypeshadeLocation,
   declarations: readonly TypeshadeLocation[],
@@ -436,8 +445,8 @@ export function toReferencedSymbols(
           // name's range and nothing wider, so the context is the name: a narrow context is
           // honest, an absent one makes the preview fall back to the raw line.
           contextSpan: textSpan,
-          isWriteAccess: false,
           isDefinition: isDeclaration(location, declarations),
+          isWriteAccess: isDeclaration(location, declarations),
         }
       }),
     }

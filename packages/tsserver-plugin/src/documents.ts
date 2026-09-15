@@ -66,7 +66,16 @@ export class DocumentSync {
     this.pruneIfProjectChanged()
     if (!isTypeshade) {
       // The directive was edited out. Close it now: nothing else can, because the file is still
-      // a member of the project and so survives every prune.
+      // a member of the project and so survives every prune. `served` is cleared too, so that a
+      // file which later gets its directive back can be served again rather than being
+      // remembered as something the service already holds.
+      //
+      // One window stays open here, and it is narrow enough to document rather than close: while
+      // this file has no directive, an importer that asks gets its import unresolved, and the
+      // importer's answer only refreshes once something names THIS file again. In practice the
+      // user is typing in this file when they restore the directive, so the next request names
+      // it; nothing but a file watcher would close the case where they are not.
+      this.served.delete(fileName)
       if (this.open.delete(fileName)) this.shade.closeDocument(fileName)
       return false
     }

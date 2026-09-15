@@ -3,13 +3,13 @@
 Status: **proposal** for review. Written against `typeshade/typeshade` at `a2240e0`, plus two
 branches that have not merged: `claude/d1-debugging-design` (PR #28, the debugging design),
 `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and `claude/d1-launch-config`
-(PR #41, the launch configuration and the value formatter, tip `0d48000`). It was first written against
-`3c0a2d7` and re-checked against `a2240e0` when that arrived: the two commits between them
-(#18, a binding read lowering to a varref, and #51, hover) change one thing in the public
+(PR #41, the launch configuration and the value formatter, tip `0d48000`). It was first written
+against `3c0a2d7` and re-checked against `a2240e0` when that arrived: the two commits between
+them (#18, a binding read lowering to a varref, and #51, hover) change one thing in the public
 surface, an added `CompileTsSourceResult.symbols` field, and nothing in
-`src/language-service/index.ts`, so every mapping in §3 stands as written. Every claim about the compiler
-names the file it comes from. Nothing here is frozen, and §8 lists what is still open with the
-answer this document would take.
+`src/language-service/index.ts`, so every mapping in §3 stands as written. Every claim about the
+compiler names the file it comes from. Nothing here is frozen, and §8 lists what is still open
+with the answer this document would take.
 
 Related: the compiler's `docs/language-service-api.md` (the language service contract, whose §1
 and §10 item 8 place the language server and this repository's work), its `docs/debugging.md`
@@ -541,8 +541,9 @@ item 6.
 **Completion kinds are lossy in one direction.** `TypeshadeCompletionKind` has `attribute`,
 `builtin` and `resource`, which `ts.ScriptElementKind` has no spelling for. The mapping is
 `keyword` to `keyword`, `type` and `struct` to `interfaceElement`, `function` to
-`functionElement`, `variable` and `resource` to `variableElement`, `field` to `memberVariableElement`,
-`attribute` and `builtin` to `keyword`, `snippet` to `string` with `isSnippet`. The item's own
+`functionElement`, `variable` and `resource` to `variableElement`, `field` to
+`memberVariableElement`, `attribute` and `builtin` to `keyword`, `snippet` to `string` with
+`isSnippet`. The item's own
 `detail` carries the true kind, so nothing is lost from what the user reads; only the icon is
 approximate.
 
@@ -801,22 +802,22 @@ The last two files are fixtures for specific holes: the 500-line file is the
 only size at which `getRegionSemanticDiagnostics` fires (§3), and the config-less workspace is
 the inferred-project path most people meet first (§4). The assertions:
 
-| Assertion                                                                                                  | Why it is the one worth making                                                                                 |
-| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| On a clean directive file, zero diagnostics                                                                | The six examples measured 58 false errors without the plugin                                                   |
-| On a clean directive file, an unhelped server reports the false-positive classes and this one reports none | Replacement, not merging, stated as the contrast it is                                                         |
-| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`               | The mapping of §3, end to end                                                                                  |
-| An import between two shaders resolves, with no TS2307                                                     | §1.7's `readDocument` rule, and the one place a cross-file answer can be checked                               |
-| `quickinfo` on `vec4(...)` is not `any`                                                                    | The probe measured `any` today, which is the user-visible symptom                                              |
-| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids              | The context completions are the service's own and must survive the mapping                                     |
-| A whole session's events on non-directive files are identical with and without the plugin                  | §1.5, and the only test that can prove a pass-through has no mapping layer in it                               |
-| A syntax error is reported once                                                                            | The deduplication of §3                                                                                        |
-| `references` on a shader symbol answers from the TypeShade program                                         | tsserver calls `findReferences`, not `getReferencesAtPosition`; decorating only the latter fails silently (§3) |
-| A 500-line directive file reports zero diagnostics, with `geterr` twice                                    | `getRegionSemanticDiagnostics` is undeclared in `typescript.d.ts` and fires only past that threshold (§3)      |
-| In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics                    | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                             |
-| Deleting the directive brings TypeScript's own errors back, and the document set shrinks                   | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                          |
-| A hover whose text has a fenced block and prose splits into `displayParts` and `documentation`             | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                              |
-| The tsserver log contains no plugin exception                                                              | A plugin that throws degrades the whole project's TypeScript, silently                                         |
+| Assertion                                                                                                  | Why it is the one worth making                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| On a clean directive file, zero diagnostics                                                                | The six examples measured 58 false errors without the plugin                                                                                                |
+| On a clean directive file, an unhelped server reports the false-positive classes and this one reports none | Replacement, not merging, stated as the contrast it is                                                                                                      |
+| On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`               | The mapping of §3, end to end                                                                                                                               |
+| An import between two shaders resolves, with no TS2307                                                     | §1.7's `readDocument` rule, and the one place a cross-file answer can be checked                                                                            |
+| `quickinfo` on `vec4(...)` is not `any`                                                                    | The probe measured `any` today, which is the user-visible symptom                                                                                           |
+| `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids              | The context completions are the service's own and must survive the mapping                                                                                  |
+| A whole session's events on non-directive files are identical with and without the plugin                  | §1.5, and the only test that can prove a pass-through has no mapping layer in it                                                                            |
+| A syntax error is reported once                                                                            | The deduplication of §3                                                                                                                                     |
+| `references` on a shader symbol answers from the TypeShade program                                         | tsserver calls `findReferences`, not `getReferencesAtPosition`; decorating only the latter fails silently (§3)                                              |
+| A 500-line directive file answers a RANGED `geterr` with an empty `regionSemanticDiag`                     | `getRegionSemanticDiagnostics` is undeclared in `typescript.d.ts`, fires only past that threshold, and is reached only by a `geterr` carrying `ranges` (§3) |
+| In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics                    | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                                                                          |
+| Deleting the directive brings TypeScript's own errors back, and the document set shrinks                   | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                                                                       |
+| A hover whose text has a fenced block and prose splits into `displayParts` and `documentation`             | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                                                                           |
+| The tsserver log contains no plugin exception                                                              | A plugin that throws degrades the whole project's TypeScript, silently                                                                                      |
 
 The harness lives in `packages/tsserver-plugin/src/` beside the code, as vitest tests, with the
 30 second timeout the root config already sets for exactly this reason.
@@ -910,9 +911,10 @@ rather than first because the Marketplace is the one whose failure should stop t
 (display name TypeShade, id `typeshade`, website `https://typeshade.dev`, support
 `https://github.com/typeshade/vscode-typeshade/issues`) and added two repository secrets:
 `VSCE_PAT`, an Azure DevOps personal access token scoped to Marketplace Manage across all
-accessible organizations, and `OVSX_PAT`, an open-vsx.org access token. `packages/vscode-typeshade/package.json` already carries
-`"publisher": "typeshade"`, that same `homepage` and that same `bugs.url`, so PR 5 needs no
-manifest change to match what was registered.
+accessible organizations, and `OVSX_PAT`, an open-vsx.org access token.
+`packages/vscode-typeshade/package.json` already carries `"publisher": "typeshade"`, that same
+`homepage` and that same `bugs.url`, so PR 5 needs no manifest change to match what was
+registered.
 
 **Version policy.** The extension's version is its own, and it starts at `0.1.0` on the first
 Marketplace release. The compiler's version is not the extension's: a bug fix in the panel
@@ -968,9 +970,9 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    completions already include keywords (`docs/language-service-api.md` §5).
 2. **The semantic token legend is VS Code's, and seven of TypeShade's thirteen token types
    have no place in it (`decorator`, `builtin`, `resource`, `operator`, `number`, `string`,
-   `keyword`), nor do the `entry` and `gpu` modifiers (§3).** _Suggested: drop those tokens for now, and revisit with
-   a measurement of what the editor actually looks like, not with a second token provider._ Two
-   providers on one document is a coin flip about which one paints.
+   `keyword`), nor do the `entry` and `gpu` modifiers (§3).** _Suggested: drop those tokens for
+   now, and revisit with a measurement of what the editor actually looks like, not with a second
+   token provider._ Two providers on one document is a coin flip about which one paints.
 3. **A `"use typeshade"` file that imports a plain `.ts` file reports "Cannot find module"
    (§1.7).** _Suggested: ask the compiler for a diagnostic that says what is actually wrong, and
    until it exists, leave the honest-but-unhelpful message rather than inventing a code in the
