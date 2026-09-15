@@ -10,7 +10,10 @@
 // type-checking and through an esbuild alias for the bundle, so the day `typeshade` is on npm
 // this file does not change at all.
 
-export { hasUseTypeshadeDirective } from 'typeshade'
+// `USE_TYPESHADE`, the exact string, rather than `hasUseTypeshadeDirective`, the predicate: a
+// predicate carries its own `SyntaxKind` table and the plugin's nodes come from tsserver's
+// TypeScript, not from this bundle's. `directive.ts` says what that cost when it was not obeyed.
+export { USE_TYPESHADE } from 'typeshade'
 export { createTypeshadeLanguageService } from 'typeshade/language-service'
 
 export type {

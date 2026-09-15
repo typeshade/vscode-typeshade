@@ -45,8 +45,8 @@ SHADE_LIMIT=1 bun docs/measurements/two-program-cost/measure.ts
 
 `SHADE_LIMIT` caps how many shader files the plugin mode opens, which is how the one-document
 case `docs/design.md` §4 needs for the extension's preview panel is measured with this same
-harness: 76.8 to 96.8 ms and 11.8 MB to require the bundle, then 87.3 to 94.7 ms and 3.7 MB to
-build and compile one document, 15.5 MB retained.
+harness: 305.2 to 340.3 ms and 35.4 MB to require the bundle, then 101.2 to 109.4 ms and 3.8 MB
+to build and compile one document, 39.2 MB retained.
 
 `vendor/typeshade` is where the pinned submodule lands when the plugin is implemented
 (`docs/design.md` §2); until it exists a plain clone there does the same job, and
@@ -63,13 +63,21 @@ six `.shade.ts` examples, under a `tsconfig.json` with `lib: ["ES2022", "DOM"]`.
 ## The runs the design document reports
 
 2026-09-14, in the session's container: 4 cores, node v22.22.2 doing the measuring, bun 1.3.11
-driving, typescript 5.6.3, compiler at `a2240e0`, bundle 470 KB (481,235 bytes).
+driving, typescript 5.6.3, compiler at `a2240e0`, bundle 9.7 MB (10,219,538 bytes).
+
+**These numbers are PR 3's, and they replace PR 2's.** The bundle used to leave `typescript`
+external, which made it 470 KB (481,235 bytes) and made the require phase a third of what it
+now is. A real VS Code showed that external was not reachable: node resolves it by walking up
+from wherever the bundle sits, which is a different copy in a checkout and nothing at all in a
+packaged extension. The measurement now bundles `typescript` the way the plugin ships it, so
+the require phase is the whole cost rather than a third of it. `docs/design.md` §2 has the
+failure that forced the change.
 
 ```
 ## the editor today, no plugin (node v22.22.2)
-cold, whole project        1048.7 to 1088.5 ms (1073.5, 1048.7, 1088.5)
-warm, one shader edit      14.7 to 15.6 ms (15.6, 14.7, 15.1)
-heap for the project       63.8 to 63.9 MB (63.9, 63.9, 63.8)
+cold, whole project        1235 to 1299.9 ms (1299.9, 1243.3, 1235)
+warm, one shader edit      18.2 to 18.8 ms (18.8, 18.2, 18.4)
+heap for the project       63.9 MB (63.9, 63.9, 63.9)
 false errors on shaders    58 (58, 58, 58)
                            compute-reduction-twin.shade.ts: 12 (TS1206 TS2304 TS2552)
                            hello-camera.shade.ts: 4 (TS2304)
@@ -79,12 +87,12 @@ false errors on shaders    58 (58, 58, 58)
                            hello.shade.ts: 10 (TS1206 TS2304 TS2349)
 
 ## what the plugin adds (node v22.22.2)
-require the bundle         78.9 to 90.5 ms (78.9, 78.9, 90.5)
-  heap it retains          11.8 MB (11.8, 11.8, 11.8)
-build and answer for all   119.7 to 129.7 ms (119.7, 129.7, 127.8)
-  heap it retains          5.1 MB (5.1, 5.1, 5.1)
-retained, both phases      16.9 MB (16.9, 16.9, 16.9)
-warm, one shader edit      5.9 to 6.2 ms (5.9, 6.1, 6.2)
+require the bundle         310.9 to 319.6 ms (319.6, 318.6, 310.9)
+  heap it retains          35.4 MB (35.4, 35.4, 35.4)
+build and answer for all   141 to 151.8 ms (151.8, 141, 150.4)
+  heap it retains          5.2 MB (5.2, 5.2, 5.2)
+retained, both phases      40.6 MB (40.6, 40.6, 40.6)
+warm, one shader edit      6.7 to 7.2 ms (6.7, 6.8, 7.2)
 diagnostics on shaders     0 (0, 0, 0)
 ```
 
@@ -94,51 +102,54 @@ The same fixture with the shader files copied ten times, so it holds 60 of them:
 fixture: 150 .ts files, 60 .shade.ts files
 
 ## the editor today, no plugin (node v22.22.2)
-cold, whole project        1115.9 to 1190.9 ms (1190.9, 1115.9, 1143)
-warm, one shader edit      14.9 to 18.2 ms (18.2, 14.9, 15)
+cold, whole project        1337.8 to 1549.6 ms (1407.1, 1337.8, 1549.6)
+warm, one shader edit      18.3 to 19 ms (18.3, 18.4, 19)
 heap for the project       65.9 MB (65.9, 65.9, 65.9)
 false errors on shaders    580 (580, 580, 580)
 
 ## what the plugin adds (node v22.22.2)
-require the bundle         76 to 83.7 ms (83.7, 79, 76)
-  heap it retains          11.8 MB (11.8, 11.8, 11.8)
-build and answer for all   234.9 to 264.8 ms (264.8, 234.9, 249.7)
-  heap it retains          8 MB (8, 8, 8)
-retained, both phases      19.8 MB (19.8, 19.8, 19.8)
-warm, one shader edit      5.6 to 5.7 ms (5.6, 5.7, 5.7)
+require the bundle         309.3 to 341.6 ms (309.3, 321.3, 341.6)
+  heap it retains          35.4 MB (35.4, 35.4, 35.4)
+build and answer for all   276.9 to 311.3 ms (276.9, 284.3, 311.3)
+  heap it retains          8.1 MB (8.1, 8.1, 8.1)
+retained, both phases      43.5 MB (43.5, 43.5, 43.5)
+warm, one shader edit      6.9 to 8.6 ms (6.9, 7.8, 8.6)
 diagnostics on shaders     0 (0, 0, 0)
 ```
 
-An independent run of the same method, in the review of this pull request, reported the heap
-figures identically (11.7 MB for the require phase, 5.1 MB for the build phase, 16.8 MB
-retained) and higher times (117.8 to 128.5 ms and 171.1 to 280.5 ms). A third run, once the
-plugin's own sources were finished, landed between the two (93.5 to 100.5 ms and 141 to 145 ms)
-with the heap figures identical again to the tenth. Heap is what every run agrees on to the
-tenth of a megabyte; time is what a shared four-core container moves, by a quarter or so.
+Three runs of the PREVIOUS configuration, with `typescript` external, are worth keeping for what
+they say about the method rather than about the plugin. PR 2 reported 78.9 to 90.5 ms and
+11.8 MB for the require phase; an independent run in its review reported 117.8 to 128.5 ms with
+the heap identical to 0.1 MB; a third run reported 93.5 to 100.5 ms, heap identical again. Heap
+is what every run agrees on to the tenth of a megabyte; time is what a shared four-core
+container moves, by a quarter or so. That is why the 35.4 MB above is the number to argue with
+and the 310 ms is not.
 
 ## What the numbers say
 
 | Question                                             | Answer                                                                                                   |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Why a second program at all                          | tsserver alone reports 58 semantic errors on the six examples, and every one is false                    |
-| What the plugin adds once per tsserver process       | 78.9 to 90.5 ms and 11.8 MB, to load its own code                                                        |
-| What it adds once per project, 6 shaders             | 119.7 to 129.7 ms and 5.1 MB                                                                             |
-| The same for 60 shaders                              | 234.9 to 264.8 ms and 8.0 MB                                                                             |
-| Retained in tsserver, all phases                     | 16.9 MB for 6 shaders, 19.8 MB for 60, against 63.8 MB for the project program alone                     |
-| What a keystroke in a shader file costs              | 5.9 to 6.2 ms in the TypeShade program, against 14.7 to 15.6 ms for the same file in the project program |
+| What the plugin adds once per tsserver process       | 310.9 to 319.6 ms and 35.4 MB, to load its own code and its own `typescript`                             |
+| What it adds once per project, 6 shaders             | 141.0 to 151.8 ms and 5.2 MB                                                                             |
+| The same for 60 shaders                              | 276.9 to 311.3 ms and 8.1 MB                                                                             |
+| Retained in tsserver, all phases                     | 40.6 MB for 6 shaders, 43.5 MB for 60, against 63.9 MB for the project program alone                     |
+| What a keystroke in a shader file costs              | 6.7 to 7.2 ms in the TypeShade program, against 18.2 to 18.8 ms for the same file in the project program |
 | Whether the project's size enters the second program | No: the 150 host modules are not in it                                                                   |
 
-**Where the cost actually lives.** The fixed half is the larger one: loading the plugin's own
-code costs 11.8 MB and about 80 ms whatever the project holds, and both are flat between the
-6-shader and the 60-shader fixture. The per-project half is what scales, and it scales on
+**Where the cost actually lives.** The fixed half is by far the larger one: loading the plugin's
+own code costs 35.4 MB and about 310 ms whatever the project holds, flat to the tenth of a
+megabyte between the 6-shader and the 60-shader fixture, and about 24 MB of it is the bundled
+`typescript` rather than the compiler. The per-project half is what scales, and it scales on
 shaders alone: ten times the shader files costs 2.9 MB more and roughly twice the time, while
 the 150 host modules contribute nothing to either. That is a consequence of a language rule
 rather than of tuning, because a TypeShade program holds the shader files and `SHADE_DTS` and
 nothing else (`docs/design.md` §1.7).
 
-The comparison that matters is the last two rows against the first: 16.9 MB and about 200 ms,
-once, to replace 58 wrong answers with none, in a process that is already holding 63.8 MB for
-the project itself.
+The comparison that matters is the last two rows against the first: 40.6 MB and about 460 ms,
+once, to replace 58 wrong answers with none, in a process that is already holding 63.9 MB for
+the project itself. The 24 MB of `typescript` inside that is the one part a design change could
+remove, and `docs/design.md` §8 item 11 is the question of whether to.
 
 ## What is not measured here
 

@@ -93,7 +93,7 @@ export function decorate(
   /** Whether this request is about a TypeShade file, having brought the file into the TypeShade
    *  program (or taken it out, when its directive was just deleted). */
   function isShade(fileName: string): boolean {
-    const directive = isTypeshadeFile(inner, fileName)
+    const directive = isTypeshadeFile(typescript, inner, fileName)
     const held = documents.sync(fileName, directive)
     return directive && held
   }

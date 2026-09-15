@@ -21,12 +21,111 @@
     "vscode": "^1.90.0"
   },
   "main": "./dist/extension.js",
-  "activationEvents": [],
-  "contributes": {},
+  "activationEvents": [
+    "onLanguage:typescript"
+  ],
+  "contributes": {
+    "typescriptServerPlugins": [
+      {
+        "name": "@typeshade/tsserver-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "typeshade.showWgsl",
+        "title": "TypeShade: Show WGSL"
+      },
+      {
+        "command": "typeshade.showGlsl",
+        "title": "TypeShade: Show GLSL"
+      },
+      {
+        "command": "typeshade.showReflection",
+        "title": "TypeShade: Show Reflection"
+      },
+      {
+        "command": "typeshade.runEntry",
+        "title": "TypeShade: Run Entry on CPU"
+      },
+      {
+        "command": "typeshade.copyOutput",
+        "title": "TypeShade: Copy Output"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "typeshade.showWgsl",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.showGlsl",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.showReflection",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.runEntry",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.copyOutput",
+          "when": "typeshade.isShader"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "TypeShade",
+      "properties": {
+        "typeshade.preview.autoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Recompile the preview panel while you type."
+        },
+        "typeshade.preview.debounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "description": "How long after the last keystroke the preview panel recompiles."
+        },
+        "typeshade.diagnostics.replace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Let the TypeShade server plugin replace TypeScript's answers on a \"use typeshade\" file. Turning this off is an escape hatch: TypeScript's own false errors come back."
+        },
+        "typeshade.debug.precision": {
+          "type": "string",
+          "enum": [
+            "f32",
+            "f64"
+          ],
+          "default": "f32",
+          "description": "The arithmetic the CPU oracle uses, for Run Entry on CPU and for the stepping engine."
+        },
+        "typeshade.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Log the TypeShade server plugin's requests into the TypeScript server log."
+        }
+      }
+    }
+  },
   "scripts": {
     "build": "node ../../scripts/build.mjs"
   },
+  "dependencies": {
+    "@typeshade/tsserver-plugin": "*"
+  },
   "devDependencies": {
-    "@types/vscode": "^1.90.0"
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.5.2"
   }
 }
