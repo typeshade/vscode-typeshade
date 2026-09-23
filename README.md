@@ -75,8 +75,11 @@ pull request. On a pull request it also runs the pinned compiler's
 `scripts/downstream-impact.ts`, which fails while a file here still names an export or a file
 that the new pin removes, while a compiler `LINT.ThenChange(//vscode-typeshade/...)` target has
 not changed with its block, or while a compiler change proposal that the new pin implements
-names this repository and [`compiler-changes.md`](./compiler-changes.md) does not record its id. The compiler's `scripts/ifchange.ts` checks this repository's own
-`LINT.IfChange` pairs the same way.
+names this repository and [`compiler-changes.md`](./compiler-changes.md) does not record its
+id. The compiler's `scripts/ifchange.ts` checks this repository's own `LINT.IfChange` pairs the
+same way. In a Claude Code session, `scripts/commit-gate.mjs` runs the fast checks (prettier,
+eslint, the em dash check) before every commit, so a convention costs a local retry rather than
+a CI round trip.
 
 ## Conventions
 
