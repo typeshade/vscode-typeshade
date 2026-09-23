@@ -1,10 +1,11 @@
 # TypeShade for coding agents: an MCP server, a skill and a Claude Code plugin
 
-Status: **proposal**, with all three built and tested in the pull request that adds this file.
-The owner answered its open questions on 2026-09-23, taking every suggestion (§8). The pinned
-compiler is `typeshade/typeshade` at `ef049e4`, as in `docs/design.md`. Every claim about the
-compiler names the file it comes from, and every claim about another tool names where it was
-checked, because the tools this document compares move faster than the compiler does.
+Status: **proposal**, with all three built and tested in the pull request that adds this file,
+and `@typeshade/mcp` on npm since 2026-09-23 (§6). The owner answered its open questions on
+the same day, taking every suggestion (§8). The pinned compiler is `typeshade/typeshade` at
+`eb0dde6`, as in `docs/design.md`. Every claim about the compiler names the file it comes from,
+and every claim about another tool names where it was checked, because the tools this document
+compares move faster than the compiler does.
 
 Related: `docs/design.md` (the editor: the tsserver plugin and the VS Code extension, whose
 layering this document keeps) and the compiler's `docs/language-service-api.md` (the service all
@@ -163,9 +164,11 @@ client that answers `roots/list` has said where the project is.
 result is the compiler's own reference, at f32 by default because that is what a GPU computes
 (`docs/debugging.md` §5 decision 6 in the compiler). It does not use the adapter's one call,
 `startDebugSessionFromConfig`, because that call takes no step budget, and an unattended server
-must not be held by a run that does not finish. The compiler bounds each loop at 256 trips but
-not their product: three nested loops of 256 compile clean and take 30.8 s through that call
-at the compiler's `bbf3eff`, and a fourth nest would take hours. So `run` calls the two public
+must not be held by a run that does not finish. The compiler bounds no loop's trips: a `for`
+may count to a runtime value and a `while` is an open loop (typeshade/typeshade#209). Even when
+it capped each loop at 256 trips it did not cap their product: three nested loops of 256 compile
+clean and took 30.8 s through that call at the compiler's `bbf3eff`, and a fourth nest would take
+hours. So `run` calls the two public
 resolvers that call is built from, `resolveInvocation` and `resolveBindings`, then
 `startDebugSession` with `maxSteps` of two million statements, which a real shader stays far
 below; the three nested loops reach it in about 1.6 s and end with the engine's own sentence.
@@ -222,9 +225,10 @@ all read. It uses only the portable fields (`name`, `description`), so the direc
 copied into any of them as it is.
 
 It is short where the compiler's documentation is long, and it spends its words on what an agent
-gets wrong: the GLSL or HLSL name for a builtin, a string passed to `console.log`, a loop bound
-over 256, a missing return annotation, the integer literal rule. It says to run `check` after
-every edit and how to use the other tools, and it keeps working without the server.
+gets wrong: the GLSL or HLSL name for a builtin, a string passed to `console.log`, a loop spelled
+the way another language needs it, an entry's missing return annotation, the integer literal
+rule. It says to run `check` after every edit and how to use the other tools, and it keeps
+working without the server.
 
 **Every `"use typeshade"` block in the skill compiles.** `skill.test.ts` extracts each one and
 compiles it against the pinned compiler, the way the compiler's own
@@ -257,11 +261,12 @@ suite fails on a shader block whose directive has been rewritten, instead of ski
 Both manifests and the skill pass `claude plugin validate` (Claude Code 2.1.280), and the
 plugin installs from a local checkout of the marketplace: `claude plugin details` counts one
 skill and one MCP server, about 230 tokens loaded into every session and about 5,000 when the
-skill is used. The skill works as soon as the plugin is installed. The server entry
-(`plugins/typeshade/.mcp.json`) runs `npx -y @typeshade/mcp`, so it starts working the day that
-package is on npm (§6); `claude mcp list` reports it as failing to connect until then, and
-reports a local build registered with `claude mcp add` (`packages/mcp-server/README.md`) as
-connected.
+skill is used. The skill works as soon as the plugin is installed, and so does the server entry
+(`plugins/typeshade/.mcp.json`), which runs `npx -y @typeshade/mcp`. With 0.1.0 on npm (§6),
+`claude mcp list` reports it as connected, in a Claude Code configuration that installed the
+plugin from this repository on GitHub (checked on 2026-09-23). A local build registered with
+`claude mcp add` (`packages/mcp-server/README.md`) is the way to try a change before it is
+released.
 
 **No language server in the plugin, yet.** A plugin can declare one (`lspServers`), and §0.2
 shows what it would run. It waits for three things: `@typeshade/tsserver-plugin` on npm, so there
@@ -275,6 +280,10 @@ effect in every tsserver-based tool, with no plugin change at all.
 **Decided 2026-09-23: `@typeshade/mcp` publishes before the compiler's 0.1.0** (§8, item 1).
 Unlike the tsserver plugin, it does not have to wait for the compiler: the bundle carries the
 compiler, and its dependencies are all on npm. The other two packages stay private.
+
+**Published 2026-09-23: 0.1.0**, from the release `mcp-v0.1.0`
+([run 35847533779](https://github.com/typeshade/vscode-typeshade/actions/runs/35847533779)), with
+an SLSA provenance attestation that `npm audit signatures` verifies.
 
 `.github/workflows/publish-mcp.yml` publishes it, in the shape `docs/design.md` §7 sets for this
 repository's npm packages, after the compiler's own `publish.yml`:
@@ -300,15 +309,25 @@ repository's npm packages, after the compiler's own `publish.yml`:
 only for a package that already exists (`npm trust` says so in as many words), so the first
 release needs a token:
 
-1. Create an npm granular access token with **Read and write** on the `@typeshade` scope. A
-   token for the package alone cannot exist before the package does. Add it to this repository
-   as the Actions secret `NPM_ACCESS_TOKEN`.
+1. Create an npm granular access token with **Read and write** on the `@typeshade` scope (or on
+   all packages) and **Bypass two-factor authentication** on. A token for the package alone
+   cannot exist before the package does. Put it in the Actions secret `NPM_ACCESS_TOKEN`: the
+   organization's secret of that name reaches this repository, and a repository secret of the
+   same name would take precedence.
 2. Publish a GitHub release tagged `mcp-v0.1.0` on the commit to release. npm tries trusted
    publishing first and, with no publisher registered, falls back to the secret.
 3. On `https://www.npmjs.com/package/@typeshade/mcp/access`, register a trusted publisher:
    GitHub Actions, organization `typeshade`, repository `vscode-typeshade`, workflow
    `publish-mcp.yml`, no environment. Then delete the secret, so the next release proves the
-   OIDC path. The compiler's `RELEASING.md` §0 walks the same screens for `typeshade`.
+   OIDC path. The compiler's `RELEASING.md` §0 walks the same screens for `typeshade`. The
+   secret is the organization's, and the compiler's workflow reads it too, so delete it only
+   once `typeshade` has a trusted publisher as well, or leave it until the compiler's first
+   release.
+
+Steps 1 and 2 were done on 2026-09-23. The first attempt was refused with
+`E403 ... granular access token with bypass 2fa enabled is required to publish packages`, since
+that token did not bypass 2FA, and nothing was uploaded. A token that does, put in the same
+secret, and a re-run of the failed job published the same tested tarball. Step 3 is still open.
 
 **Step 3 has a deadline: January 2027.** In CI nobody can type a one-time password, so the
 token has to bypass two-factor authentication, and npm is retiring such tokens.
@@ -352,8 +371,8 @@ The owner took every suggestion on 2026-09-23, so these are kept as a record of 
 rather than a list of what is waiting.
 
 1. ~~**Publish `@typeshade/mcp` before the compiler's 0.1.0?**~~ **Decided 2026-09-23: yes.** It
-   bundles the compiler and depends on nothing unpublished, and the plugin's server entry is
-   inert until it exists. §6 is how.
+   bundles the compiler and depends on nothing unpublished, and the plugin's server entry was
+   inert until it existed. §6 is how, and 0.1.0 was published the same day.
 2. ~~**Should `startDebugSessionFromConfig` take `maxSteps`?**~~ **Decided 2026-09-23: yes, as
    an issue on the compiler**, filed as
    [typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215). When a pin

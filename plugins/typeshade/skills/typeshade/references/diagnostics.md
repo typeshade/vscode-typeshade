@@ -16,13 +16,13 @@ name a `TS8022 Unknown identifier`, so one mistake can read as five.
 | TS8003 | TYPE_MISMATCH             | `f32 + i32`; an index that is an f32 (an unannotated `let i = 0`); a return of the wrong type; a non-bool `if`; `vec3 * vec4`; `mat4 * vec3`; `f32(v)` on a vector; a constant division by zero                                                                         | cast explicitly, annotate integer locals, match the sizes    |
 | TS8004 | UNKNOWN_FN                | a call to a name TypeShade does not have: `lerp`, `texture`, a function imported from another shader                                                                                                                                                                    | `docs` for the TypeShade name; keep helpers in the same file |
 | TS8005 | CONST_ASSIGN              | a write to a `const`, a `declare const` resource, or a `readonly` field                                                                                                                                                                                                 | `let`, or `declare let ... storage<T>`                       |
-| TS8006 | LOOP_BOUND                | a loop bound that is not a compile-time constant (a uniform, a parameter, an override), or more than 256 trips                                                                                                                                                          | loop to a constant maximum and `break`                       |
-| TS8007 | LOOP_INFINITE             | `while (true)`, a `for` with no condition, a step going the wrong way                                                                                                                                                                                                   | a counted loop                                               |
+| TS8006 | LOOP_BOUND                | a loop bound the body writes; `!=` against a runtime bound; a runtime-bounded `*=` whose factor is not a whole 2 or more; a constant loop that leaves its type                                                                                                          | read the bound into a `const`; compare with `<`              |
+| TS8007 | LOOP_INFINITE             | `while (true)` with no `break` or `return` in its body, a `for` with no condition, a step moving away from the bound                                                                                                                                                    | a counted loop                                               |
 | TS8008 | LOOP_INDUCTION            | a float induction variable, or an initializer or update the loop rule does not accept                                                                                                                                                                                   | `for (let i = 0; i < N; i++)`                                |
 | TS8009 | BREAK_OUTSIDE             | `break` or `continue` outside a loop or switch                                                                                                                                                                                                                          | move it                                                      |
 | TS8010 | STRUCT_FIELD              | a missing, extra or optional field; `@align`; a varying whose name or type differs between the stages                                                                                                                                                                   | match the struct; share one IO class                         |
 | TS8012 | HOST_API                  | a JavaScript global: `Number`, `Array`, `Date`, `JSON`, `window`                                                                                                                                                                                                        | a builtin; only `Math` and `console` exist                   |
-| TS8013 | HOST_STMT                 | `var`, `for...of`, `try`, `async`, a template string, `new` on a class the file does not declare                                                                                                                                                                        | shader statements                                            |
+| TS8013 | HOST_STMT                 | `var`, `for...in`, `try`, `async`, a template string, `new` on a class the file does not declare                                                                                                                                                                        | shader statements                                            |
 | TS8014 | TOP_LEVEL                 | an expression or an `if` at the top level                                                                                                                                                                                                                               | move it into a function                                      |
 | TS8015 | BACKEND                   | an emitter refused the module. A warning drops the GLSL only (a uniform that is not a struct, `mat2` in a uniform, `@interpolate("linear")`, a compute entry beside the render pair, a GLSL-reserved name). An error drops everything (a bare `uniform<array<f32, 4>>`) | read the message; wrap a uniform in a struct                 |
 | TS8016 | INDEX_OOB                 | a constant index outside a fixed-size array                                                                                                                                                                                                                             | fix the index                                                |
@@ -30,7 +30,7 @@ name a `TS8022 Unknown identifier`, so one mistake can read as five.
 | TS8018 | ASSIGN_TARGET             | a write to a parameter, to a multi-component swizzle (`v.xy = ...`), `++` on a vector                                                                                                                                                                                   | copy into a `let`; write one component                       |
 | TS8019 | ARITY_MISMATCH            | the wrong number of arguments; `vec4(x, x)`; `Math.random()`                                                                                                                                                                                                            | check the signature with `docs`; `random(seed)`              |
 | TS8020 | FUNCTION_SHAPE            | an optional or rest parameter; a default that reads another parameter; a vertex entry with no position output; `declare function`                                                                                                                                       | a plain parameter; return the position                       |
-| TS8021 | RETURN_SHAPE              | a missing return annotation (an error on an entry, a warning on a helper); a bare `return` in a function that returns a value                                                                                                                                           | annotate every return type                                   |
+| TS8021 | RETURN_SHAPE              | a value-returning entry with no return annotation; a bare `return` in a function that returns a value                                                                                                                                                                   | annotate every return type                                   |
 | TS8022 | UNKNOWN_NAME              | an unknown identifier, field or swizzle (`.st`); an object literal no struct matches; `undefined`; the cascade of an earlier error                                                                                                                                      | fix the first error                                          |
 | TS8023 | DUPLICATE_SYMBOL          | one name declared twice in a scope, two interfaces of one name included                                                                                                                                                                                                 | rename                                                       |
 | TS8024 | BUILTIN_NAME              | `@builtin("frag_coord")` and other ids WGSL does not have                                                                                                                                                                                                               | `@builtin("position")`; `docs` lists the ids                 |
@@ -54,7 +54,7 @@ name a `TS8022 Unknown identifier`, so one mistake can read as five.
 | TS8052 | UNIFORMITY                | `textureSample` or a derivative under a per-fragment branch or after an early return; a barrier under an id-dependent branch                                                                                                                                            | sample before the branch, or `textureSampleLevel`            |
 | TS8053 | INT_LITERAL_DEPRECATION   | a warning, with `deprecations: true`, for an integer-written literal in an untyped declaration                                                                                                                                                                          | annotate the declaration                                     |
 | TS8068 | RESERVED_NAME             | a WGSL reserved word used as a name (an error), or a GLSL one used for a struct, field or binding (a warning that drops the GLSL)                                                                                                                                       | rename                                                       |
-| TS8099 | UNSUPPORTED               | the catch-all: a string, `==`, `>>>`, `do...while`, a label, a closure over a local, a fragment-only call in another stage, a call to an entry                                                                                                                          | the message names the construct and usually the fix          |
+| TS8099 | UNSUPPORTED               | the catch-all: a string, `==`, `>>>`, `do...while`, a label, `xs.map(...)`, a fragment-only call in another stage, a call to an entry                                                                                                                                   | the message names the construct and usually the fix          |
 
 Two of them, produced exactly as shown:
 
@@ -62,10 +62,12 @@ Two of them, produced exactly as shown:
 
 ```ts
 "use typeshade"
-export function sum(n: i32): f32 {
+export function sum(n0: i32): f32 {
+  let n = n0
   let total = 0.
   for (let i = 0; i < n; i++) {
     total += 1.
+    n = n - 1
   }
   return total
 }
@@ -85,14 +87,10 @@ And the fixes:
 
 ```ts
 "use typeshade"
-const MAX_N: i32 = 256
-
-export function sum(n: i32): f32 {
+export function sum(n0: i32): f32 {
+  const n = n0
   let total = 0.
-  for (let i = 0; i < MAX_N; i++) {
-    if (i >= n) {
-      break
-    }
+  for (let i = 0; i < n; i++) {
     total += 1.
   }
   return total

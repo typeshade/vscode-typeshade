@@ -56,8 +56,8 @@ jobs:
 
   compiler-bump:
     # What a compiler bump owes this repository. A doc, package or test that still names an
-    # export or a file the new pin removes fails here, as does a compiler block whose ThenChange
-    # target is a file here (//vscode-typeshade/...) that this branch did not change; then this
+    # export or a file the new pin removes fails here, as does a compiler ThenChange target in
+    # this repository (a `//vscode-typeshade/...` path) that this branch did not change; then this
     # repository's own IfChange pairs are held to the diff. Both scripts run from the pinned
     # compiler (vendor/typeshade/scripts/downstream-impact.ts and ifchange.ts), so a pin from
     # before they existed skips the job's checks.
