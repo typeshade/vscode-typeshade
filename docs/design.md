@@ -366,8 +366,26 @@ moved to a specific SHA of `typeshade/typeshade` `main` (never a branch), the co
 generated list of every public export, and `git diff` over two SHAs of it is exactly the list of
 what changed for us, which is what the compiler's own `src/api-surface.test.ts` exists to
 guarantee), and the full local gate green. A bump that changes what the plugin maps also changes
-§3's table in the same pull request. Nothing else may move the pin: no floating branch, no
-`--remote` update in CI.
+§3's table in the same pull request. Nothing else may move the pin: no floating branch, and
+nothing in CI that moves the pin on `main` (no `--remote` update in a build, no auto-merge).
+
+**Who proposes the bump.** A workflow does, so the pin stops falling behind: by hand it had
+drifted 104 commits by #4. `.github/workflows/pin-compiler.yml` runs once a day, on demand, and
+on a `compiler-updated` repository dispatch. It resolves the compiler's `main` to one SHA,
+commits the submodule at that SHA on the `pin/compiler` branch, and opens one pull request (or
+refreshes the one already open) whose body lists the compiler commits it takes in and quotes the
+`surface.md` diff between `main`'s pin and the new SHA. A diff over 200 lines is summarised
+instead of quoted, by `scripts/surface-diff.mjs`: the export count per subpath, and every export
+and every shape definition added, removed or changed. That keeps the decision above intact, not
+relaxed. The workflow proposes a specific SHA and never a branch, it never merges, and a person
+reads the surface diff, fixes on the branch whatever the new compiler breaks, updates §3's table
+if the mapping moved, and merges it. A run that finds the pull request open pushes on top of it
+and never force-pushes over the fixes on it. A pull request opened with `GITHUB_TOKEN` starts no
+`pull_request` run, so the workflow dispatches `ci.yml` on the branch, which is why `ci.yml`
+takes `workflow_dispatch`; `ci.yml` only checks and publishes nothing from any ref. The
+repository needs one setting for the pull request step: Settings > Actions > General > "Allow
+GitHub Actions to create and approve pull requests". Without it the branch is pushed and the
+pull request step fails, so the proposal is never silent.
 
 ## 3. The feature matrix
 
