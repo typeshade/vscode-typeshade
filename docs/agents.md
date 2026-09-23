@@ -321,7 +321,7 @@ repository's npm packages, after the compiler's own `publish.yml`:
   `npm publish --dry-run`. npm refuses a dry run of a version it already has, so dispatch it on
   the branch that bumps the version. npm exchanges the `id-token` before it looks at
   `--dry-run`, so the dry run also fails when trusted publishing does not authenticate it, as a
-  pushed tag would.
+  pushed tag would, and its error quotes the registry's reason.
 
 **What the owner does, because nobody else can.** npm lets a trusted publisher be registered
 only for a package that already exists (`npm trust` says so in as many words), so the first

@@ -173,17 +173,19 @@ jobs:
         run: npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public
 
       # npm exchanges the `id-token` before it looks at --dry-run, and a dry run it could not
-      # authenticate only warns, so the warning is what says a tag would not publish.
+      # authenticate only warns, so the warning is what says a tag would not publish. npm logs
+      # the registry's reason for refusing the exchange only at the verbose level.
       - name: Dry run, not published
         if: github.event_name != 'push'
         run: |
           set -euo pipefail
-          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run 2>&1 |
-            tee /tmp/dry-run.txt
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run \
+            --loglevel verbose 2>&1 | tee /tmp/dry-run.txt
           if grep -q 'requires you to be logged in' /tmp/dry-run.txt; then
+            reason=$(grep -m1 'verbose oidc' /tmp/dry-run.txt | sed 's/^npm verbose oidc //' || true)
             echo "::error::Trusted publishing did not authenticate this run, so a pushed tag would" \
-                 "not publish either. Check the publisher registered on npmjs.com against" \
-                 "docs/agents.md §6."
+                 "not publish either (npm: ${reason:-no reason logged}). Check the publisher" \
+                 "registered on npmjs.com against docs/agents.md §6."
             exit 1
           fi
           echo "Dry run: trusted publishing authenticated; nothing was uploaded." >> "$GITHUB_STEP_SUMMARY"
