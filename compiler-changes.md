@@ -10,5 +10,5 @@ When a pull request moves the compiler pin (`vendor/typeshade`) past a proposal 
 work is done on that branch and its id is recorded below. Record one list item per proposal: the
 id first, then the pull request that did the work.
 
-- 0001 — a `for` loop takes a runtime bound and `while` is an open loop: the skill's TS8006
+- 0001: a `for` loop takes a runtime bound and `while` is an open loop: the skill's TS8006
   example and loop advice, and the MCP run tool's step budget, handled in #14.
