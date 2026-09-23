@@ -73,6 +73,11 @@ jobs:
             echo "base=$base"
             echo "new=$new"
           } >> "$GITHUB_OUTPUT"
+      # For the pinned compiler's scripts/downstream-impact.ts, which the body quotes.
+      - uses: oven-sh/setup-bun@v2
+        if: steps.bump.outputs.changed == 'true'
+        with:
+          bun-version: latest
       - name: Write the pull request body
         if: steps.bump.outputs.changed == 'true'
         env:
@@ -91,6 +96,13 @@ jobs:
             echo "## The public surface diff"
             echo
             node scripts/surface-diff.mjs "$OLD" "$NEW"
+            if [ -f vendor/typeshade/scripts/downstream-impact.ts ] && command -v bun > /dev/null; then
+              echo
+              bun vendor/typeshade/scripts/downstream-impact.ts --repo vscode-typeshade \
+                --submodule vendor/typeshade --old "$OLD" --new "$NEW" --base HEAD --markdown || true
+              echo
+              echo "Each line above still names what the new compiler removes. The \`compiler-bump\` job fails until every one is fixed on this branch."
+            fi
           } > "$RUNNER_TEMP/body.md"
           # A pull request body holds 65536 characters; the commit list is the part that can
           # grow past it, so a body that does not fit keeps its head and says so.

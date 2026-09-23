@@ -1,7 +1,8 @@
 name: ci
 
 # The gate for this repository: the same five checks `npm run check` runs locally, as separate
-# steps so a failure names itself in the job summary rather than hiding behind one script.
+# steps so a failure names itself in the job summary rather than hiding behind one script. On a
+# pull request, `compiler-bump` also checks what a move of the compiler pin owes this repository.
 #
 # Node 20 is the floor both packages declare, and the version the VS Code extension host runs
 # is newer than that, so the matrix pins the floor and the current LTS: a plugin that only
@@ -52,3 +53,35 @@ jobs:
       - run: npm run format:check
       - run: npm run check:prose
       - run: npm run test
+
+  compiler-bump:
+    # What a compiler bump owes this repository. A doc, package or test that still names an
+    # export or a file the new pin removes fails here, as does a compiler
+    # LINT.ThenChange(//vscode-typeshade/...) target this branch did not change; then this
+    # repository's own IfChange pairs are held to the diff. Both scripts run from the pinned
+    # compiler (vendor/typeshade/scripts/downstream-impact.ts and ifchange.ts), so a pin from
+    # before they existed skips the job's checks.
+    name: compiler bump impact
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          # Both pins of the compiler and the base branch of this repository.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: What the compiler bump owes this repository
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ ! -f vendor/typeshade/scripts/downstream-impact.ts ]; then
+            echo "The pinned compiler predates scripts/downstream-impact.ts; nothing to check."
+            exit 0
+          fi
+          bun vendor/typeshade/scripts/downstream-impact.ts --repo vscode-typeshade \
+            --submodule vendor/typeshade --base "origin/$BASE" --check
+          TYPESHADE_DOCS_ROOT="$PWD" bun vendor/typeshade/scripts/ifchange.ts --base "origin/$BASE"
