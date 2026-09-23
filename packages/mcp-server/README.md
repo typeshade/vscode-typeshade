@@ -20,7 +20,7 @@ errors. The design and the decisions are in
 | `definition` | Where the name at a position is declared.                                                                                                                       |
 | `references` | Every use of the name at a position, across the workspace's shaders.                                                                                            |
 | `outline`    | A shader's structs, resources with their `@group` and `@binding`, functions and entry points.                                                                   |
-| `docs`       | A type, builtin, attribute or `@builtin` id with every overload signature; a GLSL or HLSL name is translated (`lerp` is `mix`).                                 |
+| `docs`       | A type, builtin, attribute or `@builtin` id with every overload signature; a name from another shading language is corrected (`lerp` → `mix`).                  |
 | `run`        | One function run on the CPU at f32, with arguments, builtin inputs and uniform values, optionally stopping at lines to report every local.                      |
 
 Every tool only reads. Positions are one-based lines, with either a column or the symbol's own
