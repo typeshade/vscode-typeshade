@@ -310,6 +310,21 @@ release needs a token:
    `publish-mcp.yml`, no environment. Then delete the secret, so the next release proves the
    OIDC path. The compiler's `RELEASING.md` §0 walks the same screens for `typeshade`.
 
+**Step 3 has a deadline: January 2027.** In CI nobody can type a one-time password, so the
+token has to bypass two-factor authentication, and npm is retiring such tokens.
+
+- Since 2026-07-31 such a token needs an interactive 2FA challenge to change a package's access,
+  maintainers or trusted publishers.
+- From January 2027 it can no longer publish at all
+  ([GitHub changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)).
+- The first run of this workflow printed npm's notice of it.
+
+Staged publishing, where a maintainer approves each release with 2FA before it goes live
+(`npm stage publish`, npm 11.15.0 or newer), also needs a package that exists. So it can follow
+the first release but not replace the token for it. A trusted publisher limited to staging, with
+the publish step switched to `npm stage publish`, would make every later release wait for that
+approval.
+
 Renaming `publish-mcp.yml` breaks trusted publishing, because the registered publisher names the
 file. A later release is a version bump merged to `main`, then a release tagged `mcp-v` and the
 new version.
