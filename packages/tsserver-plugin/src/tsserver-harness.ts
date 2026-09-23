@@ -378,7 +378,9 @@ export function writeFixture(files: Readonly<Record<string, string>>): string {
   return dir;
 }
 
-/** Removes a fixture directory. */
+/** Removes a fixture directory. A tsserver that is still shutting down can write a file into
+ *  it while the removal walks it, which fails the walk with ENOTEMPTY after every test passed
+ *  (seen on node 20 in CI); `maxRetries` is Node's own retry for that race. */
 export function removeFixture(dir: string): void {
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
