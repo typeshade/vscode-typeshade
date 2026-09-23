@@ -18,8 +18,12 @@
 //               the development host, where `node_modules` is on disk.
 //   MCP server  `typescript` is EXTERNAL again, for a third reason: the server is an npm
 //               package with a `bin`, so npm installs `typescript` beside it as an ordinary
-//               dependency, and nothing hands it one. The MCP SDK and zod are inlined, which
-//               leaves `typescript` the package's only dependency (`docs/agents.md`).
+//               dependency, and nothing hands it one. The MCP SDK and zod are external too:
+//               the SDK's own build carries ajv, ajv-formats and three of ajv's dependencies,
+//               and a bundle of that would republish their code without their license notices.
+//               Installed by npm, each package keeps its own, and the bundle holds only the
+//               compiler and this repository, both under the LICENSE the publish copies in
+//               (`docs/agents.md` §3.6).
 
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
@@ -128,7 +132,7 @@ built.push(
   await bundle({
     entry: 'packages/mcp-server/src/index.ts',
     outfile: 'packages/mcp-server/dist/index.js',
-    external: ['typescript'],
+    external: ['typescript', '@modelcontextprotocol/server', 'zod'],
     define: {
       __TYPESHADE_MCP_VERSION__: JSON.stringify(mcpPackage.version),
       __TYPESHADE_COMPILER__: JSON.stringify(compilerVersion()),

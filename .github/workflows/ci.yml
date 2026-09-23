@@ -12,6 +12,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # `publish-mcp.yml` calls this workflow, so the gate a release runs is literally the job below
+  # rather than a second copy that can drift into a weaker one.
+  workflow_call:
 
 permissions:
   contents: read

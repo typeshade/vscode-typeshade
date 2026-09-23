@@ -15,11 +15,12 @@ This repository holds three packages and a Claude Code plugin:
 
 ## Status
 
-Early. Nothing is published to npm or to the Visual Studio Marketplace yet, and the compiler
-itself is not on npm either, so the packages are marked private while the interfaces settle.
-The plan, the architecture and the decisions behind them are in
-[`docs/design.md`](./docs/design.md) for the editor and [`docs/agents.md`](./docs/agents.md) for
-coding agents.
+Early. Nothing is published to npm or to the Visual Studio Marketplace yet. `@typeshade/mcp` is
+ready to publish from a GitHub release, and the first one needs an npm token the owner adds to
+this repository once ([`docs/agents.md`](./docs/agents.md) §6). The compiler itself is not on
+npm either, so the other two packages stay private while the interfaces settle. The plan, the
+architecture and the decisions behind them are in [`docs/design.md`](./docs/design.md) for the
+editor and [`docs/agents.md`](./docs/agents.md) for coding agents.
 
 | Piece                            | State                                                    |
 | -------------------------------- | -------------------------------------------------------- |
@@ -27,6 +28,7 @@ coding agents.
 | Design document                  | done, [`docs/design.md`](./docs/design.md)               |
 | TypeScript server plugin         | done, tested against a real tsserver                     |
 | MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client     |
+| MCP server publish workflow      | done; the first release needs an npm token once          |
 | Skill and Claude Code plugin     | done; the plugin's server entry waits on the npm package |
 | VS Code extension and preview    | after the plugin                                         |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands               |
@@ -51,7 +53,7 @@ Agent Skills format, so it can also be copied into Codex, Cursor or Gemini CLI a
 ## Develop
 
 The compiler is a pinned git submodule under `vendor/typeshade` until it publishes to npm
-([`docs/design.md`](./docs/design.md) §2), and both artifacts bundle it, so a checkout without
+([`docs/design.md`](./docs/design.md) §2), and every artifact bundles it, so a checkout without
 it fails at the first import:
 
 ```bash

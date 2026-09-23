@@ -6,11 +6,14 @@
 // because that is what a GPU computes.
 //
 // One departure from the adapter's path is deliberate. The adapter makes one call,
-// `startDebugSessionFromConfig`, and that call has no step budget: a person at a debugger can
-// stop a run that does not end, and an agent's tool call cannot. So this module does what that
-// call does, with the two public resolvers it is built from (`resolveInvocation`,
-// `resolveBindings`), and hands `startDebugSession` a `maxSteps` as well. A shader that loops
-// for too long then ends the tool call with a sentence instead of hanging the server.
+// `startDebugSessionFromConfig`, and that call takes no step budget. The engine's own
+// documentation says a caller running someone else's shader should set one, because a run is a
+// loop on the caller's thread that nothing can interrupt; here the caller is the server and the
+// shader is an agent's. So this module does what that call does, with the two public resolvers
+// it is built from (`resolveInvocation`, `resolveBindings`), and hands `startDebugSession` a
+// `maxSteps` as well. A shader that runs too long then ends the tool call with a sentence
+// instead of hanging the server. typeshade/typeshade#215 asks for the key in the launch
+// configuration, which would let this module make the one call.
 
 import {
   createValueFormatter,

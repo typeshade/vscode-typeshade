@@ -12,8 +12,13 @@ import { BROKEN, CLEAN, testProject, type TestProject } from './fixtures.js';
 // the half they cannot reach, which is the bundle loading at all, the handshake, the schemas,
 // and a tool's failure arriving as a result the model reads rather than as a protocol error.
 // `npm run build` must have run: `npm run check` does it first, as it does for the plugin.
+//
+// `TYPESHADE_MCP_BIN` points the suite at another copy of the server. The publish workflow sets
+// it to the packed tarball installed into an empty directory, so the same suite runs against
+// the bytes npm is about to receive, with the dependencies npm installed for them.
 
-const BUNDLE = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const BUNDLE =
+  process.env.TYPESHADE_MCP_BIN ?? fileURLToPath(new URL('../dist/index.js', import.meta.url));
 
 /** The text of a tool result. */
 function textOf(result: { content?: unknown }): string {

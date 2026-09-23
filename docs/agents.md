@@ -1,9 +1,10 @@
 # TypeShade for coding agents: an MCP server, a skill and a Claude Code plugin
 
 Status: **proposal**, with all three built and tested in the pull request that adds this file.
-The pinned compiler is `typeshade/typeshade` at `ef049e4`, as in `docs/design.md`. Every claim
-about the compiler names the file it comes from, and every claim about another tool names where
-it was checked, because the tools this document compares move faster than the compiler does.
+The owner answered its open questions on 2026-09-23, taking every suggestion (§8). The pinned
+compiler is `typeshade/typeshade` at `ef049e4`, as in `docs/design.md`. Every claim about the
+compiler names the file it comes from, and every claim about another tool names where it was
+checked, because the tools this document compares move faster than the compiler does.
 
 Related: `docs/design.md` (the editor: the tsserver plugin and the VS Code extension, whose
 layering this document keeps) and the compiler's `docs/language-service-api.md` (the service all
@@ -86,7 +87,7 @@ same three specifier mappings (`tsconfig.base.json`, `scripts/build.mjs`,
 `DocumentSync` (§3), which is the part of the plugin that took the longest to get right.
 
 It adds no dependency to the compiler, which keeps the compiler's near-zero-dependency rule
-(its `AGENTS.md`) intact: the MCP SDK and zod are bundled into the server, not into anything
+(its `AGENTS.md`) intact: the MCP SDK and zod are the server's own dependencies, not anything
 the compiler ships.
 
 ## 2. The tools
@@ -162,12 +163,15 @@ client that answers `roots/list` has said where the project is.
 result is the compiler's own reference, at f32 by default because that is what a GPU computes
 (`docs/debugging.md` §5 decision 6 in the compiler). It does not use the adapter's one call,
 `startDebugSessionFromConfig`, because that call takes no step budget, and an unattended server
-must not be hung by a loop that does not end. It calls the two public resolvers that call is
-built from, `resolveInvocation` and `resolveBindings`, then `startDebugSession` with `maxSteps`
-of two million statements. The compiler bounds every loop at 256 trips, so a real shader stays
-far below that; a shader written to reach it (three nested loops of 256) takes about three
-seconds and ends with the engine's own sentence. Asking the compiler to accept `maxSteps` in the
-launch configuration would let the server return to the one call (§8, item 2).
+must not be held by a run that does not finish. The compiler bounds each loop at 256 trips but
+not their product: three nested loops of 256 compile clean and take 30.8 s through that call
+at the compiler's `bbf3eff`, and a fourth nest would take hours. So `run` calls the two public
+resolvers that call is built from, `resolveInvocation` and `resolveBindings`, then
+`startDebugSession` with `maxSteps` of two million statements, which a real shader stays far
+below; the three nested loops reach it in about 1.6 s and end with the engine's own sentence.
+The compiler is asked to accept `maxSteps` in the launch configuration
+([typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215)), which would let
+the server make the one call (§8, item 2).
 
 GPU-only intrinsics (derivatives, texture reads) have no CPU value, and the engine refuses them
 unless stand-ins are asked for. The server keeps the engine's default and its reason, "a
@@ -192,11 +196,23 @@ Anything else gets the nearest names by edit distance.
 ### 3.6 The SDK, and what the bundle carries
 
 `@modelcontextprotocol/server` 2.0.0: the v2 line has been the stable one since 2026-07-27 and
-v1 is in maintenance. It is bundled with zod, so the package's only dependency is `typescript`,
-external for the reason the plugin's is: one copy, the one npm installs beside it. The bundle is
-2028 KB. Its handshake reports the compiler it carries, as the vendored `package.json` version
-and the submodule's commit, because a model told which language it is talking to can tell a
-language change from its own mistake.
+v1 is in maintenance. The SDK, zod and `typescript` are the package's dependencies, installed by
+npm beside it; `typescript` is external for the reason the plugin's is, one copy, the one npm
+installs. The bundle holds only the compiler and this repository's code, both under the MIT
+`LICENSE` the publish copies in beside the manifest (§6), and it is 1269 KB. Its handshake
+reports the compiler it carries, as the vendored `package.json` version and the submodule's
+commit, because a model told which language it is talking to can tell a language change from
+its own mistake.
+
+The first version bundled the SDK and zod as well, which left `typescript` the only dependency.
+It stopped when the package was prepared for npm. The SDK's own build inlines ajv, ajv-formats,
+fast-uri, fast-deep-equal and json-schema-traverse without their license texts, and fast-uri's
+BSD license asks for its notice in every redistribution, so a bundle of it would republish that
+code without the notices. Installed by npm, each package arrives as its own publisher shipped it.
+The cost was measured, three runs each through a raw stdio client: the handshake takes 420 to
+471 ms against 358 to 381 ms bundled, and no tool call moves. The SDK is pinned exactly, so what
+`npx` starts is the SDK the tests ran; zod takes a caret range inside the SDK's own, so npm
+installs one copy for both.
 
 ## 4. The skill
 
@@ -256,48 +272,88 @@ effect in every tsserver-based tool, with no plugin change at all.
 
 ## 6. Publishing
 
-`@typeshade/mcp` is marked private, like the other two packages, and publishing it is the
-owner's decision, with the same shape `docs/design.md` §7 gives the tsserver plugin: npm trusted
-publishing (or an `NPM_ACCESS_TOKEN`), provenance, a release tag equal to the version, and the
-root `LICENSE` copied beside the manifest before `npm publish`. Unlike the plugin, it does not
-have to wait for the compiler to publish: the bundle carries the compiler, so its one dependency
-is `typescript`, which is on npm.
+**Decided 2026-09-23: `@typeshade/mcp` publishes before the compiler's 0.1.0** (§8, item 1).
+Unlike the tsserver plugin, it does not have to wait for the compiler: the bundle carries the
+compiler, and its dependencies are all on npm. The other two packages stay private.
+
+`.github/workflows/publish-mcp.yml` publishes it, in the shape `docs/design.md` §7 sets for this
+repository's npm packages, after the compiler's own `publish.yml`:
+
+- **A GitHub release tagged `mcp-v` and the version is the trigger**, `mcp-v0.1.0` for the
+  version in `packages/mcp-server/package.json`. A tag that does not match that version fails
+  the run before anything is packed.
+  - A release with any other tag is not this package's, and every job skips it.
+  - The extension's publish workflow (PR 5) needs the mirror-image guard, since each release
+    event reaches both.
+- **The gate runs again**, by calling `ci.yml`, because npm forbids republishing a version.
+- **The tarball is tested as a user gets it.** A `pack` job builds, copies the root `LICENSE`
+  in beside the manifest, and packs. It installs the tarball into an empty directory with the
+  dependencies npm resolves for it, and runs `server.test.ts` against that installed copy
+  (`TYPESHADE_MCP_BIN`).
+- **The job that can publish runs no dependency code.** The `publish` job is the only one with
+  `id-token: write`. It installs nothing, and uploads the tarball `pack` tested with
+  `npm publish --provenance --access public`.
+- **A manual run never uploads.** `workflow_dispatch` runs every step and ends in
+  `npm publish --dry-run`.
+
+**What the owner does, because nobody else can.** npm lets a trusted publisher be registered
+only for a package that already exists (`npm trust` says so in as many words), so the first
+release needs a token:
+
+1. Create an npm granular access token with **Read and write** on the `@typeshade` scope. A
+   token for the package alone cannot exist before the package does. Add it to this repository
+   as the Actions secret `NPM_ACCESS_TOKEN`.
+2. Publish a GitHub release tagged `mcp-v0.1.0` on the commit to release. npm tries trusted
+   publishing first and, with no publisher registered, falls back to the secret.
+3. On `https://www.npmjs.com/package/@typeshade/mcp/access`, register a trusted publisher:
+   GitHub Actions, organization `typeshade`, repository `vscode-typeshade`, workflow
+   `publish-mcp.yml`, no environment. Then delete the secret, so the next release proves the
+   OIDC path. The compiler's `RELEASING.md` §0 walks the same screens for `typeshade`.
+
+Renaming `publish-mcp.yml` breaks trusted publishing, because the registered publisher names the
+file. A later release is a version bump merged to `main`, then a release tagged `mcp-v` and the
+new version.
 
 ## 7. Measured
 
-On this container, through the built bundle and a raw stdio client, three runs:
+On this container, through the packed 0.1.0 tarball installed into an empty directory (so with
+the SDK, zod and TypeScript 5.9.3 as npm resolved them) and a raw stdio client, three runs:
 
-| What                                      | Time          |
-| ----------------------------------------- | ------------- |
-| Start to the end of the handshake         | 496 to 567 ms |
-| First `check` (builds the program)        | 233 to 258 ms |
-| The same `check` again                    | 8 to 14 ms    |
-| `check` of a second file                  | 22 to 26 ms   |
-| `hover`                                   | 12 to 15 ms   |
-| `compile` to WGSL and GLSL                | 8 to 9 ms     |
-| `run` of a fragment entry                 | 11 to 17 ms   |
-| First `docs` (parses the ambient lib)     | 49 to 62 ms   |
-| `run` that reaches the two-million budget | about 2.9 s   |
+| What                                      | Time           |
+| ----------------------------------------- | -------------- |
+| Start to the end of the handshake         | 404 to 444 ms  |
+| First `check` (builds the program)        | 151 to 175 ms  |
+| The same `check` again                    | 7 ms           |
+| `check` of a second file                  | 18 to 20 ms    |
+| `hover`                                   | 12 to 15 ms    |
+| `compile` to WGSL and GLSL                | 6 to 7 ms      |
+| `run` of a fragment entry                 | 8 ms           |
+| First `docs` (parses the ambient lib)     | 40 to 46 ms    |
+| `run` that reaches the two-million budget | 1.56 to 1.66 s |
 
 ## 8. Open questions
 
-Each with the answer this document would take.
+The owner took every suggestion on 2026-09-23, so these are kept as a record of what was decided
+rather than a list of what is waiting.
 
-1. **Publish `@typeshade/mcp` before the compiler's 0.1.0?** _Suggested: yes._ It bundles the
-   compiler and depends on nothing unpublished, and the plugin's server entry is inert until it
-   exists.
-2. **Should `startDebugSessionFromConfig` take `maxSteps`?** _Suggested: yes, as an issue on the
-   compiler._ The server could then make the adapter's one call (§3.4).
-3. **A call across two shader files reports `TS8004` at this pin**, from the service and from
+1. ~~**Publish `@typeshade/mcp` before the compiler's 0.1.0?**~~ **Decided 2026-09-23: yes.** It
+   bundles the compiler and depends on nothing unpublished, and the plugin's server entry is
+   inert until it exists. §6 is how.
+2. ~~**Should `startDebugSessionFromConfig` take `maxSteps`?**~~ **Decided 2026-09-23: yes, as
+   an issue on the compiler**, filed as
+   [typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215). When a pin
+   carries it, `run` makes the adapter's one call (§3.4).
+3. ~~**A call across two shader files reports `TS8004` at this pin**~~, from the service and from
    `compile()` alike: both analyse one file, and the compiler's multi-file form,
    `compileTsSources`, is not on its public surface (`src/__api__/surface.md` does not list it).
-   _Suggested: report what they report._ The server is an adapter, and the fix belongs to the
-   compiler.
-4. **A hook that checks every edited shader without being asked?** A plugin can run a command
-   after each `Edit` or `Write`. _Suggested: after the package is on npm, and only if the skill's
-   instruction to call `check` turns out not to be followed._ A hook that starts `npx` on every
-   edit costs a process per keystroke-sized change.
-5. **The language server in the plugin** (§5). _Suggested: when `@typeshade/tsserver-plugin` is
-   published, as a separate plugin, so a user of the official `typescript-lsp` plugin can choose._
+   **Decided 2026-09-23: report what they report.** The server is an adapter, and the fix belongs
+   to the compiler.
+4. ~~**A hook that checks every edited shader without being asked?**~~ A plugin can run a command
+   after each `Edit` or `Write`. **Decided 2026-09-23: not yet.** Only after the package is on
+   npm, and only if the skill's instruction to call `check` turns out not to be followed. A hook
+   that starts `npx` on every edit costs a process per keystroke-sized change.
+5. ~~**The language server in the plugin** (§5).~~ **Decided 2026-09-23: later**, when
+   `@typeshade/tsserver-plugin` is published, as a separate plugin, so a user of the official
+   `typescript-lsp` plugin can choose.
 
 Last updated: 2026-09-23

@@ -1,0 +1,170 @@
+name: publish-mcp
+
+# Publishes `@typeshade/mcp` to npm (`docs/agents.md` §6), in the shape `docs/design.md` §7 sets
+# for this repository's npm packages, after the compiler's own `publish.yml`. One event uploads: a
+# GitHub release whose tag is `mcp-v` and the package's version. Creating that release IS the
+# publish, so there is no `npm publish` on anybody's laptop.
+#
+# THE TAG PREFIX. The extension and this package keep versions of their own (design.md §7), and
+# a release event reaches every workflow that listens for one. A release is this package's only
+# when its tag starts with `mcp-v`; any other release skips every job here, and the extension's
+# publish workflow needs the mirror-image guard.
+#
+# WHY THE GATE RUNS AGAIN, when CI already ran it on the commit: npm forbids republishing a
+# version, so one bad upload burns the number. `verify` CALLS ci.yml (`workflow_call`), so the
+# checks a release runs are the CI jobs themselves rather than a copy that can drift.
+#
+# TWO JOBS, SO THE ONE THAT CAN PUBLISH RUNS NO DEPENDENCY CODE. `pack` installs the workspace,
+# builds, packs, installs the tarball into an empty directory and runs the stdio suite against
+# that installed copy, with no credential and no `id-token`. `publish` takes the tarball `pack`
+# tested and uploads those exact bytes; it installs nothing.
+#
+# A MANUAL RUN NEVER UPLOADS. `workflow_dispatch` runs every step and ends in `npm publish
+# --dry-run`, so the packaging can be exercised without a release (design.md §7).
+#
+# AUTHENTICATION is npm trusted publishing, with an NPM_ACCESS_TOKEN secret as the fallback. npm
+# first exchanges the job's `id-token` for a credential, against a publisher the package owner
+# registers on npmjs.com naming this repository and this file, and falls back to a token in
+# .npmrc, which the publish step writes from the secret when it is set. npm registers a publisher
+# only for a package that already exists, so the first release goes through the token
+# (docs/agents.md §6). Trusted publishing needs npm 11.5.1 or newer, and the runner's bundled npm
+# is 10.x, so the job upgrades it.
+#
+# RENAMING THIS FILE BREAKS TRUSTED PUBLISHING, because the registered publisher names it.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mcp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'mcp-v')
+    uses: ./.github/workflows/ci.yml
+
+  pack:
+    name: pack, and test the installed tarball
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # A release event's ref is the tag, but say so rather than rely on it.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+          # The bundle carries the pinned compiler (design.md §2).
+          submodules: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: The tag must be mcp-v and the package's version
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          echo "tag=$TAG  packages/mcp-server/package.json=$VERSION"
+          if [ "$TAG" != "mcp-v$VERSION" ]; then
+            echo "::error::release tag '$TAG' does not match @typeshade/mcp's version '$VERSION'." \
+                 "Expected the tag 'mcp-v$VERSION'. Nothing was published; fix the version or the" \
+                 "tag and cut the release again. See docs/agents.md §6."
+            exit 1
+          fi
+
+      - run: npm run build
+
+      # npm packs a LICENSE only from the package's own directory, and this one has none.
+      - name: Copy the LICENSE beside the manifest
+        run: cp LICENSE packages/mcp-server/LICENSE
+
+      - name: Pack, and record what is in the tarball
+        working-directory: packages/mcp-server
+        run: |
+          set -euo pipefail
+          npm pack --dry-run 2>&1 | sed -e 's/^npm notice //' | tee /tmp/pack.txt
+          mkdir -p /tmp/tarball
+          npm pack --pack-destination /tmp/tarball --silent
+          {
+            echo '### Tarball'
+            echo
+            echo '```'
+            grep -E 'name:|version:|filename:|package size:|unpacked size:|total files:' /tmp/pack.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The dependencies are npm's resolution for the tarball, not this workspace's lockfile,
+      # which is what a user's `npx -y @typeshade/mcp` gets.
+      - name: Install the tarball into an empty directory
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify && cd /tmp/verify
+          echo '{"name":"verify","version":"1.0.0","private":true}' > package.json
+          npm install --no-audit --no-fund /tmp/tarball/typeshade-mcp-*.tgz
+          ./node_modules/.bin/typeshade-mcp --version
+
+      - name: The installed server must pass the stdio suite
+        env:
+          TYPESHADE_MCP_BIN: /tmp/verify/node_modules/@typeshade/mcp/dist/index.js
+        run: npx vitest run packages/mcp-server/src/server.test.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: /tmp/tarball/typeshade-mcp-*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish the tested tarball
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Both the provenance attestation and trusted publishing exchange this for a credential.
+      # Without it `--provenance` fails and the OIDC flow is not attempted.
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Upgrade npm
+        run: |
+          npm install -g npm@latest
+          npm --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball
+          path: tarball
+
+      # The `./` in the two steps below is load-bearing: without it npm reads `tarball/x.tgz` as
+      # the GitHub shorthand for a repository and runs `git ls-remote` against it.
+      - name: Publish to npm
+        if: github.event_name == 'release'
+        env:
+          NPM_ACCESS_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$NPM_ACCESS_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=\${NPM_ACCESS_TOKEN}" >> ~/.npmrc
+            echo "NPM_ACCESS_TOKEN is set: npm tries trusted publishing first and falls back to it."
+          fi
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public
+
+      - name: Dry run, not published
+        if: github.event_name != 'release'
+        run: |
+          set -euo pipefail
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run
+          echo "Dry run: nothing was uploaded." >> "$GITHUB_STEP_SUMMARY"

@@ -7,7 +7,8 @@ emits, types and navigation, the vocabulary, and a run of a shader function on t
 
 It is a third adapter over the compiler's `TypeshadeLanguageService`, beside the tsserver plugin
 and the VS Code extension, so an agent and a person looking at the same file see the same
-errors. The design and the decisions are in [`docs/agents.md`](../../docs/agents.md).
+errors. The design and the decisions are in
+[`docs/agents.md`](https://github.com/typeshade/vscode-typeshade/blob/main/docs/agents.md).
 
 ## Tools
 
@@ -28,18 +29,8 @@ resource `typeshade://ambient/shade.d.ts`.
 
 ## Install
 
-The package is not on npm yet (`docs/agents.md` §6). Until it is, build it from this
-repository and point the client at the bundle:
-
-```bash
-git clone --recurse-submodules https://github.com/typeshade/vscode-typeshade
-cd vscode-typeshade && npm install && npm run build
-# the server is now packages/mcp-server/dist/index.js
-```
-
-The snippets below use `npx -y @typeshade/mcp`, which is what they will say once it is
-published; with a local build, use `node /path/to/vscode-typeshade/packages/mcp-server/dist/index.js`
-as the command instead.
+An MCP client starts the server with `npx -y @typeshade/mcp`, which is what the snippets below
+do. It needs Node 20 or newer, and npm installs TypeScript 5 beside it.
 
 **Claude Code.** The plugin in this repository installs the server together with the TypeShade
 skill:
@@ -79,6 +70,18 @@ args = ["-y", "@typeshade/mcp"]
 }
 ```
 
+**From a checkout.** Versions reach npm from GitHub releases tagged `mcp-v` and the version
+([`docs/agents.md`](https://github.com/typeshade/vscode-typeshade/blob/main/docs/agents.md) §6).
+Before the first one, or to try a change, build the repository and use
+`node /path/to/vscode-typeshade/packages/mcp-server/dist/index.js` as the command in place of
+`npx -y @typeshade/mcp`:
+
+```bash
+git clone --recurse-submodules https://github.com/typeshade/vscode-typeshade
+cd vscode-typeshade && npm install && npm run build
+# the server is now packages/mcp-server/dist/index.js
+```
+
 ## Which files it reads
 
 Only files under its roots, after following symbolic links. The roots are, in order of
@@ -92,4 +95,6 @@ starts servers somewhere else and reports no roots needs `--root`, for example
 `npm run build` at the repository root builds this package with the other two, and
 `npm run test` runs its suites: `tools.test.ts` calls every tool on shaders written to a
 temporary directory, and `server.test.ts` starts the built bundle and speaks to it over stdio
-with the official MCP client, so it needs the build first, as the plugin's suite does.
+with the official MCP client, so it needs the build first, as the plugin's suite does. Set
+`TYPESHADE_MCP_BIN` to run that suite against another copy of the server; the publish workflow
+points it at the packed tarball, installed into an empty directory.
