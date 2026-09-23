@@ -1,6 +1,6 @@
 {
   "name": "typeshade",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Write \"use typeshade\" shaders with an agent: a skill that teaches the language, and an MCP server that answers from TypeShade's own compiler.",
   "author": {
     "name": "Seungup Noh"
