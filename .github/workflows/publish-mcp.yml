@@ -25,15 +25,20 @@ name: publish-mcp
 # tested and uploads those exact bytes; it installs nothing.
 #
 # A MANUAL RUN NEVER UPLOADS. `workflow_dispatch` runs every step and ends in `npm publish
-# --dry-run`, so the packaging can be exercised without a tag (design.md §7).
+# --dry-run`, so the packaging can be exercised without a tag (design.md §7). npm refuses a dry
+# run of a version it already has, so dispatch it on the branch that bumps the version. The dry
+# run also says whether trusted publishing authenticated it, and quotes npm's reason when not.
 #
 # AUTHENTICATION is npm trusted publishing, with an NPM_ACCESS_TOKEN secret as the fallback. npm
 # first exchanges the job's `id-token` for a credential, against a publisher the package owner
 # registers on npmjs.com naming this repository and this file, and falls back to a token in
 # .npmrc, which the publish step writes from the secret when it is set. npm registers a publisher
 # only for a package that already exists, so the first release goes through the token
-# (docs/agents.md §6). Trusted publishing needs npm 11.5.1 or newer, and the runner's bundled npm
-# is 10.x, so the job upgrades it.
+# (docs/agents.md §6). The publisher is registered now, but npm still refuses the exchange for
+# this repository: GitHub gives repositories created after 2026-07-15 an immutable OIDC subject,
+# which npm does not match yet (npm/cli#9969), so the token is what publishes until the dry run
+# says otherwise. Trusted publishing needs npm 11.5.1 or newer, and the runner's bundled npm is
+# 10.x, so the job upgrades it.
 #
 # RENAMING THIS FILE BREAKS TRUSTED PUBLISHING, because the registered publisher names it.
 
@@ -176,9 +181,26 @@ jobs:
           fi
           npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public
 
+      # npm exchanges the `id-token` before it looks at --dry-run, and this step holds no token,
+      # so npm's `requires you to be logged in` warning means trusted publishing did not
+      # authenticate the run. A release would then publish through the token, since the publish
+      # step falls back to it without a word. npm logs the registry's reason for refusing the
+      # exchange only at the verbose level.
       - name: Dry run, not published
         if: github.event_name != 'push'
         run: |
-          set -euo pipefail
-          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run
-          echo "Dry run: nothing was uploaded." >> "$GITHUB_STEP_SUMMARY"
+          set -uo pipefail
+          status=0
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run \
+            --loglevel verbose 2>&1 | tee /tmp/dry-run.txt || status=$?
+          if grep -q 'requires you to be logged in' /tmp/dry-run.txt; then
+            reason=$(grep -m1 'verbose oidc' /tmp/dry-run.txt | sed 's/^npm verbose oidc //' || true)
+            echo "::warning::Trusted publishing did not authenticate this run" \
+                 "(npm: ${reason:-no reason logged}), so a release publishes through" \
+                 "NPM_ACCESS_TOKEN. See docs/agents.md §6."
+            echo "Dry run, nothing uploaded. Trusted publishing did not authenticate it; a release" \
+                 "uses the token." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Dry run, nothing uploaded. Trusted publishing authenticated it." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

@@ -917,24 +917,27 @@ the way it was for an unscoped name: a scoped package defaults to restricted, an
 publish without it fails on a private-package payment error rather than on anything that reads
 like the real cause.
 
-**Authentication prefers trusted publishing, with a token as the fallback**, which is the
-compiler's choice too. With npm's OIDC flow the workflow needs no secret at all: the job asks
-for `id-token: write` and npm verifies it against a publisher the package owner registers once
-on npmjs.com, naming this repository and this workflow file. With an `NPM_ACCESS_TOKEN` secret
-present instead, the workflow writes it to `.npmrc` and npm uses that. Two things follow, and
-both are the kind that are only ever learned the expensive way. Trusted publishing needs
-npm 11.5.1 or newer, so the job upgrades npm before publishing rather than trusting the
-runner's bundled 10.x. And **renaming the workflow file breaks trusted publishing**, because
-the registered publisher names the filename, so the file is named once and left alone.
+**Authentication is meant to be trusted publishing, once the package exists.** With npm's OIDC
+flow the workflow needs no secret at all: the job asks for `id-token: write` and npm verifies it
+against a publisher the package owner registers once on npmjs.com, naming this repository and
+this workflow file. npm registers a publisher only for a package that already exists, so the
+first release goes through an `NPM_ACCESS_TOKEN` secret that the workflow writes to `.npmrc`.
+And npm does not yet match the OIDC subject GitHub gives repositories created after 2026-07-15,
+this one included ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so for now the token
+publishes every release. `publish-mcp.yml` keeps it as the fallback, and its dry run says when
+trusted publishing starts to authenticate (`docs/agents.md` §6). Two more things are the kind
+that are only ever learned the expensive way. Trusted publishing needs npm 11.5.1 or newer, so
+the job upgrades npm before publishing rather than trusting the runner's bundled 10.x. And
+**renaming the workflow file breaks trusted publishing**, because the registered publisher names
+the filename, so the file is named once and left alone.
 
 **What the owner had to do once, and nobody else could.** Two of three are done, on
 2026-09-14: the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its
-`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5:
-either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-`typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret here.
-Trusted publishing is the better end state, since there is nothing to leak and nothing to
-rotate, and it has to be registered BEFORE the first release: a release that fails on a missing
-publisher is a tag already pushed with nothing on the registry.
+`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5: a
+token for the first release, then npm trusted publishing for `@typeshade/tsserver-plugin`,
+naming `typeshade/vscode-typeshade` and the workflow file. Trusted publishing is the better end
+state, since there is nothing to leak and nothing to rotate, but it cannot come first (§8,
+item 4).
 
 ## 8. Open questions
 
@@ -1001,11 +1004,14 @@ is still open and is not needed until after PR 5.
    revision of this document recorded the unscoped name; `packages/tsserver-plugin/package.json`
    and the probe now carry the scoped one, and the probe was re-run to confirm tsserver resolves
    it (§6).
-4. **Still open: how the plugin authenticates to npm**, which matters only when it publishes,
-   after PR 5. Either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-   `typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret to
-   this repository. Trusted publishing is the better end state and has to be registered before
-   the first release; the workflow is designed to take either (§7).
+4. **Still open: how the plugin's first release authenticates to npm**, which matters only when
+   it publishes, after PR 5. npm registers a trusted publisher only for a package that already
+   exists, so trusted publishing cannot come first. `@typeshade/mcp` went out first on a token
+   that bypasses two-factor authentication, and its publisher was registered after that
+   (`docs/agents.md` §6). npm stops such tokens from publishing in January 2027, so a first
+   release after that needs another route, such as a maintainer publishing it by hand with 2FA.
+   And trusted publishing does not authenticate this repository at all until npm fixes
+   [npm/cli#9969](https://github.com/npm/cli/issues/9969).
 
 Nothing before that step is blocked on an answer.
 
