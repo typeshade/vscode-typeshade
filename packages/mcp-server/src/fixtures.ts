@@ -51,7 +51,7 @@ class Camera {
 }
 
 declare const camera: uniform<Camera>
-declare let pixels: storage<array<f32>>
+declare const pixels: storage<array<f32>, "read_write">
 
 @compute([64, 1, 1])
 export function paint(@builtin("global_invocation_id") gid: vec3u) {
