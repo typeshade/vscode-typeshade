@@ -1,0 +1,34 @@
+{
+  "name": "@typeshade/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Model Context Protocol server that gives coding agents TypeShade's own diagnostics, compiled WGSL and GLSL, navigation, vocabulary and a CPU run of a shader.",
+  "license": "MIT",
+  "author": "Seungup Noh",
+  "homepage": "https://typeshade.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typeshade/vscode-typeshade.git",
+    "directory": "packages/mcp-server"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "typeshade-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build.mjs"
+  },
+  "dependencies": {
+    "typescript": ">=5.0.0 <6"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "^4.6.5"
+  }
+}

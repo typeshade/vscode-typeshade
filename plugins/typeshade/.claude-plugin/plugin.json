@@ -1,0 +1,12 @@
+{
+  "name": "typeshade",
+  "version": "0.1.0",
+  "description": "Write \"use typeshade\" shaders with an agent: a skill that teaches the language, and an MCP server that answers from TypeShade's own compiler.",
+  "author": {
+    "name": "Seungup Noh"
+  },
+  "homepage": "https://typeshade.dev",
+  "repository": "https://github.com/typeshade/vscode-typeshade",
+  "license": "MIT",
+  "keywords": ["typeshade", "shader", "wgsl", "glsl", "webgpu", "mcp"]
+}

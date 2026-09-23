@@ -1,0 +1,19 @@
+{
+  "name": "typeshade",
+  "description": "TypeShade for coding agents: the language as a skill, and the compiler as an MCP server.",
+  "owner": {
+    "name": "TypeShade",
+    "url": "https://typeshade.dev"
+  },
+  "plugins": [
+    {
+      "name": "typeshade",
+      "source": "./plugins/typeshade",
+      "description": "Write \"use typeshade\" shaders with an agent: a skill that teaches the language, and an MCP server that answers from TypeShade's own compiler (diagnostics, WGSL and GLSL output, navigation, vocabulary, a CPU run of a shader).",
+      "homepage": "https://typeshade.dev",
+      "repository": "https://github.com/typeshade/vscode-typeshade",
+      "license": "MIT",
+      "keywords": ["typeshade", "shader", "wgsl", "glsl", "webgpu", "mcp"]
+    }
+  ]
+}
