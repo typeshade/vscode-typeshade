@@ -281,19 +281,30 @@ effect in every tsserver-based tool, with no plugin change at all.
 Unlike the tsserver plugin, it does not have to wait for the compiler: the bundle carries the
 compiler, and its dependencies are all on npm. The other two packages stay private.
 
-**Published 2026-09-23: 0.1.0**, from the release `mcp-v0.1.0`
-([run 35847533779](https://github.com/typeshade/vscode-typeshade/actions/runs/35847533779)), with
-an SLSA provenance attestation that `npm audit signatures` verifies.
+**Published 2026-09-23:**
+
+- **0.1.0**, from the release `mcp-v0.1.0`
+  ([run 35847533779](https://github.com/typeshade/vscode-typeshade/actions/runs/35847533779)).
+- **0.1.1**, the compiler at `eb0dde6`, from the pushed tag `mcp-v0.1.1`
+  ([run 35851490904](https://github.com/typeshade/vscode-typeshade/actions/runs/35851490904)),
+  the first run of the tag trigger.
+
+Each carries an SLSA provenance attestation that `npm audit signatures` verifies.
 
 `.github/workflows/publish-mcp.yml` publishes it, in the shape `docs/design.md` §7 sets for this
 repository's npm packages, after the compiler's own `publish.yml`:
 
-- **A GitHub release tagged `mcp-v` and the version is the trigger**, `mcp-v0.1.0` for the
-  version in `packages/mcp-server/package.json`. A tag that does not match that version fails
-  the run before anything is packed.
-  - A release with any other tag is not this package's, and every job skips it.
-  - The extension's publish workflow (PR 5) needs the mirror-image guard, since each release
-    event reaches both.
+- **A pushed tag `mcp-v` and the version is the trigger**, `mcp-v0.1.1` for the version in
+  `packages/mcp-server/package.json`. `git push origin mcp-v0.1.1` starts it, and so does a
+  GitHub release created on the web with a new tag, since that pushes the tag. The release
+  itself is not a trigger, so the two never start two runs. 0.1.0 went out under the earlier
+  trigger, a published release.
+  - The `tags: ['mcp-v*']` filter starts the workflow for this package's tags only. The
+    extension's publish workflow (PR 5) needs a prefix of its own.
+  - **The tagged commit must be on `main`**, so a tag on an unreviewed branch cannot publish.
+    A tag whose version does not match fails as well. Both checks run before anything is packed.
+  - Pushing a tag is publishing, so a tag ruleset that limits who may create `mcp-v*` is the
+    other half of the guard. Only the owner can set it.
 - **The gate runs again**, by calling `ci.yml`, because npm forbids republishing a version.
 - **The tarball is tested as a user gets it.** A `pack` job builds, copies the root `LICENSE`
   in beside the manifest, and packs. It installs the tarball into an empty directory with the
@@ -314,8 +325,9 @@ release needs a token:
    cannot exist before the package does. Put it in the Actions secret `NPM_ACCESS_TOKEN`: the
    organization's secret of that name reaches this repository, and a repository secret of the
    same name would take precedence.
-2. Publish a GitHub release tagged `mcp-v0.1.0` on the commit to release. npm tries trusted
-   publishing first and, with no publisher registered, falls back to the secret.
+2. Publish a GitHub release tagged `mcp-v0.1.0` on the commit to release (the trigger at the
+   time). npm tries trusted publishing first and, with no publisher registered, falls back to
+   the secret.
 3. On `https://www.npmjs.com/package/@typeshade/mcp/access`, register a trusted publisher:
    GitHub Actions, organization `typeshade`, repository `vscode-typeshade`, workflow
    `publish-mcp.yml`, no environment. Then delete the secret, so the next release proves the
@@ -345,8 +357,14 @@ the publish step switched to `npm stage publish`, would make every later release
 approval.
 
 Renaming `publish-mcp.yml` breaks trusted publishing, because the registered publisher names the
-file. A later release is a version bump merged to `main`, then a release tagged `mcp-v` and the
-new version.
+file. A later release is a version bump merged to `main`, then the tag `mcp-v` and the new
+version on that commit, pushed:
+
+```sh
+git fetch origin main
+git tag mcp-v0.1.2 origin/main
+git push origin mcp-v0.1.2
+```
 
 ## 7. Measured
 
