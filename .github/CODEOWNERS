@@ -9,6 +9,7 @@
 
 # The pinned compiler, the agent plugin and skill, and the automation.
 /vendor/             @Seungup
+/compiler-changes.md @Seungup
 /plugins/            @Seungup
 /.claude-plugin/     @Seungup
 /scripts/            @Seungup
