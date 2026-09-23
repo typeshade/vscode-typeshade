@@ -14,7 +14,7 @@ The file looks like TypeScript and is not checked like TypeScript. **The TypeSha
 decides what is valid.** Plain `tsc` or a plain TypeScript language server reports errors on
 shader files that are not errors (vector arithmetic such as `a + b` on two `vec3`, decorators on
 entry functions); do not "fix" those. And it misses real ones (an integer used as an index, a
-loop without a constant bound). Trust the TypeShade tools below. For the same reason, do not run
+loop whose step moves away from its bound). Trust the TypeShade tools below. For the same reason, do not run
 a code formatter's TypeScript rules over a shader: one that rewrites `1.` as `1` changes a float
 into an integer-written literal.
 
@@ -150,38 +150,37 @@ export function tone(c: vec3): vec3 {
 }
 ```
 
-**3. Loops are counted.** A `for` loop runs an integer from a constant to a compile-time constant
-(a literal, a module `const`, an enum member), at most 256 times. A uniform, a parameter or an
-override is not a constant (`TS8006`). For a runtime bound, loop to a constant maximum and
-`break`. `while (true)` is `TS8007`; `do...while` and labels are refused.
+**3. Loops are counted, and the bound can be data.** A `for` steps an integer by a constant toward
+a bound: a literal, a `const`, a parameter, a uniform field or `xs.length`, with no limit on the
+trips. `for (let i = 0; i < data.length; i++)` works as written (the counter takes the bound's
+`u32`). The step must move toward the bound and the body must not write it (`TS8006`, `TS8007`).
+`for (const x of xs)` iterates an array. A `while` tests anything; `while (true)` needs a `break`
+or a `return` in its body (`TS8007`). `do...while` and labels are refused.
 
 ```ts
 "use typeshade"
-const MAX_STEPS: i32 = 64
-
 export function march(steps: i32, dt: f32): f32 {
   let t = 0.
-  for (let i = 0; i < MAX_STEPS; i++) {
-    if (i >= steps) {
-      break
-    }
+  for (let i = 0; i < steps; i++) {
     t += dt
   }
   return t
 }
 ```
 
-**4. Annotate every parameter and every return type**, `: void` included. An unannotated helper
-defaults to `void` with only a warning, and its callers then fail in confusing ways.
+**4. Annotate every parameter, and the return type of an entry.** A helper's return type is
+inferred from its first `return` with a value (none without one); an entry (`@vertex`,
+`@fragment`, `@compute`) that returns a value without an annotation is `TS8021`.
 
 **5. Parameters are immutable** (`TS8018`): copy one into a `let` to change it. A swizzle is
 written one component at a time (`v.x = 1.`; `v.xy = ...` is `TS8018`).
 
 **6. There are no strings, no `==`, no JavaScript runtime.** Use `===` and `!==`. `console.log`
 takes values, never text, and runs only on the CPU. `Math.random()` is refused; `random(seed)`
-is a hash. No `var`, closures over locals, `try`, `async`, `for...of`, `number`, `boolean`, `T[]`
-or `any`. A local function is an arrow constant, `const f = (x: f32): f32 => x * 2.`, that reads
-only its parameters. Recursion is refused (`TS8031`).
+is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`, and no JavaScript array
+methods (`xs.map(...)`). Functions are written as TypeScript writes them: a nested `function` or
+an arrow constant may read and write the locals around it, and a function may take a function
+(`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
 **7. Resources are declared, and numbered for you.** Every `declare` resource is `@group(0)`,
 bound in declaration order; `compile` with the reflection target prints the slots. Make a
@@ -251,19 +250,19 @@ names) are in [references/language.md](references/language.md).
 `TS8xxx` codes are TypeShade's; plain TypeScript codes (`TS2304`) come from TypeScript's checker,
 which still runs, with its false positives on shader code filtered out. The ones met most often:
 
-| Code   | Usual cause                                                               | Fix                                                    |
-| ------ | ------------------------------------------------------------------------- | ------------------------------------------------------ |
-| TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                   | a shader type, annotated                               |
-| TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes | cast explicitly; annotate integer locals               |
-| TS8004 | a call to a name TypeShade does not have (`lerp`, an imported helper)     | `docs` for the TypeShade name                          |
-| TS8006 | a loop bound that is not a constant, or over 256 trips                    | loop to a constant maximum and `break`                 |
-| TS8015 | an emitter refused the module (a warning drops the GLSL only)             | read the message: often a uniform that is not a struct |
-| TS8018 | a write to a parameter or to a multi-component swizzle                    | copy into a `let`; write one component                 |
-| TS8021 | a missing return annotation                                               | annotate it                                            |
-| TS8022 | an unknown name, often after an earlier error                             | fix the first error                                    |
-| TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                      | splat: `max(v, vec3(0.))`                              |
-| TS8052 | `textureSample` or a derivative under a per-fragment branch               | sample before branching                                |
-| TS8099 | a string, `==`, a closure, `do...while`, a fragment-only call elsewhere   | read the message: it names the construct               |
+| Code   | Usual cause                                                                 | Fix                                                    |
+| ------ | --------------------------------------------------------------------------- | ------------------------------------------------------ |
+| TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                     | a shader type, annotated                               |
+| TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes   | cast explicitly; annotate integer locals               |
+| TS8004 | a call to a name TypeShade does not have (`lerp`, an imported helper)       | `docs` for the TypeShade name                          |
+| TS8006 | a loop bound the body writes, or `!=` against a runtime bound               | read the bound into a `const`; compare with `<`        |
+| TS8015 | an emitter refused the module (a warning drops the GLSL only)               | read the message: often a uniform that is not a struct |
+| TS8018 | a write to a parameter or to a multi-component swizzle                      | copy into a `let`; write one component                 |
+| TS8021 | an entry that returns a value with no return annotation                     | annotate it                                            |
+| TS8022 | an unknown name, often after an earlier error                               | fix the first error                                    |
+| TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                        | splat: `max(v, vec3(0.))`                              |
+| TS8052 | `textureSample` or a derivative under a per-fragment branch                 | sample before branching                                |
+| TS8099 | a string, `==`, `do...while`, `xs.map(...)`, a fragment-only call elsewhere | read the message: it names the construct               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
 
