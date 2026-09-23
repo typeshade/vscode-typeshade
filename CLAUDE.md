@@ -13,8 +13,10 @@ surface diff was read, so moving the pin is a step with checks, not a memory:
 - When a change moves the pin, run
   `bun vendor/typeshade/scripts/downstream-impact.ts --repo vscode-typeshade --submodule vendor/typeshade`
   and fix every line it lists: each one still names an export or a file the new compiler
-  removes. Update `docs/design.md` §3's table in the same change if what the plugin maps has
-  changed.
+  removes. It also lists every compiler change proposal the new pin implements that names this
+  repository and that `compiler-changes.md` does not record yet: do the work the proposal lists,
+  then add its id to that file. Update `docs/design.md` §3's table in the same change if what
+  the plugin maps has changed.
 - When you edit inside a `LINT.IfChange` block, edit its `LINT.ThenChange` targets in the same
   commit. `TYPESHADE_DOCS_ROOT=$PWD bun vendor/typeshade/scripts/ifchange.ts` checks this.
 - `.claude/settings.json` runs both checks before every `git commit` and blocks the commit while
