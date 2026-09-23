@@ -15,7 +15,7 @@ This repository holds three packages and a Claude Code plugin:
 
 ## Status
 
-Early. `@typeshade/mcp` 0.1.0 is on npm, published from a GitHub release
+Early. `@typeshade/mcp` 0.1.1 is on npm, published by pushing its tag
 ([`docs/agents.md`](./docs/agents.md) §6). Nothing else is published yet, to npm or to the Visual
 Studio Marketplace: the compiler itself is not on npm, so the other two packages stay private
 while the interfaces settle. The plan, the architecture and the decisions behind them are in
@@ -28,7 +28,7 @@ coding agents.
 | Design document                  | done, [`docs/design.md`](./docs/design.md)            |
 | TypeScript server plugin         | done, tested against a real tsserver                  |
 | MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client  |
-| MCP server publish workflow      | done; 0.1.0 published from the release `mcp-v0.1.0`   |
+| MCP server publish workflow      | done; 0.1.1 published from the tag `mcp-v0.1.1`       |
 | Skill and Claude Code plugin     | done; the server entry runs the npm package           |
 | VS Code extension and preview    | after the plugin                                      |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
