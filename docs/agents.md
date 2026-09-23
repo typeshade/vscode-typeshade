@@ -1,9 +1,9 @@
 # TypeShade for coding agents: an MCP server, a skill and a Claude Code plugin
 
 Status: **proposal**, with all three built and tested in the pull request that adds this file,
-and `@typeshade/mcp` 0.1.0 on npm since 2026-09-23 (§6). The owner answered its open questions on
+and `@typeshade/mcp` on npm since 2026-09-23 (§6). The owner answered its open questions on
 the same day, taking every suggestion (§8). The pinned compiler is `typeshade/typeshade` at
-`ef049e4`, as in `docs/design.md`. Every claim about the compiler names the file it comes from,
+`eb0dde6`, as in `docs/design.md`. Every claim about the compiler names the file it comes from,
 and every claim about another tool names where it was checked, because the tools this document
 compares move faster than the compiler does.
 
