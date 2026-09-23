@@ -15,24 +15,24 @@ This repository holds three packages and a Claude Code plugin:
 
 ## Status
 
-Early. Nothing is published to npm or to the Visual Studio Marketplace yet. `@typeshade/mcp` is
-ready to publish from a GitHub release, and the first one needs an npm token the owner adds to
-this repository once ([`docs/agents.md`](./docs/agents.md) §6). The compiler itself is not on
-npm either, so the other two packages stay private while the interfaces settle. The plan, the
-architecture and the decisions behind them are in [`docs/design.md`](./docs/design.md) for the
-editor and [`docs/agents.md`](./docs/agents.md) for coding agents.
+Early. `@typeshade/mcp` 0.1.0 is on npm, published from a GitHub release
+([`docs/agents.md`](./docs/agents.md) §6). Nothing else is published yet, to npm or to the Visual
+Studio Marketplace: the compiler itself is not on npm, so the other two packages stay private
+while the interfaces settle. The plan, the architecture and the decisions behind them are in
+[`docs/design.md`](./docs/design.md) for the editor and [`docs/agents.md`](./docs/agents.md) for
+coding agents.
 
-| Piece                            | State                                                    |
-| -------------------------------- | -------------------------------------------------------- |
-| Workspace, CI, conventions       | done                                                     |
-| Design document                  | done, [`docs/design.md`](./docs/design.md)               |
-| TypeScript server plugin         | done, tested against a real tsserver                     |
-| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client     |
-| MCP server publish workflow      | done; the first release needs an npm token once          |
-| Skill and Claude Code plugin     | done; the plugin's server entry waits on the npm package |
-| VS Code extension and preview    | after the plugin                                         |
-| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands               |
-| Marketplace publish workflow     | last, and it needs a publisher the owner creates once    |
+| Piece                            | State                                                 |
+| -------------------------------- | ----------------------------------------------------- |
+| Workspace, CI, conventions       | done                                                  |
+| Design document                  | done, [`docs/design.md`](./docs/design.md)            |
+| TypeScript server plugin         | done, tested against a real tsserver                  |
+| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client  |
+| MCP server publish workflow      | done; 0.1.0 published from the release `mcp-v0.1.0`   |
+| Skill and Claude Code plugin     | done; the server entry runs the npm package           |
+| VS Code extension and preview    | after the plugin                                      |
+| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
+| Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
 
 ## Use with a coding agent
 
@@ -43,9 +43,8 @@ In Claude Code, the plugin brings the skill and the server together:
 /plugin install typeshade@typeshade
 ```
 
-The skill works at once. The server entry runs `npx -y @typeshade/mcp`, which starts working when
-that package is published; until then, build this repository and register the local server, in
-Claude Code or any other MCP client, as
+Both work at once: the server entry runs `npx -y @typeshade/mcp`, so nothing needs building.
+Codex, Cursor, Gemini CLI and VS Code start the same package, as
 [`packages/mcp-server/README.md`](./packages/mcp-server/README.md) shows. The skill's directory,
 [`plugins/typeshade/skills/typeshade`](./plugins/typeshade/skills/typeshade), is in the portable
 Agent Skills format, so it can also be copied into Codex, Cursor or Gemini CLI as it is.
