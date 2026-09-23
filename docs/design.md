@@ -917,16 +917,16 @@ the way it was for an unscoped name: a scoped package defaults to restricted, an
 publish without it fails on a private-package payment error rather than on anything that reads
 like the real cause.
 
-**Authentication is trusted publishing, once the package exists.** With npm's OIDC flow the
-workflow needs no secret at all: the job asks for `id-token: write` and npm verifies it against
-a publisher the package owner registers once on npmjs.com, naming this repository and this
-workflow file. npm registers a publisher only for a package that already exists, so the first
-release goes through an `NPM_ACCESS_TOKEN` secret that the workflow writes to `.npmrc`, and the
-workflow stops reading it once the publisher is registered. A token left in `.npmrc` is a
-fallback npm takes without a word when the exchange fails, so a release could not show which
-credential published it, and the job would hold a long-lived secret for nothing.
-`publish-mcp.yml` went this way (`docs/agents.md` §6). Two more things are the kind that are
-only ever learned the expensive way. Trusted publishing needs npm 11.5.1 or newer, so
+**Authentication is meant to be trusted publishing, once the package exists.** With npm's OIDC
+flow the workflow needs no secret at all: the job asks for `id-token: write` and npm verifies it
+against a publisher the package owner registers once on npmjs.com, naming this repository and
+this workflow file. npm registers a publisher only for a package that already exists, so the
+first release goes through an `NPM_ACCESS_TOKEN` secret that the workflow writes to `.npmrc`.
+And npm does not yet match the OIDC subject GitHub gives repositories created after 2026-07-15,
+this one included ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so for now the token
+publishes every release. `publish-mcp.yml` keeps it as the fallback, and its dry run says when
+trusted publishing starts to authenticate (`docs/agents.md` §6). Two more things are the kind
+that are only ever learned the expensive way. Trusted publishing needs npm 11.5.1 or newer, so
 the job upgrades npm before publishing rather than trusting the runner's bundled 10.x. And
 **renaming the workflow file breaks trusted publishing**, because the registered publisher names
 the filename, so the file is named once and left alone.
@@ -1010,6 +1010,8 @@ is still open and is not needed until after PR 5.
    that bypasses two-factor authentication, and its publisher was registered after that
    (`docs/agents.md` §6). npm stops such tokens from publishing in January 2027, so a first
    release after that needs another route, such as a maintainer publishing it by hand with 2FA.
+   And trusted publishing does not authenticate this repository at all until npm fixes
+   [npm/cli#9969](https://github.com/npm/cli/issues/9969).
 
 Nothing before that step is blocked on an answer.
 
