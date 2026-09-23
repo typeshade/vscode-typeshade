@@ -954,7 +954,10 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    editor rather than predicted here.
 4. **A standalone LSP server for editors with no tsserver plugin support (§1.2).** _Suggested:
    not now, and not never._ It is a second adapter over the same service; the plugin covers the
-   editors that matter first.
+   editors that matter first. `docs/agents.md` §0.2 measured the nearer route for agents: the
+   plugin loaded by `typescript-language-server` through its `initializationOptions.plugins`,
+   which gives every tsserver-based agent tool the plugin's answers, and §1 there adds the third
+   adapter this document did not foresee, an MCP server.
 5. **Hover on an imported entry inside a host `.ts` file reads as TypeScript sees it (§1.6).**
    _Suggested: leave it, and revisit now that the compiler's `./shade` subpath (on `main` since
    #29) lets a project type-check its shaders as their own tsconfig project, which changes the

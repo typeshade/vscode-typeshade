@@ -2,7 +2,7 @@
   "name": "typeshade-editor",
   "version": "0.0.0",
   "private": true,
-  "description": "Editor support for TypeShade: a TypeScript server plugin and a VS Code extension.",
+  "description": "Editor and agent support for TypeShade: a TypeScript server plugin, a VS Code extension and an MCP server.",
   "license": "MIT",
   "author": "Seungup Noh",
   "homepage": "https://typeshade.dev",
@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc -p packages/tsserver-plugin && tsc -p packages/vscode-typeshade && tsc -p tsconfig.tests.json",
+    "typecheck": "tsc -p packages/tsserver-plugin && tsc -p packages/vscode-typeshade && tsc -p packages/mcp-server && tsc -p tsconfig.tests.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

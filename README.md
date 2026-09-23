@@ -1,36 +1,59 @@
 # TypeShade for editors
 
-Editor support for [TypeShade](https://github.com/typeshade/typeshade), the TypeScript shader
-language whose files start with the `"use typeshade"` directive and compile to WGSL and
+Editor and agent support for [TypeShade](https://github.com/typeshade/typeshade), the TypeScript
+shader language whose files start with the `"use typeshade"` directive and compile to WGSL and
 GLSL ES 3.00.
 
-This repository holds two packages:
+This repository holds three packages and a Claude Code plugin:
 
-| Package                                                    | What it is                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `@typeshade/tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server. |
-| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                              |
+| Package                                                    | What it is                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `@typeshade/tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server.                |
+| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                                             |
+| [`packages/mcp-server`](./packages/mcp-server)             | `@typeshade/mcp`, a Model Context Protocol server. Coding agents (Claude Code, Codex, Cursor, VS Code agent mode, Gemini CLI) get the same diagnostics as the editor, the emitted WGSL and GLSL, types and navigation, the vocabulary with GLSL and HLSL names translated, and a CPU run of a shader function. |
+| [`plugins/typeshade`](./plugins/typeshade)                 | A Claude Code plugin, installable from this repository as a marketplace: a skill that teaches the language, with every example compiled in CI, and the MCP server.                                                                                                                                             |
 
 ## Status
 
-Early. Nothing is published to npm or to the Visual Studio Marketplace yet, and the compiler
-itself is not on npm either, so both packages are marked private while the interfaces settle.
-The plan, the architecture and the decisions behind them are in
-[`docs/design.md`](./docs/design.md).
+Early. Nothing is published to npm or to the Visual Studio Marketplace yet. `@typeshade/mcp` is
+ready to publish from a GitHub release, and the first one needs an npm token the owner adds to
+this repository once ([`docs/agents.md`](./docs/agents.md) §6). The compiler itself is not on
+npm either, so the other two packages stay private while the interfaces settle. The plan, the
+architecture and the decisions behind them are in [`docs/design.md`](./docs/design.md) for the
+editor and [`docs/agents.md`](./docs/agents.md) for coding agents.
 
-| Piece                            | State                                                 |
-| -------------------------------- | ----------------------------------------------------- |
-| Workspace, CI, conventions       | done                                                  |
-| Design document                  | done, [`docs/design.md`](./docs/design.md)            |
-| TypeScript server plugin         | done, tested against a real tsserver                  |
-| VS Code extension and preview    | after the plugin                                      |
-| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
-| Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
+| Piece                            | State                                                    |
+| -------------------------------- | -------------------------------------------------------- |
+| Workspace, CI, conventions       | done                                                     |
+| Design document                  | done, [`docs/design.md`](./docs/design.md)               |
+| TypeScript server plugin         | done, tested against a real tsserver                     |
+| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client     |
+| MCP server publish workflow      | done; the first release needs an npm token once          |
+| Skill and Claude Code plugin     | done; the plugin's server entry waits on the npm package |
+| VS Code extension and preview    | after the plugin                                         |
+| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands               |
+| Marketplace publish workflow     | last, and it needs a publisher the owner creates once    |
+
+## Use with a coding agent
+
+In Claude Code, the plugin brings the skill and the server together:
+
+```text
+/plugin marketplace add typeshade/vscode-typeshade
+/plugin install typeshade@typeshade
+```
+
+The skill works at once. The server entry runs `npx -y @typeshade/mcp`, which starts working when
+that package is published; until then, build this repository and register the local server, in
+Claude Code or any other MCP client, as
+[`packages/mcp-server/README.md`](./packages/mcp-server/README.md) shows. The skill's directory,
+[`plugins/typeshade/skills/typeshade`](./plugins/typeshade/skills/typeshade), is in the portable
+Agent Skills format, so it can also be copied into Codex, Cursor or Gemini CLI as it is.
 
 ## Develop
 
 The compiler is a pinned git submodule under `vendor/typeshade` until it publishes to npm
-([`docs/design.md`](./docs/design.md) §2), and both artifacts bundle it, so a checkout without
+([`docs/design.md`](./docs/design.md) §2), and every artifact bundles it, so a checkout without
 it fails at the first import:
 
 ```bash

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "typeshade": {
+      "command": "npx",
+      "args": ["-y", "@typeshade/mcp"]
+    }
+  }
+}

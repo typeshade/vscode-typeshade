@@ -1,0 +1,8 @@
+{
+  // Type-checking only, for the same reason as the plugin's: esbuild builds the artifact
+  // (`scripts/build.mjs`), one CommonJS file with the compiler inside it and the MCP SDK, zod
+  // and `typescript` left to npm.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["src/**/*.ts"]
+}
