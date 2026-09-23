@@ -32,8 +32,9 @@ import {
 } from './compiler.js';
 import { ToolError } from './errors.js';
 
-/** Statements one run may reach. A loop is bounded at 256 trips by the compiler (`LOOP_BOUND`),
- *  so a real shader reaches far fewer; this is for the one that is written to never finish. */
+/** Statements one run may reach. The compiler bounds no loop's trips (a `for` may count to a
+ *  runtime value and a `while` is open, typeshade/typeshade#209), so this budget is the only
+ *  thing that ends a run written to never finish; a real shader reaches far fewer. */
 export const STEP_LIMIT = 2_000_000;
 
 /** Breakpoint stops one run reports before it stops stopping and runs to the end. */

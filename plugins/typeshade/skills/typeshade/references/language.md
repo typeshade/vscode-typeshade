@@ -164,23 +164,29 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 
 ## Functions and control flow
 
-- Annotate every parameter and every return type, `: void` included.
+- Annotate every parameter. A helper's return type is inferred from its first `return` with a
+  value; an entry that returns a value needs its annotation (`TS8021`).
 - Parameters are immutable (`TS8018`). Default values work (`b: f32 = 0.8`) as long as they do
   not read another parameter; optional (`b?: f32`) and rest parameters are `TS8020`.
 - `const` is immutable (`TS8005`), `let` is mutable. `let x: f32` without an initializer needs
   its annotation. Block scope and shadowing work.
 - Destructuring a vector or a struct works (`const { x, y } = v`); an array pattern does not.
-- A local function is an arrow constant, `const f = (x: f32): f32 => x * 2.`, that reads only its
-  parameters; a nested `function` statement is refused.
+- A local function is a nested `function` or an arrow constant, and it may read and write the
+  locals around it. A parameter may be a function (`h: (x: f32) => f32`), and an arrow may be
+  written as the argument.
 - Recursion, direct or mutual, is `TS8031`.
 - A call alone on a line is fine; a value alone on a line (`vec3(1.)`) is refused.
 - `if` needs a `bool` condition (`if (x)` on an `f32` is `TS8003`). The ternary works on any
   type. `select(f, t, cond)` puts the condition last, as WGSL does.
-- `for`: an integer `let` from a constant, compared with a compile-time constant, stepped by a
-  constant (`++`, `--`, `+=`, `-=`, `*=`, `/=`), at most 256 trips (`TS8006`). A float induction
-  variable is `TS8008`; a missing condition or a step the wrong way is `TS8007`.
-- `while (i < 10)` needs a constant on one side of its comparison; `while (true)` is `TS8007`;
-  `do...while`, labels, `for...of` and `for...in` are refused.
+- `for`: an integer `let`, stepped by a constant (`++`, `--`, `+=`, `-=`, `*=`, `/=`) toward a
+  bound. The start and the bound may be runtime values (a parameter, a uniform field,
+  `xs.length`) and there is no limit on the trips. An unannotated counter starting at a
+  non-negative literal takes the type of a `u32` bound. A bound the body writes, or `!=`
+  against a runtime bound, is `TS8006`; a float induction variable is `TS8008`; a missing
+  condition or a step away from the bound is `TS8007`.
+- `for (const x of xs)` iterates an `array<T, N>` or a runtime-sized storage array.
+- `while` takes any `bool` condition; `while (true)` needs a `break` or a `return` in its body
+  (`TS8007`). `do...while`, labels and `for...in` are refused.
 - `switch` is on an integer, with integer constant labels (`TS8017` otherwise). Cases never fall
   through; `case 0: case 1:` stacked above one body share it.
 
@@ -271,8 +277,8 @@ On GLSL a texture and the sampler it is used with fuse into one `sampler2D`.
 | `==`, `!=`, `>>>`                                   | `===`, `!==`, `>>` on a `u32`               |
 | `Number`, `Array`, `Date`, `JSON` and other globals | builtins; only `Math` and `console` exist   |
 | `new Float32Array(...)`                             | `new` works only on the file's own classes  |
-| `async`, `try`, generators, `for...of`              | counted loops and plain functions           |
-| a closure over a local, `xs.map(...)`               | a named function, a counted loop            |
+| `async`, `try`, generators                          | plain functions                             |
+| `xs.map(...)` and the other array methods           | `for (const x of xs)`, a counted loop       |
 | `typeof`, `instanceof`, `'k' in s`                  | types are static                            |
 | recursion                                           | a loop                                      |
 

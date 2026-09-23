@@ -164,9 +164,11 @@ client that answers `roots/list` has said where the project is.
 result is the compiler's own reference, at f32 by default because that is what a GPU computes
 (`docs/debugging.md` §5 decision 6 in the compiler). It does not use the adapter's one call,
 `startDebugSessionFromConfig`, because that call takes no step budget, and an unattended server
-must not be held by a run that does not finish. The compiler bounds each loop at 256 trips but
-not their product: three nested loops of 256 compile clean and take 30.8 s through that call
-at the compiler's `bbf3eff`, and a fourth nest would take hours. So `run` calls the two public
+must not be held by a run that does not finish. The compiler bounds no loop's trips: a `for`
+may count to a runtime value and a `while` is an open loop (typeshade/typeshade#209). Even when
+it capped each loop at 256 trips it did not cap their product: three nested loops of 256 compile
+clean and took 30.8 s through that call at the compiler's `bbf3eff`, and a fourth nest would take
+hours. So `run` calls the two public
 resolvers that call is built from, `resolveInvocation` and `resolveBindings`, then
 `startDebugSession` with `maxSteps` of two million statements, which a real shader stays far
 below; the three nested loops reach it in about 1.6 s and end with the engine's own sentence.
@@ -223,9 +225,10 @@ all read. It uses only the portable fields (`name`, `description`), so the direc
 copied into any of them as it is.
 
 It is short where the compiler's documentation is long, and it spends its words on what an agent
-gets wrong: the GLSL or HLSL name for a builtin, a string passed to `console.log`, a loop bound
-over 256, a missing return annotation, the integer literal rule. It says to run `check` after
-every edit and how to use the other tools, and it keeps working without the server.
+gets wrong: the GLSL or HLSL name for a builtin, a string passed to `console.log`, a loop spelled
+the way another language needs it, an entry's missing return annotation, the integer literal
+rule. It says to run `check` after every edit and how to use the other tools, and it keeps
+working without the server.
 
 **Every `"use typeshade"` block in the skill compiles.** `skill.test.ts` extracts each one and
 compiles it against the pinned compiler, the way the compiler's own
