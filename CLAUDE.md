@@ -29,6 +29,13 @@ surface diff was read, so moving the pin is a step with checks, not a memory:
 The compiler's `AGENTS.md` (section "Docs follow the code") describes the conventions these
 checks come from.
 
+## Before pushing
+
+Run `npm run check`: it is CI's check job (the build, the type check, eslint, prettier, the em
+dash check and the tests), so a push that passes it locally passes there. `.claude/settings.json`
+also runs the fast half (prettier, eslint and the em dash check, `scripts/commit-gate.mjs`)
+before every `git commit` and blocks the commit while one fails.
+
 ## Merging
 
 `main` is protected by a GitHub ruleset: a pull request, a Code Owner review (`.github/CODEOWNERS`)
@@ -42,3 +49,10 @@ through the owner's account can too, so the rule is written here:
   merge that pull request. The owner cannot approve their own pull request, so their go-ahead
   is the review.
 - Never push to `main` directly, and never force-push it.
+- The ruleset, the secrets and every other repository setting are the owner's to change: an
+  agent has no admin access to them. When one must change, write the owner a script for the
+  GitHub CLI (`gh auth login`, then `gh api`), in PowerShell, since the owner works on Windows.
+  Never ask for a token in the conversation: a token pasted there is a leaked token.
+- Each required check is a job's `name:` in `.github/workflows/ci.yml`. Renaming or removing
+  that job leaves every pull request waiting on a check that never reports, so the ruleset
+  (Settings > Rules > Rulesets > `main`) changes in the same step.
