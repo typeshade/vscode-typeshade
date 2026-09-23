@@ -6,8 +6,8 @@
 // editor and the compiler from ever disagreeing about which files are shaders, and `.shade.ts`
 // stays a convention rather than the rule.
 
-import type ts from 'typescript'
-import { hasUseTypeshadeDirective } from './compiler.js'
+import type ts from 'typescript';
+import { hasUseTypeshadeDirective } from './compiler.js';
 
 /**
  * Whether `fileName` is a TypeShade file according to the project's own parse of it.
@@ -21,8 +21,8 @@ import { hasUseTypeshadeDirective } from './compiler.js'
  * @returns true when the file carries the directive.
  */
 export function isTypeshadeFile(service: ts.LanguageService, fileName: string): boolean {
-  const sourceFile = service.getProgram()?.getSourceFile(fileName)
-  return sourceFile !== undefined && hasUseTypeshadeDirective(sourceFile)
+  const sourceFile = service.getProgram()?.getSourceFile(fileName);
+  return sourceFile !== undefined && hasUseTypeshadeDirective(sourceFile);
 }
 
 /**
@@ -44,6 +44,6 @@ export function textHasDirective(typescript: typeof ts, fileName: string, text: 
     text,
     typescript.ScriptTarget.ES2022,
     /* setParentNodes */ false,
-  )
-  return hasUseTypeshadeDirective(parsed)
+  );
+  return hasUseTypeshadeDirective(parsed);
 }

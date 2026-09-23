@@ -2,7 +2,7 @@
 // as conventions of its own: no `any`, and an unused symbol is an error rather than a warning
 // (the compiler options already fail on unused locals and parameters, so this only adds the
 // same rule for the cases `tsc` does not see, such as an unused caught error).
-import tseslint from 'typescript-eslint'
+import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
@@ -20,4 +20,4 @@ export default tseslint.config(
       'prefer-const': ['error', { ignoreReadBeforeAssign: true }],
     },
   },
-)
+);

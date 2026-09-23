@@ -10,19 +10,19 @@
 // This helper is for the conversions, where a whole server is a slow way to ask a small
 // question.
 
-import ts from 'typescript'
+import ts from 'typescript';
 
 /** A project standing in for one tsserver would build: real compiler options, the real standard
  *  library, and texts held in memory so a test can edit one without touching a disk. */
 export interface TestProject {
   /** The service a decoration is built over. */
-  readonly service: ts.LanguageService
+  readonly service: ts.LanguageService;
   /** The host, which a `DocumentSync` reads through. */
-  readonly host: ts.LanguageServiceHost
+  readonly host: ts.LanguageServiceHost;
   /** Replaces a file's text and bumps its version, as an editor would. */
-  edit(fileName: string, text: string): void
+  edit(fileName: string, text: string): void;
   /** Removes a file from the project, as closing and deleting one would. */
-  remove(fileName: string): void
+  remove(fileName: string): void;
 }
 
 /**
@@ -33,16 +33,16 @@ export interface TestProject {
  * @returns the project.
  */
 export function testProject(files: Readonly<Record<string, string>>): TestProject {
-  const texts = new Map(Object.entries(files))
-  const versions = new Map([...texts.keys()].map((name) => [name, 1]))
-  let projectVersion = 1
+  const texts = new Map(Object.entries(files));
+  const versions = new Map([...texts.keys()].map((name) => [name, 1]));
+  let projectVersion = 1;
 
   const host: ts.LanguageServiceHost = {
     getScriptFileNames: () => [...texts.keys()],
     getScriptVersion: (fileName) => String(versions.get(fileName) ?? 0),
     getScriptSnapshot: (fileName) => {
-      const text = texts.get(fileName) ?? ts.sys.readFile(fileName)
-      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text)
+      const text = texts.get(fileName) ?? ts.sys.readFile(fileName);
+      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
     },
     getCurrentDirectory: () => '/project',
     getCompilationSettings: () => ({
@@ -60,22 +60,22 @@ export function testProject(files: Readonly<Record<string, string>>): TestProjec
     directoryExists: ts.sys.directoryExists,
     getDirectories: ts.sys.getDirectories,
     getProjectVersion: () => String(projectVersion),
-  }
+  };
 
   return {
     service: ts.createLanguageService(host, ts.createDocumentRegistry()),
     host,
     edit(fileName, text) {
-      texts.set(fileName, text)
-      versions.set(fileName, (versions.get(fileName) ?? 1) + 1)
-      projectVersion += 1
+      texts.set(fileName, text);
+      versions.set(fileName, (versions.get(fileName) ?? 1) + 1);
+      projectVersion += 1;
     },
     remove(fileName) {
-      texts.delete(fileName)
-      versions.delete(fileName)
-      projectVersion += 1
+      texts.delete(fileName);
+      versions.delete(fileName);
+      projectVersion += 1;
     },
-  }
+  };
 }
 
 /** A `ts.server.PluginCreateInfo` over a test project, carrying only what the plugin reads.
@@ -98,6 +98,6 @@ export function testCreateInfo(
         },
       },
     },
-  } as unknown as ts.server.PluginCreateInfo
-  return { info, logged }
+  } as unknown as ts.server.PluginCreateInfo;
+  return { info, logged };
 }

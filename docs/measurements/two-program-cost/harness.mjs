@@ -20,67 +20,67 @@
 //            building the TypeShade program and answering for every shader file (once per
 //            project), then one edit answered (once per keystroke).
 
-import { createRequire } from 'node:module'
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { createRequire } from 'node:module';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
-const require = createRequire(import.meta.url)
+const require = createRequire(import.meta.url);
 
 /** Where `measure.ts` wrote the fixture and the bundle. */
-const FIXTURE_DIR = process.argv[3]
+const FIXTURE_DIR = process.argv[3];
 /** The esbuild bundle of the compiler's `./language-service` subpath. */
-const BUNDLE = process.argv[4]
+const BUNDLE = process.argv[4];
 /** How many edits the warm figure averages over. */
-const EDIT_COUNT = 20
+const EDIT_COUNT = 20;
 
 /** Live heap in megabytes, after a full collection. `--expose-gc` is required, and the caller
  *  passes it; without it a reading is of an uncollected heap and means nothing. */
 function heapMb() {
   if (typeof global.gc !== 'function') {
-    throw new Error('run with --expose-gc; a heap reading without a collection is not a reading')
+    throw new Error('run with --expose-gc; a heap reading without a collection is not a reading');
   }
-  global.gc()
-  global.gc()
-  return Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10
+  global.gc();
+  global.gc();
+  return Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10;
 }
 
 /** Milliseconds a function took, to one decimal place, with its return value. */
 function timed(fn) {
-  const start = performance.now()
-  const value = fn()
-  return { ms: Math.round((performance.now() - start) * 10) / 10, value }
+  const start = performance.now();
+  const value = fn();
+  return { ms: Math.round((performance.now() - start) * 10) / 10, value };
 }
 
 /** Every file of the fixture, split by whether it carries the directive. `SHADE_LIMIT` caps
  *  how many shader files the plugin mode opens, which is how the one-document case the
  *  extension's preview panel holds (`docs/design.md` §4) is measured with the same harness. */
 function fixtureFiles() {
-  const dir = join(FIXTURE_DIR, 'src')
-  const all = readdirSync(dir).map((name) => join(dir, name))
-  const shade = all.filter((f) => f.endsWith('.shade.ts'))
-  const limit = Number(process.env.SHADE_LIMIT ?? String(shade.length))
+  const dir = join(FIXTURE_DIR, 'src');
+  const all = readdirSync(dir).map((name) => join(dir, name));
+  const shade = all.filter((f) => f.endsWith('.shade.ts'));
+  const limit = Number(process.env.SHADE_LIMIT ?? String(shade.length));
   return {
     hostFiles: all.filter((f) => !f.endsWith('.shade.ts')),
     shadeFiles: shade.slice(0, limit),
-  }
+  };
 }
 
 /** The project's language service, standing in for the one tsserver builds: the fixture's own
  *  compiler options, the real standard library, and texts held in memory so an edit needs no
  *  disk write. */
 function projectService(ts, files) {
-  const texts = new Map()
-  const versions = new Map()
+  const texts = new Map();
+  const versions = new Map();
   for (const file of files) {
-    texts.set(file, readFileSync(file, 'utf8'))
-    versions.set(file, 1)
+    texts.set(file, readFileSync(file, 'utf8'));
+    versions.set(file, 1);
   }
   const host = {
     getScriptFileNames: () => [...texts.keys()],
     getScriptVersion: (file) => String(versions.get(file) ?? 0),
     getScriptSnapshot: (file) => {
-      const text = texts.get(file) ?? ts.sys.readFile(file)
-      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text)
+      const text = texts.get(file) ?? ts.sys.readFile(file);
+      return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
     },
     getCurrentDirectory: () => FIXTURE_DIR,
     getCompilationSettings: () => ({
@@ -97,54 +97,54 @@ function projectService(ts, files) {
     readDirectory: ts.sys.readDirectory,
     directoryExists: ts.sys.directoryExists,
     getDirectories: ts.sys.getDirectories,
-  }
+  };
   return {
     service: ts.createLanguageService(host, ts.createDocumentRegistry()),
     edit: (file, text) => {
-      texts.set(file, text)
-      versions.set(file, (versions.get(file) ?? 1) + 1)
+      texts.set(file, text);
+      versions.set(file, (versions.get(file) ?? 1) + 1);
     },
-  }
+  };
 }
 
 /** What the editor costs and reports with no plugin loaded. */
 function measureProject() {
-  const ts = require('typescript')
-  const { hostFiles, shadeFiles } = fixtureFiles()
-  const files = [...hostFiles, ...shadeFiles]
-  const base = heapMb()
-  const { service, edit } = projectService(ts, files)
+  const ts = require('typescript');
+  const { hostFiles, shadeFiles } = fixtureFiles();
+  const files = [...hostFiles, ...shadeFiles];
+  const base = heapMb();
+  const { service, edit } = projectService(ts, files);
 
   const cold = timed(() => {
-    let count = 0
+    let count = 0;
     for (const file of files) {
-      count += service.getSemanticDiagnostics(file).length
-      count += service.getSyntacticDiagnostics(file).length
+      count += service.getSemanticDiagnostics(file).length;
+      count += service.getSyntacticDiagnostics(file).length;
     }
-    return count
-  })
-  const afterCold = heapMb()
+    return count;
+  });
+  const afterCold = heapMb();
 
-  const perFile = {}
-  let falseTotal = 0
+  const perFile = {};
+  let falseTotal = 0;
   for (const file of shadeFiles) {
-    const semantic = service.getSemanticDiagnostics(file)
-    falseTotal += semantic.length
+    const semantic = service.getSemanticDiagnostics(file);
+    falseTotal += semantic.length;
     perFile[file.split('/').pop()] = {
       count: semantic.length,
       codes: [...new Set(semantic.map((d) => `TS${d.code}`))].sort(),
-    }
+    };
   }
 
-  const target = shadeFiles[0]
-  const original = readFileSync(target, 'utf8')
+  const target = shadeFiles[0];
+  const original = readFileSync(target, 'utf8');
   const warm = timed(() => {
     for (let i = 0; i < EDIT_COUNT; i++) {
-      edit(target, `${original}\n// edit ${i}\n`)
-      service.getSemanticDiagnostics(target)
-      service.getSyntacticDiagnostics(target)
+      edit(target, `${original}\n// edit ${i}\n`);
+      service.getSemanticDiagnostics(target);
+      service.getSyntacticDiagnostics(target);
     }
-  })
+  });
 
   return {
     mode: 'project',
@@ -156,48 +156,48 @@ function measureProject() {
     diagnostics: cold.value,
     falseOnShaders: falseTotal,
     perFile,
-  }
+  };
 }
 
 /** What the plugin's own program costs, in the three phases that are paid at different times. */
 function measurePlugin() {
-  const { shadeFiles } = fixtureFiles()
+  const { shadeFiles } = fixtureFiles();
 
   // `typescript` is loaded BEFORE the baseline, and deliberately. The bundle leaves it
   // external, so requiring the bundle also requires `typescript`, and a first run of this
   // harness charged the plugin for that: 284.6 to 350.5 ms and 27 MB, most of it the 8.5 MB
   // `typescript.js` the plugin does not pay for. tsserver has `typescript` loaded before any
   // plugin is asked for, so the honest baseline is a process that already holds it.
-  require('typescript')
-  const base = heapMb()
+  require('typescript');
+  const base = heapMb();
 
   // Phase 1, once per tsserver process: loading the plugin's bundled code. tsserver pays this
   // synchronously while the project loads, which is why it is measured rather than skipped.
-  const required = timed(() => require(BUNDLE))
-  const afterRequire = heapMb()
-  const { createTypeshadeLanguageService } = required.value
+  const required = timed(() => require(BUNDLE));
+  const afterRequire = heapMb();
+  const { createTypeshadeLanguageService } = required.value;
 
   // Phase 2, once per project: the second TypeScript program, built and asked for every
   // shader file's diagnostics.
-  const texts = new Map(shadeFiles.map((file) => [file, readFileSync(file, 'utf8')]))
+  const texts = new Map(shadeFiles.map((file) => [file, readFileSync(file, 'utf8')]));
   const built = timed(() => {
-    const shade = createTypeshadeLanguageService({ readDocument: (uri) => texts.get(uri) })
-    for (const [uri, text] of texts) shade.openDocument(uri, text, 1)
-    let count = 0
-    for (const uri of texts.keys()) count += shade.getDiagnostics(uri).length
-    return { shade, count }
-  })
-  const afterBuild = heapMb()
+    const shade = createTypeshadeLanguageService({ readDocument: (uri) => texts.get(uri) });
+    for (const [uri, text] of texts) shade.openDocument(uri, text, 1);
+    let count = 0;
+    for (const uri of texts.keys()) count += shade.getDiagnostics(uri).length;
+    return { shade, count };
+  });
+  const afterBuild = heapMb();
 
   // Phase 3, once per keystroke.
-  const target = shadeFiles[0]
-  const original = texts.get(target)
+  const target = shadeFiles[0];
+  const original = texts.get(target);
   const warm = timed(() => {
     for (let i = 0; i < EDIT_COUNT; i++) {
-      built.value.shade.updateDocument(target, `${original}\n// edit ${i}\n`, i + 2)
-      built.value.shade.getDiagnostics(target)
+      built.value.shade.updateDocument(target, `${original}\n// edit ${i}\n`, i + 2);
+      built.value.shade.getDiagnostics(target);
     }
-  })
+  });
 
   return {
     mode: 'plugin',
@@ -209,9 +209,9 @@ function measurePlugin() {
     retainedHeapMb: Math.round((afterBuild - base) * 10) / 10,
     warmMs: Math.round((warm.ms / EDIT_COUNT) * 10) / 10,
     diagnostics: built.value.count,
-  }
+  };
 }
 
-const mode = process.argv[2]
-const report = mode === 'project' ? measureProject() : measurePlugin()
-process.stdout.write(`${JSON.stringify({ ...report, runtime: `node ${process.version}` })}\n`)
+const mode = process.argv[2];
+const report = mode === 'project' ? measureProject() : measurePlugin();
+process.stdout.write(`${JSON.stringify({ ...report, runtime: `node ${process.version}` })}\n`);

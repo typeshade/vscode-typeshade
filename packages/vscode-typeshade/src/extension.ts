@@ -5,7 +5,7 @@
 // adds only what tsserver cannot carry (the WGSL and GLSL preview, the commands, the debug
 // adapter). This file is the skeleton those pieces are added to.
 
-import type * as vscode from 'vscode'
+import type * as vscode from 'vscode';
 
 /**
  * Called by the extension host the first time one of the extension's activation events fires.
@@ -13,7 +13,7 @@ import type * as vscode from 'vscode'
  * @param context - the extension context, which owns the disposables the extension registers.
  */
 export function activate(context: vscode.ExtensionContext): void {
-  void context
+  void context;
 }
 
 /** Called by the extension host on shutdown. Every disposable is owned by the context's
