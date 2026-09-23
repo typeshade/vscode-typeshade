@@ -16,11 +16,11 @@
 //               throw on its first require in a packaged extension while working perfectly in
 //               the development host, where `node_modules` is on disk.
 
-import { build } from 'esbuild'
-import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The compiler's published specifiers, resolved to the pinned submodule. The same three
  *  mappings are in `tsconfig.base.json` `paths` for type-checking and in `vitest.config.mts`
@@ -29,7 +29,7 @@ const alias = {
   typeshade: join(root, 'vendor/typeshade/src/index.ts'),
   'typeshade/language-service': join(root, 'vendor/typeshade/src/language-service/index.ts'),
   'typeshade/debug': join(root, 'vendor/typeshade/src/debug.ts'),
-}
+};
 
 /** What every bundle shares.
  *
@@ -50,7 +50,7 @@ const common = {
     js: "const __typeshadeModuleUrl = require('node:url').pathToFileURL(__filename).href;",
   },
   logLevel: 'warning',
-}
+};
 
 /**
  * Builds one package.
@@ -67,12 +67,12 @@ async function bundle({ entry, outfile, external, footer }) {
     external,
     ...(footer === undefined ? {} : { footer: { js: footer } }),
     metafile: true,
-  })
-  const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]]
-  return { outfile, bytes: output.bytes }
+  });
+  const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]];
+  return { outfile, bytes: output.bytes };
 }
 
-const built = []
+const built = [];
 
 built.push(
   await bundle({
@@ -85,7 +85,7 @@ built.push(
     // one, because a plugin with the wrong export loads without an error and never runs.
     footer: '\nmodule.exports = module.exports.init\n',
   }),
-)
+);
 
 built.push(
   await bundle({
@@ -93,8 +93,8 @@ built.push(
     outfile: 'packages/vscode-typeshade/dist/extension.js',
     external: ['vscode'],
   }),
-)
+);
 
 for (const { outfile, bytes } of built) {
-  console.log(`${outfile.padEnd(48)} ${(bytes / 1024).toFixed(0)} KB`)
+  console.log(`${outfile.padEnd(48)} ${(bytes / 1024).toFixed(0)} KB`);
 }

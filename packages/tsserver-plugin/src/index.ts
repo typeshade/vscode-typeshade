@@ -7,8 +7,8 @@
 // the one line that assigns the factory. `index.test.ts` and the tsserver test both check the
 // shape, because the failure mode is a plugin that loads without an error and never runs.
 
-import type ts from 'typescript'
-import { decorate } from './decorate.js'
+import type ts from 'typescript';
+import { decorate } from './decorate.js';
 
 /**
  * The plugin factory tsserver calls.
@@ -22,21 +22,21 @@ import { decorate } from './decorate.js'
 export function init(modules: { readonly typescript: typeof ts }): ts.server.PluginModule {
   return {
     create(info: ts.server.PluginCreateInfo): ts.LanguageService {
-      const logger = info.project.projectService.logger
+      const logger = info.project.projectService.logger;
       const log = (message: string): void => {
-        logger.info(message)
-      }
-      log(`[typeshade] plugin loaded (typescript ${modules.typescript.version})`)
+        logger.info(message);
+      };
+      log(`[typeshade] plugin loaded (typescript ${modules.typescript.version})`);
       try {
-        return decorate(info, modules.typescript, log)
+        return decorate(info, modules.typescript, log);
       } catch (error) {
         // A plugin that throws here takes the project's TypeScript with it. Falling back to the
         // undecorated service costs TypeShade support and keeps everything else working, which
         // is the right way round; the message names the plugin so the log is searchable.
-        const message = error instanceof Error ? error.message : String(error)
-        log(`[typeshade] decoration failed, passing through: ${message}`)
-        return info.languageService
+        const message = error instanceof Error ? error.message : String(error);
+        log(`[typeshade] decoration failed, passing through: ${message}`);
+        return info.languageService;
       }
     },
-  }
+  };
 }

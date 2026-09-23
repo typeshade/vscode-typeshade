@@ -17,17 +17,17 @@
 //
 // The output of the run the design document reports is in `README.md` beside this file.
 
-import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { spawn } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 /** The repository root, which is also the plugin probe location: npm workspaces already links
  *  `node_modules/@typeshade/tsserver-plugin` to `packages/tsserver-plugin`, which is exactly
  *  the layout tsserver resolves a plugin name against. */
-const ROOT = resolve(import.meta.dir, '../../..')
+const ROOT = resolve(import.meta.dir, '../../..');
 
 /** Where the fixture project and the server log are written. */
-const WORK_DIR = join(process.env.TMPDIR ?? '/tmp', 'typeshade-tsserver-probe')
+const WORK_DIR = join(process.env.TMPDIR ?? '/tmp', 'typeshade-tsserver-probe');
 
 /** A `"use typeshade"` file, and a plain TypeScript file, so the run shows what the server
  *  says about each. */
@@ -45,22 +45,25 @@ export function fs(): Color {
 `,
   'host.ts': `export const clearColor: readonly number[] = [1, 0, 0, 1]
 `,
-}
+};
 
 /** One response or event read off the server's stdout. */
 interface ServerMessage {
-  readonly type: string
-  readonly command?: string
-  readonly event?: string
-  readonly body?: unknown
+  readonly type: string;
+  readonly command?: string;
+  readonly event?: string;
+  readonly body?: unknown;
 }
 
 /** A tsserver process, and the two operations a protocol test needs. */
 interface Server {
-  send: (command: string, args: unknown) => void
-  waitFor: (predicate: (message: ServerMessage) => boolean, label: string) => Promise<ServerMessage>
-  messages: readonly ServerMessage[]
-  stop: () => void
+  send: (command: string, args: unknown) => void;
+  waitFor: (
+    predicate: (message: ServerMessage) => boolean,
+    label: string,
+  ) => Promise<ServerMessage>;
+  messages: readonly ServerMessage[];
+  stop: () => void;
 }
 
 /**
@@ -71,62 +74,62 @@ interface Server {
  * @returns the handle a probe drives.
  */
 function startServer(args: readonly string[]): Server {
-  const tsserver = join(ROOT, 'node_modules/typescript/lib/tsserver.js')
-  const child = spawn('node', [tsserver, ...args], { cwd: WORK_DIR, stdio: 'pipe' })
-  const messages: ServerMessage[] = []
+  const tsserver = join(ROOT, 'node_modules/typescript/lib/tsserver.js');
+  const child = spawn('node', [tsserver, ...args], { cwd: WORK_DIR, stdio: 'pipe' });
+  const messages: ServerMessage[] = [];
   const waiters: {
-    predicate: (m: ServerMessage) => boolean
-    resolve: (m: ServerMessage) => void
-  }[] = []
-  let buffer = ''
-  let seq = 0
+    predicate: (m: ServerMessage) => boolean;
+    resolve: (m: ServerMessage) => void;
+  }[] = [];
+  let buffer = '';
+  let seq = 0;
 
-  child.stdout.setEncoding('utf8')
+  child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
-    buffer += chunk
+    buffer += chunk;
     for (;;) {
-      const header = /Content-Length: (\d+)\r\n\r\n/.exec(buffer)
-      if (!header) return
-      const start = header.index + header[0].length
-      const length = Number(header[1])
-      if (buffer.length < start + length) return
-      const message = JSON.parse(buffer.slice(start, start + length)) as ServerMessage
-      buffer = buffer.slice(start + length)
-      messages.push(message)
+      const header = /Content-Length: (\d+)\r\n\r\n/.exec(buffer);
+      if (!header) return;
+      const start = header.index + header[0].length;
+      const length = Number(header[1]);
+      if (buffer.length < start + length) return;
+      const message = JSON.parse(buffer.slice(start, start + length)) as ServerMessage;
+      buffer = buffer.slice(start + length);
+      messages.push(message);
       for (let i = waiters.length - 1; i >= 0; i--) {
-        if (waiters[i].predicate(message)) waiters.splice(i, 1)[0].resolve(message)
+        if (waiters[i].predicate(message)) waiters.splice(i, 1)[0].resolve(message);
       }
     }
-  })
+  });
 
   return {
     messages,
     send: (command, args) => {
-      seq += 1
-      child.stdin.write(`${JSON.stringify({ seq, type: 'request', command, arguments: args })}\n`)
+      seq += 1;
+      child.stdin.write(`${JSON.stringify({ seq, type: 'request', command, arguments: args })}\n`);
     },
     waitFor: (predicate, label) =>
       new Promise((resolveWaiter, reject) => {
-        const existing = messages.find(predicate)
-        if (existing) return resolveWaiter(existing)
-        const timer = setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), 20_000)
+        const existing = messages.find(predicate);
+        if (existing) return resolveWaiter(existing);
+        const timer = setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), 20_000);
         waiters.push({
           predicate,
           resolve: (m) => {
-            clearTimeout(timer)
-            resolveWaiter(m)
+            clearTimeout(timer);
+            resolveWaiter(m);
           },
-        })
+        });
       }),
     stop: () => child.kill(),
-  }
+  };
 }
 
 async function main(): Promise<number> {
-  rmSync(WORK_DIR, { recursive: true, force: true })
-  mkdirSync(WORK_DIR, { recursive: true })
+  rmSync(WORK_DIR, { recursive: true, force: true });
+  mkdirSync(WORK_DIR, { recursive: true });
   for (const [name, text] of Object.entries(FIXTURES)) {
-    writeFileSync(join(WORK_DIR, name), text)
+    writeFileSync(join(WORK_DIR, name), text);
   }
   writeFileSync(
     join(WORK_DIR, 'tsconfig.json'),
@@ -135,13 +138,13 @@ async function main(): Promise<number> {
       null,
       2,
     ),
-  )
+  );
 
   // Without `--allowLocalPluginLoads` as well as with it: VS Code passes the extension's own
   // directory as a probe location and does not pass that flag, so a test that only works with
   // it would be testing something the editor never does.
-  const allowLocal = process.argv.includes('--allow-local')
-  const logFile = join(WORK_DIR, 'tsserver.log')
+  const allowLocal = process.argv.includes('--allow-local');
+  const logFile = join(WORK_DIR, 'tsserver.log');
   const server = startServer([
     '--globalPlugins',
     '@typeshade/tsserver-plugin',
@@ -152,57 +155,57 @@ async function main(): Promise<number> {
     'verbose',
     '--logFile',
     logFile,
-  ])
+  ]);
 
-  const shader = join(WORK_DIR, 'shader.shade.ts')
-  const host = join(WORK_DIR, 'host.ts')
-  server.send('open', { file: shader, fileContent: FIXTURES['shader.shade.ts'] })
-  server.send('open', { file: host, fileContent: FIXTURES['host.ts'] })
-  server.send('geterr', { files: [shader, host], delay: 0 })
+  const shader = join(WORK_DIR, 'shader.shade.ts');
+  const host = join(WORK_DIR, 'host.ts');
+  server.send('open', { file: shader, fileContent: FIXTURES['shader.shade.ts'] });
+  server.send('open', { file: host, fileContent: FIXTURES['host.ts'] });
+  server.send('geterr', { files: [shader, host], delay: 0 });
   await server.waitFor(
     (m) => m.event === 'requestCompleted' || m.event === 'semanticDiag',
     'diagnostics',
-  )
+  );
   // `geterr` answers with one event per kind per file and no single completion marker for the
   // batch, so the probe waits out the remaining events rather than racing them.
-  await new Promise((r) => setTimeout(r, 2000))
+  await new Promise((r) => setTimeout(r, 2000));
 
-  server.send('quickinfo', { file: shader, line: 9, offset: 19 })
-  const quickInfo = await server.waitFor((m) => m.command === 'quickinfo', 'quickinfo')
-  server.stop()
+  server.send('quickinfo', { file: shader, line: 9, offset: 19 });
+  const quickInfo = await server.waitFor((m) => m.command === 'quickinfo', 'quickinfo');
+  server.stop();
 
-  const log = readFileSync(logFile, 'utf8')
-  const loaded = log.includes('[typeshade] plugin loaded')
-  const enabled = log.includes('Enabling plugin @typeshade/tsserver-plugin')
+  const log = readFileSync(logFile, 'utf8');
+  const loaded = log.includes('[typeshade] plugin loaded');
+  const enabled = log.includes('Enabling plugin @typeshade/tsserver-plugin');
 
-  console.log(`tsserver     ${join(ROOT, 'node_modules/typescript/lib/tsserver.js')}`)
+  console.log(`tsserver     ${join(ROOT, 'node_modules/typescript/lib/tsserver.js')}`);
   console.log(
     `flags        --globalPlugins --pluginProbeLocations${allowLocal ? ' --allowLocalPluginLoads' : ''}`,
-  )
-  console.log(`plugin       enabled=${enabled} create-ran=${loaded}`)
+  );
+  console.log(`plugin       enabled=${enabled} create-ran=${loaded}`);
   for (const line of log.split('\n').filter((l) => l.includes('@typeshade/tsserver-plugin'))) {
-    console.log(`             ${line.replace(/^Info \d+\s+\[[^\]]+\]\s*/, '')}`)
+    console.log(`             ${line.replace(/^Info \d+\s+\[[^\]]+\]\s*/, '')}`);
   }
   console.log(
     `             ${log.split('\n').find((l) => l.includes('[typeshade] plugin loaded'))}`,
-  )
+  );
 
   for (const file of [shader, host]) {
     for (const kind of ['semanticDiag', 'syntaxDiag', 'suggestionDiag']) {
       const event = server.messages.find(
         (m) => m.event === kind && (m.body as { file?: string } | undefined)?.file === file,
-      )
-      const diagnostics = (event?.body as { diagnostics?: { code?: number }[] })?.diagnostics ?? []
-      const codes = [...new Set(diagnostics.map((d) => `TS${d.code}`))].sort().join(' ')
+      );
+      const diagnostics = (event?.body as { diagnostics?: { code?: number }[] })?.diagnostics ?? [];
+      const codes = [...new Set(diagnostics.map((d) => `TS${d.code}`))].sort().join(' ');
       console.log(
         `${(file.split('/').pop() ?? '').padEnd(18)} ${kind.padEnd(15)} ${diagnostics.length} ${codes}`,
-      )
+      );
     }
   }
-  const displayString = (quickInfo.body as { displayString?: string } | undefined)?.displayString
-  console.log(`quickinfo    vec4 call site reads as ${JSON.stringify(displayString ?? null)}`)
+  const displayString = (quickInfo.body as { displayString?: string } | undefined)?.displayString;
+  console.log(`quickinfo    vec4 call site reads as ${JSON.stringify(displayString ?? null)}`);
 
-  return loaded && enabled ? 0 : 1
+  return loaded && enabled ? 0 : 1;
 }
 
-if (import.meta.main) process.exit(await main())
+if (import.meta.main) process.exit(await main());

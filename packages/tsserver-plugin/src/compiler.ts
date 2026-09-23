@@ -10,8 +10,8 @@
 // type-checking and through an esbuild alias for the bundle, so the day `typeshade` is on npm
 // this file does not change at all.
 
-export { hasUseTypeshadeDirective } from 'typeshade'
-export { createTypeshadeLanguageService } from 'typeshade/language-service'
+export { hasUseTypeshadeDirective } from 'typeshade';
+export { createTypeshadeLanguageService } from 'typeshade/language-service';
 
 export type {
   TypeshadeCompletionItem,
@@ -29,4 +29,4 @@ export type {
   TypeshadeSignatureHelp,
   TypeshadeSymbolKind,
   TypeshadeTextEdit,
-} from 'typeshade/language-service'
+} from 'typeshade/language-service';
