@@ -1,0 +1,125 @@
+name: pin-compiler
+
+# Proposes the next compiler pin, so vendor/typeshade stops falling behind the compiler's main.
+# While the pin moved only by hand it went 104 commits behind (#4), and every bump then had to
+# absorb a rename, a new subpath and a changed completion list at once. Once a day, or on
+# demand, this workflow points vendor/typeshade at the compiler's main and opens (or refreshes)
+# one pull request that does only that, in the shape docs/design.md §2 sets for a bump: one
+# specific SHA, the compiler commits it takes in, and the diff of the compiler's
+# src/__api__/surface.md between the two SHAs (scripts/surface-diff.mjs). It never merges: the
+# pull request is a proposal, and a person reads the surface diff, fixes on the branch whatever
+# CI says the new compiler broke, updates §3's table if the mapping moved, and merges.
+#
+# A pull request opened with GITHUB_TOKEN starts no pull_request workflow, so the job dispatches
+# ci.yml on the branch itself. ci.yml only checks: it has no publish or deploy step on any ref.
+# The repository needs Settings > Actions > General > "Allow GitHub Actions to create and
+# approve pull requests" turned on for the pull request step.
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+  # The compiler, or anyone with a token, can ask for a bump straight after a merge.
+  repository_dispatch:
+    types: [compiler-updated]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: pin-compiler
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BRANCH: pin/compiler
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          fetch-depth: 0
+      - name: Point vendor/typeshade at the compiler's main
+        id: bump
+        run: |
+          # An open pin pull request may already carry the fixes someone pushed to it, so a run
+          # builds on that branch and never rewrites it. With none open, it starts from main.
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
+            git fetch --quiet origin "$BRANCH"
+            git switch --quiet -C "$BRANCH" FETCH_HEAD
+            git submodule update --quiet vendor/typeshade
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          else
+            git switch --quiet -C "$BRANCH"
+            echo "open=false" >> "$GITHUB_OUTPUT"
+          fi
+          base=$(git rev-parse origin/main:vendor/typeshade)
+          old=$(git -C vendor/typeshade rev-parse HEAD)
+          git -C vendor/typeshade fetch --quiet origin main
+          new=$(git -C vendor/typeshade rev-parse FETCH_HEAD)
+          if [ "$old" = "$new" ]; then
+            echo "The pin is the compiler's main ($old); nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -C vendor/typeshade checkout --quiet "$new"
+          {
+            echo "changed=true"
+            echo "base=$base"
+            echo "new=$new"
+          } >> "$GITHUB_OUTPUT"
+      - name: Write the pull request body
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          OLD: ${{ steps.bump.outputs.base }}
+          NEW: ${{ steps.bump.outputs.new }}
+        run: |
+          {
+            echo "Moves the compiler pin (\`vendor/typeshade\`) from \`${OLD:0:7}\`, where \`main\` has it, to \`${NEW}\`, the compiler's \`main\` when this ran, per \`docs/design.md\` §2."
+            echo
+            echo "This pull request is a proposal: nothing merges it automatically. Before merging, a person reads the surface diff below, fixes on this branch whatever the \`ci\` run on it reports, and updates §3's table in the same pull request if what the plugin maps has changed."
+            echo
+            echo "## Compiler commits this takes in"
+            echo
+            git -C vendor/typeshade log --format='- %h %s' "$OLD..$NEW"
+            echo
+            echo "## The public surface diff"
+            echo
+            node scripts/surface-diff.mjs "$OLD" "$NEW"
+          } > "$RUNNER_TEMP/body.md"
+          # A pull request body holds 65536 characters; the commit list is the part that can
+          # grow past it, so a body that does not fit keeps its head and says so.
+          if [ "$(wc -c < "$RUNNER_TEMP/body.md")" -gt 60000 ]; then
+            # iconv drops a character the byte cut split in two.
+            head -c 60000 "$RUNNER_TEMP/body.md" | iconv -c -f utf-8 -t utf-8 > "$RUNNER_TEMP/cut.md"
+            printf '\n\n(Cut at 60000 characters. Run `git -C vendor/typeshade log %s..%s` and `node scripts/surface-diff.mjs %s %s` for the rest.)\n' \
+              "${OLD:0:7}" "${NEW:0:7}" "${OLD:0:7}" "${NEW:0:7}" >> "$RUNNER_TEMP/cut.md"
+            mv "$RUNNER_TEMP/cut.md" "$RUNNER_TEMP/body.md"
+          fi
+          cat "$RUNNER_TEMP/body.md"
+      - name: Push the branch and open or refresh the pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          OLD: ${{ steps.bump.outputs.base }}
+          NEW: ${{ steps.bump.outputs.new }}
+          OPEN: ${{ steps.bump.outputs.open }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          title="chore: bump vendor/typeshade from ${OLD:0:7} to ${NEW:0:7}"
+          git add vendor/typeshade
+          git commit --quiet -m "$title" -m "Moves the pin to $NEW, a specific SHA of typeshade/typeshade main, per docs/design.md §2."
+          if [ "$OPEN" = "true" ]; then
+            git push origin "$BRANCH"
+            gh pr edit "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            # No open pull request: whatever the branch held was merged or dropped.
+            git push --force origin "$BRANCH"
+            gh pr create --head "$BRANCH" --base main --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          gh workflow run ci.yml --ref "$BRANCH"
