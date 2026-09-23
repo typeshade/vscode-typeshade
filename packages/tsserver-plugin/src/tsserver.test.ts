@@ -137,14 +137,14 @@ describe('the plugin, in a real tsserver', () => {
     expect(attributes).toContain('@fragment')
 
     // Inside the string of a `@builtin(...)`, the service offers the WGSL builtin vocabulary,
-    // which is the completion no TypeScript program could produce: all fifteen ids, because a
-    // struct field has no enclosing stage to filter them by. A bare server offers the string's
-    // own text and nothing else.
+    // which is the completion no TypeScript program could produce: all sixteen ids (fifteen
+    // before the compiler added `primitive_index`), because a struct field has no enclosing
+    // stage to filter them by. A bare server offers the string's own text and nothing else.
     server.open('builtin.shade.ts')
     const builtins = await server.completions('builtin.shade.ts', Harness.at(3, 12))
     expect(builtins).toContain('vertex_index')
     expect(builtins).toContain('position')
-    expect(builtins).toHaveLength(15)
+    expect(builtins).toHaveLength(16)
 
     const bare = await withBareServer(PROJECT, async (s) => {
       s.open('builtin.shade.ts')
