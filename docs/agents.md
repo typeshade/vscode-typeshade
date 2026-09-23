@@ -92,16 +92,16 @@ the compiler ships.
 
 ## 2. The tools
 
-| Tool         | Answer                                                                                     | Source                                                            |
-| ------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `check`      | Diagnostics for a file, several, every shader under a directory, or source text            | `getDiagnostics`, then `compile()`'s `BACKEND` diagnostics (§3.1) |
-| `compile`    | WGSL, GLSL ES 3.00 (both stages), reflection, determinism report                           | `compile()`, `reflect()`                                          |
-| `hover`      | The compiler's type and the documentation                                                  | `getHover`                                                        |
-| `definition` | Where a name is declared, or that it is part of the language                               | `getDefinition`, then the vocabulary                              |
-| `references` | Every use across the workspace's shaders                                                   | `getReferences`, over every shader under the roots                |
-| `outline`    | Structs, resources with their slots, functions, entries, each with its type                | `getDocumentSymbols`, with `getHover` for each type               |
-| `docs`       | A name's sentence and every overload; a GLSL or HLSL name translated; the whole vocabulary | `TYPE_DOCS` and the five other tables, `SHADE_DTS`                |
-| `run`        | One function's result at f32 or f64, with breakpoint stops that list every local           | `typeshade/debug` (§3.4)                                          |
+| Tool         | Answer                                                                                                    | Source                                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `check`      | Diagnostics for a file, several, every shader under a directory, or source text                           | `getDiagnostics`, then `compile()`'s `BACKEND` diagnostics (§3.1) |
+| `compile`    | WGSL, GLSL ES 3.00 (both stages), reflection, determinism report                                          | `compile()`, `reflect()`                                          |
+| `hover`      | The compiler's type and the documentation                                                                 | `getHover`                                                        |
+| `definition` | Where a name is declared, or that it is part of the language                                              | `getDefinition`, then the vocabulary                              |
+| `references` | Every use across the workspace's shaders                                                                  | `getReferences`, over every shader under the roots                |
+| `outline`    | Structs, resources with their slots, functions, entries, each with its type                               | `getDocumentSymbols`, with `getHover` for each type               |
+| `docs`       | A name's sentence and every overload; for a GLSL or HLSL spelling, TypeShade's name; the whole vocabulary | `TYPE_DOCS` and the five other tables, `SHADE_DTS`                |
+| `run`        | One function's result at f32 or f64, with breakpoint stops that list every local                          | `typeshade/debug` (§3.4)                                          |
 
 Three conventions hold for every tool, and each is there for the model reading the answer.
 
