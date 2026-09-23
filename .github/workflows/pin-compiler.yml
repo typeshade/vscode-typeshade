@@ -98,10 +98,13 @@ jobs:
             node scripts/surface-diff.mjs "$OLD" "$NEW"
             if [ -f vendor/typeshade/scripts/downstream-impact.ts ] && command -v bun > /dev/null; then
               echo
-              bun vendor/typeshade/scripts/downstream-impact.ts --repo vscode-typeshade \
-                --submodule vendor/typeshade --old "$OLD" --new "$NEW" --base HEAD --markdown || true
-              echo
-              echo "Each line above still names what the new compiler removes. The \`compiler-bump\` job fails until every one is fixed on this branch."
+              impact=$(bun vendor/typeshade/scripts/downstream-impact.ts --repo vscode-typeshade \
+                --submodule vendor/typeshade --old "$OLD" --new "$NEW" --base HEAD --markdown || true)
+              echo "$impact"
+              if ! grep -q '^Nothing in this repository' <<< "$impact"; then
+                echo
+                echo "Each line above still names what the new compiler removes. The \`compiler-bump\` job fails until every one is fixed on this branch."
+              fi
             fi
           } > "$RUNNER_TEMP/body.md"
           # A pull request body holds 65536 characters; the commit list is the part that can
