@@ -1,6 +1,6 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `eb0dde6`
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `7f0b482`
 (2026-09-23). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
@@ -8,8 +8,8 @@ debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) a
 from `a2240e0` to `ef049e4` renames the package from `@xgis/shader-dsl` to `typeshade`, adds the
 `./debug` and `./shade` subpaths, and grows `./language-service` by three exports
 (`FUNCTION_DOCS`, `CONSTANT_DOCS`, `MATH_MEMBER_DOCS`) and nothing the plugin maps, so every
-mapping in §3 stands as written. The move from `ef049e4` to `eb0dde6` removes nothing this
-repository names and changes no mapping; the figures below that name `ef049e4` were measured
+mapping in §3 stands as written. The moves from `ef049e4` to `eb0dde6` and on to `7f0b482` remove nothing this
+repository names and change no mapping; the figures below that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
 take.

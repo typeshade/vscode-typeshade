@@ -224,7 +224,7 @@ describe('navigation', () => {
         '  scale: f32',
         '  offset: vec3<f32>',
         'resource camera: Camera  (line 8)  uniform resource at @group(0) @binding(0)',
-        'resource pixels: array<f32>  (line 9)  storage resource at @group(0) @binding(1)',
+        'resource pixels: array<f32>  (line 9)  read_write storage resource at @group(0) @binding(1)',
         'entry paint(gid: vec3<u32>): void  (lines 11-15, compute entry)',
       ].join('\n'),
     );

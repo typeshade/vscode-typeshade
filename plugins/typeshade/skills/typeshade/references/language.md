@@ -8,7 +8,7 @@ compiler's normative surface, `docs/use-typeshade-surface.md` in `typeshade/type
 - The file starts with `"use typeshade"`. Without it, the whole result is one `TS8001`.
 - The top level holds: functions; `class`, `interface` and `type` declarations; numeric `enum`
   and `const enum`; `namespace`; module constants (`const K: f32 = 2.`); overrides
-  (`const q: override<f32> = 1.`); resources (`declare const`, `declare let`); module variables
+  (`const q: override<f32> = 1.`); resources (`declare const`); module variables
   (a top-level `let`); `"enable <extension>"` directives; `import` and `export`.
 - Refused at the top level: an expression or an `if` (`TS8014`), `var` (`TS8014` and `TS8013`),
   `declare function` (`TS8020`).
@@ -104,8 +104,11 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 
 - `declare const u: uniform<T>`: a uniform buffer. Make `T` a struct: a bare `uniform<f32>` is
   valid WGSL, and the GLSL emitter refuses it (a `TS8015` warning that drops the GLSL).
-- `declare const s: storage<T>` is read-only storage; `declare let s: storage<T>` is read-write.
-  Writing a `declare const` resource is `TS8005`.
+- `declare const s: storage<T>` is read-only storage; `declare const s: storage<T, "read_write">`
+  is read-write. The access mode is the second type argument, `"read"` (the default) or
+  `"read_write"`. Every resource is `declare const`: `declare let` on one is `TS8099`, which names
+  the line to write. Writing a read-only resource is `TS8005` in the compiler and `TS2542` or
+  `TS2540` in the editor.
 - `declare const tex: texture_2d<f32>` and `declare const smp: sampler`: handles, bare and
   `const`.
 - `const q: override<f32> = 0.5`: a pipeline override, scalar only, set by the host at pipeline
@@ -113,7 +116,7 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   loop.
 - `let seed: u32 = 7` at the top level: a per-invocation module variable.
 - `let tile: workgroup<array<f32, 64>>`: workgroup memory, with no initializer, compute only.
-- `declare let bins: storage<array<atomic<u32>>>`: atomics (`atomic<u32>` or `atomic<i32>`), in
+- `declare const bins: storage<array<atomic<u32>>, "read_write">`: atomics (`atomic<u32>` or `atomic<i32>`), in
   read-write storage only, used through `atomicAdd(bins[i], 1)` and the other atomic builtins.
 - **Slots.** Every `declare` resource is `@group(0)`, numbered `@binding(0)`, `@binding(1)` ...
   in declaration order, textures and samplers included; overrides and module variables take no
@@ -185,6 +188,12 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   against a runtime bound, is `TS8006`; a float induction variable is `TS8008`; a missing
   condition or a step away from the bound is `TS8007`.
 - `for (const x of xs)` iterates an `array<T, N>` or a runtime-sized storage array.
+- Five array methods run as TypeScript runs them, each lowered to a counted loop:
+  `xs.forEach(f)`, `xs.some(p)`, `xs.every(p)`, `xs.reduce(f, init)` (or `xs.reduce(f)` on a
+  non-empty fixed-size array), and `xs.map(f)`, which returns an `array<R, N>` and so takes a
+  fixed-size array only. The function is a name, an arrow or a function expression written in
+  the call, taking `(value, index, array)` with `index` an `i32`. `filter`, `find` and the rest
+  are `TS8099`: an array's length is fixed, so they are a loop.
 - `while` takes any `bool` condition; `while (true)` needs a `break` or a `return` in its body
   (`TS8007`). `do...while`, labels and `for...in` are refused.
 - `switch` is on an integer, with integer constant labels (`TS8017` otherwise). Cases never fall
@@ -268,19 +277,19 @@ On GLSL a texture and the sampler it is used with fuse into one `sampler2D`.
 
 ## Refused, and what to write instead
 
-| Written                                             | Instead                                     |
-| --------------------------------------------------- | ------------------------------------------- |
-| a string, a template literal                        | an enum for cases; text belongs on the host |
-| `number`, `boolean`, `any`, `T[]`, `Array<T>`       | `f32`, `bool`, `array<T, N>`                |
-| `null`, `undefined`, `f32 \| null`                  | a `bool` flag beside the value              |
-| `var`                                               | `let` or `const`                            |
-| `==`, `!=`, `>>>`                                   | `===`, `!==`, `>>` on a `u32`               |
-| `Number`, `Array`, `Date`, `JSON` and other globals | builtins; only `Math` and `console` exist   |
-| `new Float32Array(...)`                             | `new` works only on the file's own classes  |
-| `async`, `try`, generators                          | plain functions                             |
-| `xs.map(...)` and the other array methods           | `for (const x of xs)`, a counted loop       |
-| `typeof`, `instanceof`, `'k' in s`                  | types are static                            |
-| recursion                                           | a loop                                      |
+| Written                                              | Instead                                     |
+| ---------------------------------------------------- | ------------------------------------------- |
+| a string, a template literal                         | an enum for cases; text belongs on the host |
+| `number`, `boolean`, `any`, `T[]`, `Array<T>`        | `f32`, `bool`, `array<T, N>`                |
+| `null`, `undefined`, `f32 \| null`                   | a `bool` flag beside the value              |
+| `var`                                                | `let` or `const`                            |
+| `==`, `!=`, `>>>`                                    | `===`, `!==`, `>>` on a `u32`               |
+| `Number`, `Array`, `Date`, `JSON` and other globals  | builtins; only `Math` and `console` exist   |
+| `new Float32Array(...)`                              | `new` works only on the file's own classes  |
+| `async`, `try`, generators                           | plain functions                             |
+| `xs.filter(...)`, `find` and the other array methods | `for (const x of xs)`, a counted loop       |
+| `typeof`, `instanceof`, `'k' in s`                   | types are static                            |
+| recursion                                            | a loop                                      |
 
 ## Reserved names
 

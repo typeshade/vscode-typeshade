@@ -119,7 +119,7 @@ constant), so every barrier stays in uniform control flow.
 "use typeshade"
 
 declare const src: storage<array<f32>>
-declare let sums: storage<array<f32>>
+declare const sums: storage<array<f32>, "read_write">
 
 let tile: workgroup<array<f32, 64>>
 

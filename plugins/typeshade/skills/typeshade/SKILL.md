@@ -87,7 +87,7 @@ class Params {
 
 declare const params: uniform<Params>
 declare const x: storage<array<f32>>
-declare let y: storage<array<f32>>
+declare const y: storage<array<f32>, "read_write">
 
 @compute([64])
 export function saxpy(@builtin("global_invocation_id") gid: vec3u): void {
@@ -177,8 +177,9 @@ written one component at a time (`v.x = 1.`; `v.xy = ...` is `TS8018`).
 
 **6. There are no strings, no `==`, no JavaScript runtime.** Use `===` and `!==`. `console.log`
 takes values, never text, and runs only on the CPU. `Math.random()` is refused; `random(seed)`
-is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`, and no JavaScript array
-methods (`xs.map(...)`). Functions are written as TypeScript writes them: a nested `function` or
+is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`. Of the JavaScript
+array methods, `map`, `forEach`, `some`, `every` and `reduce` compile (`map` only on a fixed-size
+array); `filter`, `find` and the rest are `TS8099`, and the answer is a loop. Functions are written as TypeScript writes them: a nested `function` or
 an arrow constant may read and write the locals around it, and a function may take a function
 (`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
@@ -202,18 +203,18 @@ a function imported from another shader is `TS8004`. Keep each shader self-conta
 
 ## Types and resources at a glance
 
-| Write                                                              | Means                                                       |
-| ------------------------------------------------------------------ | ----------------------------------------------------------- |
-| `f32` `i32` `u32` `bool`                                           | scalars (`number` and `boolean` are refused)                |
-| `vec2` `vec3` `vec4`, `vec3i`, `vec3u`, `vec3b`                    | vectors of f32, i32, u32, bool                              |
-| `mat4`, `mat3`, `mat2x3` ...                                       | column-major matrices; `m * v` is the column-vector product |
-| `array<f32, 16>`, `array<f32>`                                     | fixed-size array; runtime-sized only in storage             |
-| `class P { a: f32 }`, `interface`, `type P = {...}`                | a struct; `new`, methods and getters work on classes        |
-| `declare const u: uniform<P>`                                      | uniform buffer                                              |
-| `declare const s: storage<array<f32>>` / `declare let s: ...`      | read-only / read-write storage buffer                       |
-| `declare const tex: texture_2d<f32>`, `declare const smp: sampler` | a texture and a sampler                                     |
-| `const k: override<f32> = 1.`                                      | pipeline override (not a compile-time constant)             |
-| `let tile: workgroup<array<f32, 64>>`                              | workgroup memory, compute only                              |
+| Write                                                               | Means                                                       |
+| ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `f32` `i32` `u32` `bool`                                            | scalars (`number` and `boolean` are refused)                |
+| `vec2` `vec3` `vec4`, `vec3i`, `vec3u`, `vec3b`                     | vectors of f32, i32, u32, bool                              |
+| `mat4`, `mat3`, `mat2x3` ...                                        | column-major matrices; `m * v` is the column-vector product |
+| `array<f32, 16>`, `array<f32>`                                      | fixed-size array; runtime-sized only in storage             |
+| `class P { a: f32 }`, `interface`, `type P = {...}`                 | a struct; `new`, methods and getters work on classes        |
+| `declare const u: uniform<P>`                                       | uniform buffer                                              |
+| `declare const s: storage<array<f32>>` / `storage<T, "read_write">` | read-only / read-write storage buffer                       |
+| `declare const tex: texture_2d<f32>`, `declare const smp: sampler`  | a texture and a sampler                                     |
+| `const k: override<f32> = 1.`                                       | pipeline override (not a compile-time constant)             |
+| `let tile: workgroup<array<f32, 64>>`                               | workgroup memory, compute only                              |
 
 The full rules (casts, structs and classes, layouts, textures, atomics, uniformity, reserved
 names) are in [references/language.md](references/language.md).
@@ -262,7 +263,7 @@ which still runs, with its false positives on shader code filtered out. The ones
 | TS8022 | an unknown name, often after an earlier error                               | fix the first error                                    |
 | TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                        | splat: `max(v, vec3(0.))`                              |
 | TS8052 | `textureSample` or a derivative under a per-fragment branch                 | sample before branching                                |
-| TS8099 | a string, `==`, `do...while`, `xs.map(...)`, a fragment-only call elsewhere | read the message: it names the construct               |
+| TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource | read the message: it names the construct               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
 
