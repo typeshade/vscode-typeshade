@@ -313,8 +313,15 @@ repository's npm packages, after the compiler's own `publish.yml`:
 - **The job that can publish runs no dependency code.** The `publish` job is the only one with
   `id-token: write`. It installs nothing, and uploads the tarball `pack` tested with
   `npm publish --provenance --access public`.
+- **Trusted publishing is the only credential** (step 3 below). No step reads a token: with one
+  in `.npmrc`, npm falls back to it without a word when the exchange fails, so a release could
+  not show which of the two published it, and the job would hold the organization's token for
+  nothing.
 - **A manual run never uploads.** `workflow_dispatch` runs every step and ends in
-  `npm publish --dry-run`.
+  `npm publish --dry-run`. npm refuses a dry run of a version it already has, so dispatch it on
+  the branch that bumps the version. npm exchanges the `id-token` before it looks at
+  `--dry-run`, so the dry run also fails when trusted publishing does not authenticate it, as a
+  pushed tag would.
 
 **What the owner does, because nobody else can.** npm lets a trusted publisher be registered
 only for a package that already exists (`npm trust` says so in as many words), so the first
@@ -326,23 +333,36 @@ release needs a token:
    organization's secret of that name reaches this repository, and a repository secret of the
    same name would take precedence.
 2. Publish a GitHub release tagged `mcp-v0.1.0` on the commit to release (the trigger at the
-   time). npm tries trusted publishing first and, with no publisher registered, falls back to
-   the secret.
+   time). npm tried trusted publishing first and, with no publisher registered, fell back to
+   the secret, which the workflow wrote to `.npmrc` until step 3.
 3. On `https://www.npmjs.com/package/@typeshade/mcp/access`, register a trusted publisher:
    GitHub Actions, organization `typeshade`, repository `vscode-typeshade`, workflow
-   `publish-mcp.yml`, no environment. Then delete the secret, so the next release proves the
-   OIDC path. The compiler's `RELEASING.md` §0 walks the same screens for `typeshade`. The
-   secret is the organization's, and the compiler's workflow reads it too, so delete it only
-   once `typeshade` has a trusted publisher as well, or leave it until the compiler's first
-   release.
+   `publish-mcp.yml`, no environment. Under allowed actions, let it publish directly: npm always
+   allows `npm stage publish`, and the workflow runs `npm publish`. Then, under publishing
+   access, require two-factor authentication and disallow tokens that bypass it. Every option
+   there works with a trusted publisher, and this one leaves no token that can publish the
+   package. Registering a publisher needs two-factor authentication on the account, which npm
+   offers to set up on the spot. The compiler's `RELEASING.md` §0 walks the same screens for
+   `typeshade`.
 
 Steps 1 and 2 were done on 2026-09-23. The first attempt was refused with
 `E403 ... granular access token with bypass 2fa enabled is required to publish packages`, since
 that token did not bypass 2FA, and nothing was uploaded. A token that does, put in the same
-secret, and a re-run of the failed job published the same tested tarball. Step 3 is still open.
+secret, and a re-run of the failed job published the same tested tarball. Step 3 was done the
+same day, after 0.1.1, so 0.1.1 went out on the token as well.
 
-**Step 3 has a deadline: January 2027.** In CI nobody can type a one-time password, so the
-token has to bypass two-factor authentication, and npm is retiring such tokens.
+**Which credential published a version is in the registry.** Each version in
+`https://registry.npmjs.org/@typeshade%2fmcp` has an `_npmUser`. For 0.1.0 and 0.1.1 it is the
+account that owns the token. A version that trusted publishing uploaded has `GitHub Actions`
+there instead, with a `trustedPublisher` entry.
+
+The workflow no longer reads the secret, so this package no longer needs it. The secret is the
+organization's, and the compiler's workflow reads it for the first release of `typeshade`:
+delete it once `typeshade` has a trusted publisher as well.
+
+**Step 3 had a deadline: January 2027**, and so does the compiler's first release, which still
+goes through the token. In CI nobody can type a one-time password, so the token has to bypass
+two-factor authentication, and npm is retiring such tokens.
 
 - Since 2026-07-31 such a token needs an interactive 2FA challenge to change a package's access,
   maintainers or trusted publishers.
