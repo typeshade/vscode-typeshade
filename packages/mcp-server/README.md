@@ -72,7 +72,7 @@ args = ["-y", "@typeshade/mcp"]
 
 **From a checkout.** Versions reach npm from GitHub releases tagged `mcp-v` and the version
 ([`docs/agents.md`](https://github.com/typeshade/vscode-typeshade/blob/main/docs/agents.md) §6).
-Before the first one, or to try a change, build the repository and use
+To try a change before it is released, build the repository and use
 `node /path/to/vscode-typeshade/packages/mcp-server/dist/index.js` as the command in place of
 `npx -y @typeshade/mcp`:
 
