@@ -49,5 +49,4 @@ id first, then the pull request that did the work.
 - 0019: a shader calls `console.table` with one value: the skill's console rule (SKILL.md) and
   references/language.md name `table` and its one argument; the MCP server's `run` tool prints a
   `table` event as indented rows (`tools.test.ts` pins an array of structs and a matrix);
-  docs/design.md §5's DAP `output` row says how a `table` event reads, handled in this pull
-  request.
+  docs/design.md §5's DAP `output` row says how a `table` event reads, handled in #28.
