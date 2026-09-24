@@ -4,6 +4,13 @@ Read `README.md` for the checks and the conventions, `docs/design.md` for the ed
 and `docs/agents.md` for the MCP server, the skill and the plugin. This file adds what keeps
 this repository true to the compiler it wraps.
 
+## The language of the conversation
+
+Answer the owner in Korean, every reply, from the first to the last of a session: a status
+report, a question, a summary after a merge. What goes into the repository stays in English as
+it is: code, comments, commit messages, pull request titles and bodies, and every document in
+the tree.
+
 ## The packages and the docs follow the pinned compiler
 
 `vendor/typeshade` is the compiler, pinned as a git submodule (`docs/design.md` §2). A package,
