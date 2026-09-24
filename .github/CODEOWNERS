@@ -1,0 +1,16 @@
+# Who reviews what. With branch protection's "Require review from Code Owners", a pull request
+# that touches one of these paths cannot merge without that owner's approval.
+# The last matching line wins, so the default comes first.
+
+*                    @Seungup
+
+# The design document the pin procedure and the mapped surface are written in.
+/docs/               @Seungup
+
+# The pinned compiler, the agent plugin and skill, and the automation.
+/vendor/             @Seungup
+/compiler-changes.md @Seungup
+/plugins/            @Seungup
+/.claude-plugin/     @Seungup
+/scripts/            @Seungup
+/.github/            @Seungup

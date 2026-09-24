@@ -13,8 +13,8 @@
 // `USE_TYPESHADE`, the exact string, rather than `hasUseTypeshadeDirective`, the predicate: a
 // predicate carries its own `SyntaxKind` table and the plugin's nodes come from tsserver's
 // TypeScript, not from this bundle's. `directive.ts` says what that cost when it was not obeyed.
-export { USE_TYPESHADE } from 'typeshade'
-export { createTypeshadeLanguageService } from 'typeshade/language-service'
+export { USE_TYPESHADE } from 'typeshade';
+export { createTypeshadeLanguageService } from 'typeshade/language-service';
 
 export type {
   TypeshadeCompletionItem,
@@ -32,4 +32,4 @@ export type {
   TypeshadeSignatureHelp,
   TypeshadeSymbolKind,
   TypeshadeTextEdit,
-} from 'typeshade/language-service'
+} from 'typeshade/language-service';

@@ -7,16 +7,16 @@
 //
 // No `vscode` import, so §6's unit tests can assert the escaping rather than trusting it.
 
-import { PREVIEW_TABS, type PreviewOutput, type PreviewTab } from './model.js'
+import { PREVIEW_TABS, type PreviewOutput, type PreviewTab } from './model.js';
 
 /** What the panel needs to render itself. */
 export interface PanelState {
   /** The file name shown in the header, already short. */
-  readonly fileName: string
+  readonly fileName: string;
   /** Which tab is selected. */
-  readonly active: PreviewTab
+  readonly active: PreviewTab;
   /** The selected tab's output, or undefined when the model holds nothing for this file. */
-  readonly output: PreviewOutput | undefined
+  readonly output: PreviewOutput | undefined;
 }
 
 /** The label each tab shows. */
@@ -25,7 +25,7 @@ const TAB_LABELS: Readonly<Record<PreviewTab, string>> = {
   'glsl-vertex': 'GLSL vertex',
   'glsl-fragment': 'GLSL fragment',
   reflection: 'Reflection',
-}
+};
 
 /**
  * The panel's whole document.
@@ -39,7 +39,7 @@ export function panelHtml(state: PanelState, nonce: string): string {
     "default-src 'none'",
     `style-src 'nonce-${nonce}'`,
     `script-src 'nonce-${nonce}'`,
-  ].join('; ')
+  ].join('; ');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,15 +58,15 @@ ${banner(state.output)}
 <script nonce="${nonce}">${SCRIPT}</script>
 </body>
 </html>
-`
+`;
 }
 
 /** The tab strip, with the selected one marked for the stylesheet and for a screen reader. */
 function tabs(active: PreviewTab): string {
   return PREVIEW_TABS.map((tab) => {
-    const selected = tab === active
-    return `<button type="button" class="tab${selected ? ' selected' : ''}" data-tab="${tab}" aria-pressed="${selected}">${escapeHtml(TAB_LABELS[tab])}</button>`
-  }).join('')
+    const selected = tab === active;
+    return `<button type="button" class="tab${selected ? ' selected' : ''}" data-tab="${tab}" aria-pressed="${selected}">${escapeHtml(TAB_LABELS[tab])}</button>`;
+  }).join('');
 }
 
 /** The one line above the text, which is the only place the panel mentions a diagnostic.
@@ -75,24 +75,24 @@ function tabs(active: PreviewTab): string {
  *  second place to be stale. What is left here is the fact that the text below is older than the
  *  file, which the Problems view cannot say. */
 function banner(output: PreviewOutput | undefined): string {
-  if (output === undefined) return ''
+  if (output === undefined) return '';
   if (output.stale) {
-    return `<p class="banner">Showing the last output that compiled. The file has ${count(output.diagnostics.length, 'error')} right now.</p>`
+    return `<p class="banner">Showing the last output that compiled. The file has ${count(output.diagnostics.length, 'error')} right now.</p>`;
   }
   if (output.text === '') {
-    return `<p class="banner">Nothing to show: this file compiles to no ${output.tab === 'reflection' ? 'reflection' : 'shader code'}.</p>`
+    return `<p class="banner">Nothing to show: this file compiles to no ${output.tab === 'reflection' ? 'reflection' : 'shader code'}.</p>`;
   }
-  return ''
+  return '';
 }
 
 /** The text the panel shows, which is empty rather than absent when there is nothing. */
 function bodyText(output: PreviewOutput | undefined): string {
-  return output?.text ?? ''
+  return output?.text ?? '';
 }
 
 /** `1 error` or `2 errors`, because the banner reads as a sentence. */
 function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 /**
@@ -107,7 +107,7 @@ export function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replace(/'/g, '&#39;');
 }
 
 /** The panel's stylesheet. Every colour is one of VS Code's own theme variables, so the panel
@@ -130,7 +130,7 @@ const STYLE = `
             font-family: var(--vscode-editor-font-family);
             font-size: var(--vscode-editor-font-size); }
   .output.stale { opacity: 0.5; }
-`
+`;
 
 /** The panel's script: the tab strip, and nothing else. The panel is read-only (§4), so this is
  *  the only thing it can do. */
@@ -141,4 +141,4 @@ const SCRIPT = `
       vscode.postMessage({ type: 'selectTab', tab: button.dataset.tab });
     });
   }
-`
+`;

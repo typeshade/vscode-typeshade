@@ -5,17 +5,17 @@
 // `xvfb-run`. `docs/design.md` §6 records what this container could and could not do with it,
 // and why this job is separate from `npm run check`.
 
-import { runTests } from '@vscode/test-electron'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { runTests } from '@vscode/test-electron';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // This file only ever runs as its BUILT bundle, `dist/test-electron/main.js`, which is two
 // levels under the package root; the source it is built from is one level under. Anchoring on
 // the bundle's own location is what the first version got wrong, and the symptom was a require
 // for `dist/dist/test-electron/suite.js` inside the extension host, four frames deep in
 // VS Code's own loader.
-const here = dirname(fileURLToPath(import.meta.url))
-const extensionDevelopmentPath = resolve(here, '../..')
+const here = dirname(fileURLToPath(import.meta.url));
+const extensionDevelopmentPath = resolve(here, '../..');
 
 async function main(): Promise<void> {
   await runTests({
@@ -32,10 +32,10 @@ async function main(): Promise<void> {
       '--disable-gpu',
       '--no-sandbox',
     ],
-  })
+  });
 }
 
 main().catch((error: unknown) => {
-  console.error(error)
-  process.exitCode = 1
-})
+  console.error(error);
+  process.exitCode = 1;
+});

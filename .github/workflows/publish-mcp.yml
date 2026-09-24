@@ -1,0 +1,206 @@
+name: publish-mcp
+
+# Publishes `@typeshade/mcp` to npm (`docs/agents.md` §6), in the shape `docs/design.md` §7 sets
+# for this repository's npm packages, after the compiler's own `publish.yml`. One event uploads: a
+# push of a tag that is `mcp-v` and the package's version. Pushing that tag IS the publish, so
+# there is no `npm publish` on anybody's laptop. `git push origin mcp-v0.1.1` does it, and so
+# does a GitHub release created on the web with a new tag, since creating the release pushes the
+# tag; the release itself is not a trigger, so the two never start two runs.
+#
+# THE TAG PREFIX. The extension and this package keep versions of their own (design.md §7). The
+# `tags` filter below starts this workflow only for `mcp-v*`, and the extension's publish
+# workflow needs a prefix of its own.
+#
+# THE TAGGED COMMIT MUST BE ON `main`, so a tag on an unreviewed branch cannot publish. `pack`
+# checks it before building. A tag ruleset that limits who may create `mcp-v*` tags is the
+# other half of that guard, and only the owner can set it.
+#
+# WHY THE GATE RUNS AGAIN, when CI already ran it on the commit: npm forbids republishing a
+# version, so one bad upload burns the number. `verify` CALLS ci.yml (`workflow_call`), so the
+# checks a release runs are the CI jobs themselves rather than a copy that can drift.
+#
+# TWO JOBS, SO THE ONE THAT CAN PUBLISH RUNS NO DEPENDENCY CODE. `pack` installs the workspace,
+# builds, packs, installs the tarball into an empty directory and runs the stdio suite against
+# that installed copy, with no credential and no `id-token`. `publish` takes the tarball `pack`
+# tested and uploads those exact bytes; it installs nothing.
+#
+# A MANUAL RUN NEVER UPLOADS. `workflow_dispatch` runs every step and ends in `npm publish
+# --dry-run`, so the packaging can be exercised without a tag (design.md §7). npm refuses a dry
+# run of a version it already has, so dispatch it on the branch that bumps the version. The dry
+# run also says whether trusted publishing authenticated it, and quotes npm's reason when not.
+#
+# AUTHENTICATION is npm trusted publishing, with an NPM_ACCESS_TOKEN secret as the fallback. npm
+# first exchanges the job's `id-token` for a credential, against a publisher the package owner
+# registers on npmjs.com naming this repository and this file, and falls back to a token in
+# .npmrc, which the publish step writes from the secret when it is set. npm registers a publisher
+# only for a package that already exists, so the first release goes through the token
+# (docs/agents.md §6). The publisher is registered now, but npm still refuses the exchange for
+# this repository: GitHub gives repositories created after 2026-07-15 an immutable OIDC subject,
+# which npm does not match yet (npm/cli#9969), so the token is what publishes until the dry run
+# says otherwise. Trusted publishing needs npm 11.5.1 or newer, and the runner's bundled npm is
+# 10.x, so the job upgrades it.
+#
+# RENAMING THIS FILE BREAKS TRUSTED PUBLISHING, because the registered publisher names it.
+
+on:
+  push:
+    tags: ['mcp-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mcp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  pack:
+    name: pack, and test the installed tarball
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so the check below can see whether `main` holds the tagged commit.
+          fetch-depth: 0
+          # The bundle carries the pinned compiler (design.md §2).
+          submodules: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: The tagged commit must be on main
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse --short HEAD), which ${GITHUB_REF_NAME} names, is not on" \
+                 "main. Nothing was published; tag a commit on main. See docs/agents.md §6."
+            exit 1
+          fi
+
+      - name: The tag must be mcp-v and the package's version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          echo "tag=$TAG  packages/mcp-server/package.json=$VERSION"
+          if [ "$TAG" != "mcp-v$VERSION" ]; then
+            echo "::error::tag '$TAG' does not match @typeshade/mcp's version '$VERSION'." \
+                 "Expected the tag 'mcp-v$VERSION'. Nothing was published; delete the tag, fix the" \
+                 "version or the tag, and push it again. See docs/agents.md §6."
+            exit 1
+          fi
+
+      - run: npm run build
+
+      # npm packs a LICENSE only from the package's own directory, and this one has none.
+      - name: Copy the LICENSE beside the manifest
+        run: cp LICENSE packages/mcp-server/LICENSE
+
+      - name: Pack, and record what is in the tarball
+        working-directory: packages/mcp-server
+        run: |
+          set -euo pipefail
+          npm pack --dry-run 2>&1 | sed -e 's/^npm notice //' | tee /tmp/pack.txt
+          mkdir -p /tmp/tarball
+          npm pack --pack-destination /tmp/tarball --silent
+          {
+            echo '### Tarball'
+            echo
+            echo '```'
+            grep -E 'name:|version:|filename:|package size:|unpacked size:|total files:' /tmp/pack.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The dependencies are npm's resolution for the tarball, not this workspace's lockfile,
+      # which is what a user's `npx -y @typeshade/mcp` gets.
+      - name: Install the tarball into an empty directory
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify && cd /tmp/verify
+          echo '{"name":"verify","version":"1.0.0","private":true}' > package.json
+          npm install --no-audit --no-fund /tmp/tarball/typeshade-mcp-*.tgz
+          ./node_modules/.bin/typeshade-mcp --version
+
+      - name: The installed server must pass the stdio suite
+        env:
+          TYPESHADE_MCP_BIN: /tmp/verify/node_modules/@typeshade/mcp/dist/index.js
+        run: npx vitest run packages/mcp-server/src/server.test.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: /tmp/tarball/typeshade-mcp-*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish the tested tarball
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Both the provenance attestation and trusted publishing exchange this for a credential.
+      # Without it `--provenance` fails and the OIDC flow is not attempted.
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Upgrade npm
+        run: |
+          npm install -g npm@latest
+          npm --version
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball
+          path: tarball
+
+      # The `./` in the two steps below is load-bearing: without it npm reads `tarball/x.tgz` as
+      # the GitHub shorthand for a repository and runs `git ls-remote` against it.
+      - name: Publish to npm
+        if: github.event_name == 'push'
+        env:
+          NPM_ACCESS_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$NPM_ACCESS_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=\${NPM_ACCESS_TOKEN}" >> ~/.npmrc
+            echo "NPM_ACCESS_TOKEN is set: npm tries trusted publishing first and falls back to it."
+          fi
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public
+
+      # npm exchanges the `id-token` before it looks at --dry-run, and this step holds no token,
+      # so npm's `requires you to be logged in` warning means trusted publishing did not
+      # authenticate the run. A release would then publish through the token, since the publish
+      # step falls back to it without a word. npm logs the registry's reason for refusing the
+      # exchange only at the verbose level.
+      - name: Dry run, not published
+        if: github.event_name != 'push'
+        run: |
+          set -uo pipefail
+          status=0
+          npm publish ./tarball/typeshade-mcp-*.tgz --provenance --access public --dry-run \
+            --loglevel verbose 2>&1 | tee /tmp/dry-run.txt || status=$?
+          if grep -q 'requires you to be logged in' /tmp/dry-run.txt; then
+            reason=$(grep -m1 'verbose oidc' /tmp/dry-run.txt | sed 's/^npm verbose oidc //' || true)
+            echo "::warning::Trusted publishing did not authenticate this run" \
+                 "(npm: ${reason:-no reason logged}), so a release publishes through" \
+                 "NPM_ACCESS_TOKEN. See docs/agents.md §6."
+            echo "Dry run, nothing uploaded. Trusted publishing did not authenticate it; a release" \
+                 "uses the token." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Dry run, nothing uploaded. Trusted publishing authenticated it." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

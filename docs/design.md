@@ -1,15 +1,19 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. Written against `typeshade/typeshade` at `a2240e0`, plus two
-branches that have not merged: `claude/d1-debugging-design` (PR #28, the debugging design),
-`claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and `claude/d1-launch-config`
-(PR #41, the launch configuration and the value formatter, tip `0d48000`). It was first written
-against `3c0a2d7` and re-checked against `a2240e0` when that arrived: the two commits between
-them (#18, a binding read lowering to a varref, and #51, hover) change one thing in the public
-surface, an added `CompileTsSourceResult.symbols` field, and nothing in
-`src/language-service/index.ts`, so every mapping in §3 stands as written. Every claim about the
-compiler names the file it comes from. Nothing here is frozen, and §8 lists what is still open
-with the answer this document would take.
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `7f0b482`
+(2026-09-23). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
+debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
+`claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
+from `a2240e0` to `ef049e4` renames the package from `@xgis/shader-dsl` to `typeshade`, adds the
+`./debug` and `./shade` subpaths, and grows `./language-service` by three exports
+(`FUNCTION_DOCS`, `CONSTANT_DOCS`, `MATH_MEMBER_DOCS`) and nothing the plugin maps, so every
+mapping in §3 stands as written. The moves from `ef049e4` to `eb0dde6` and on to `7f0b482` remove nothing this
+repository names and change no mapping. §1.3, §4 and §7 were re-measured at `7f0b482` with the
+plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
+there. Every claim about the compiler names the file it comes from.
+Nothing here is frozen, and §8 lists what is still open with the answer this document would
+take.
 
 Related: the compiler's `docs/language-service-api.md` (the language service contract, whose §1
 and §10 item 8 place the language server and this repository's work), its `docs/debugging.md`
@@ -54,14 +58,16 @@ Four properties of that service decide almost everything below.
    where the compiler means `f32`. It is also why §3 replaces quick info rather than merging it,
    and the probe measured what the unhelped answer looks like, `vec4(...)` reading as `any`.
 4. **The service decides which TypeScript diagnostics survive.** The filter table is
-   `TS_DIAGNOSTIC_FILTERS` in `src/language-service/diagnostics.ts` (lines 282 to 328), five
+   `TS_DIAGNOSTIC_FILTERS` in `src/language-service/diagnostics.ts` (lines 760 to 839), seven
    rules each carrying its own reason: TS1206 under `isDecoratorOnTopLevelFunction`, which
    covers the stage decorator on the function and `@builtin(...)` and `@location(...)` on its
-   parameters alike, and TS2362, TS2363, TS2365 and TS2322 under four predicates that ask the
-   checker whether the operand's own type carries one of `GPU_BRAND_TAGS` (`ambient.ts`).
-   `docs/language-service-api.md` §6 is the policy behind them, and it names TS2304, TS2349,
-   TS2564 and TS1206 in prose; the arithmetic rules live only in the source file, which is why
-   this document cites the file. `tsc` on its own cannot do any of that filtering: the
+   parameters alike; TS2362, TS2363, TS2365 and TS2322 under four predicates that ask the
+   checker whether the operand's own type carries one of `GPU_BRAND_TAGS` (`ambient.ts`); and
+   TS2345 and TS2769, the same arithmetic reaching a call's argument, the second for an
+   overloaded callee, dropped only when the shape the arithmetic would have produced is one
+   some overload accepts. `docs/language-service-api.md` §6 is the policy behind them, and it
+   names TS2304, TS2349, TS2564 and TS1206 in prose; the arithmetic rules live only in the
+   source file, which is why this document cites the file. `tsc` on its own cannot do any of that filtering: the
    `claude/c6-ambient-lib` branch measured 11 TS1206 left over across the five examples.
 
 On this repository's side there is the workspace of PR 0 and nothing else: a pass-through
@@ -150,7 +156,7 @@ The measurement, its driver and its harness are in `docs/measurements/two-progra
 runs under node, because tsserver does, in a process that does nothing else, three times per
 mode, over a fixture of 150 plain TypeScript modules plus the compiler's six `.shade.ts`
 examples. The plugin's code is measured as it will ship: an esbuild CommonJS bundle of the
-compiler's `./language-service` subpath, 9.7 MB (10,219,538 bytes), **carrying its own
+compiler's `./language-service` subpath, 10.6 MB (11,102,632 bytes), **carrying its own
 `typescript`**.
 
 That last part is a correction, and it is the largest number in this section. Until PR 3 the
@@ -162,43 +168,50 @@ packaged extension. §2 has what that cost and how it was found. The plugin ther
 a second `typescript`, it does pay for it, and the numbers below say so.
 
 The plugin's own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, is
-9.8 MB (10,248,391 bytes) as built today. The two numbers measure different things and are
+10.6 MB (11,131,568 bytes) as built at `7f0b482`. The two numbers measure different things and are
 close enough to be mistaken for each other, so both are spelled out wherever either appears.
+Every figure below was measured with the compiler at `7f0b482`. Earlier figures in this
+section were taken before the correction, with `typescript` external and loaded ahead of the
+baseline, so they measured a bundle that no longer ships and are not repeated.
 
 The phases are separated because they are paid at different times.
 
-| What                                                          | When it is paid           | 6 shaders                  | 60 shaders                 |
-| ------------------------------------------------------------- | ------------------------- | -------------------------- | -------------------------- |
-| Requiring the plugin's bundle                                 | once per tsserver process | 310.9 to 319.6 ms, 35.4 MB | 309.3 to 341.6 ms, 35.4 MB |
-| Building the TypeShade program and answering for every shader | once per project          | 141.0 to 151.8 ms, 5.2 MB  | 276.9 to 311.3 ms, 8.1 MB  |
-| Retained in tsserver, both phases together                    |                           | 40.6 MB                    | 43.5 MB                    |
-| One edit plus diagnostics for a shader file                   | once per keystroke        | 6.7 to 7.2 ms              | 6.9 to 8.6 ms              |
+| What                                                          | When it is paid           | 6 shaders                 | 60 shaders               |
+| ------------------------------------------------------------- | ------------------------- | ------------------------- | ------------------------ |
+| Requiring the plugin's bundle                                 | once per tsserver process | 240.5 to 277.1 ms, 45 MB  | 236.5 to 292.1 ms, 45 MB |
+| Building the TypeShade program and answering for every shader | once per project          | 206.5 to 215.2 ms, 9.8 MB | 400 to 516.6 ms, 15.1 MB |
+| Retained in tsserver, both phases together                    |                           | 54.8 MB                   | 60.1 MB                  |
+| One edit plus diagnostics for a shader file                   | once per keystroke        | 9.1 to 10.6 ms            | 8.4 to 9.1 ms            |
 
-Beside them, what the editor does today with no plugin, on the same fixture: 1235.0 to
-1299.9 ms to build the project and answer for all 156 files, 63.9 MB of heap for that program,
-18.2 to 18.8 ms for one edit to a shader file, and **58 semantic errors on the six examples,
+Beside them, what the editor does today with no plugin, on the same fixture: 986.1 to
+1345 ms to build the project and answer for all 156 files, 63.9 MB of heap for that program,
+11.8 to 16.3 ms for one edit to a shader file, and **58 semantic errors on the six examples,
 every one of them false**, exactly 58 in every run.
 
-So the plugin adds about 41 MB and about 460 ms, once, to a process that is already holding
+So the plugin adds about 55 MB and about 470 ms, once, to a process that is already holding
 63.9 MB for the project itself, and answers a keystroke in a shader file faster than the
 project program does. The keystroke figure looks like a mistake and is not: the TypeShade
-program re-checks one small file against a 265-line ambient lib (`SHADE_DTS` is 11015
-characters over 265 lines, measured through the subpath), while the project program re-checks
-the same file against `lib.es2022` plus `lib.dom` inside a 156-file program.
+program re-checks one small file against the ambient lib alone, while the project program
+re-checks the same file against `lib.es2022` plus `lib.dom` inside a 156-file program.
+`SHADE_DTS` was 11015 characters over 265 lines at `a2240e0`, and is 164,240 characters over
+2636 lines at `ef049e4` (both measured through the subpath), ten times larger and still under a
+tenth of the 32,672 lines of `lib.es5.d.ts` and `lib.dom.d.ts` alone, which is why the
+re-measured keystroke above kept its lead.
 
-**Is 41 MB still worth it?** Yes, and the comparison that settles it is the alternative, not
+**Is 55 MB still worth it?** Yes, and the comparison that settles it is the alternative, not
 zero. A standalone language server runs the same service in a process of its own, so it holds
 the same second `typescript` and the same second program, plus a process and a client per
 editor, and it publishes its diagnostics BESIDE TypeScript's rather than replacing them (§1.2).
 Nothing about this number moves the delivery-vehicle decision. What it does raise is a new
 question, §8 item 11: sharing one `typescript` between the plugin's service and the host's
-tsserver would give back about 24 of the 41 MB, and the only thing standing in the way is that
+tsserver would give back about 15.5 of the 55 MB (what requiring `typescript` 5.6.3 alone
+retains, measured the same way), and the only thing standing in the way is that
 the host's version is not one the compiler is tested against.
 
 **Where the cost lives, and what it scales on.** The fixed half is by far the larger one:
-loading the plugin's own code costs 35.4 MB whatever the project holds, flat to the tenth of a
-megabyte between the two fixtures, and about 24 MB of that is the bundled `typescript`. The
-per-project half scales on shader files alone, and gently: ten times the shaders costs 2.9 MB
+loading the plugin's own code costs 45 MB whatever the project holds, flat to the tenth of a
+megabyte between the two fixtures, and about 15.5 MB of that is the bundled `typescript`. The
+per-project half scales on shader files alone, and gently: ten times the shaders costs 5.3 MB
 more and roughly twice the time, while the 150 host modules contribute nothing to either, since
 a TypeShade program holds the shader files and `SHADE_DTS` and nothing else (§1.7 is why that
 is a language fact rather than a configuration choice). The fixture's host count was not varied,
@@ -266,10 +279,11 @@ would have to hold host files in the TypeShade program, which is the collision o
 What the user sees, then, is that a host file importing a shader has the TypeShade file's errors
 attributed to the TypeShade file (where the plugin replaces them) and the import itself resolved
 normally. The one visible rough edge is hover on an imported entry inside a host file, which
-reads as TypeScript sees it. §8 item 5 keeps a better answer open once the compiler ships
-`shade.d.ts` as a real file (it does on `claude/c6-ambient-lib`, as the `./shade` types-only
-subpath), because a host project can then put its shader sources in a separate `tsconfig` and
-the question stops being about one program.
+reads as TypeScript sees it. §8 item 5 keeps a better answer open now that the compiler ships
+`shade.d.ts` as a real file (the `./shade` types-only subpath, `"./shade": "./dist/shade.d.ts"`
+in `package.json` at the pin, written by `scripts/emit-shade-dts.ts` at build time), because a
+host project can then put its shader sources in a separate `tsconfig` and the question stops
+being about one program.
 
 ### 1.7 A `.shade.ts` file that imports a plain `.ts` file
 
@@ -280,8 +294,11 @@ shader file as an unresolved module.**
 The reason is §0 point 2 again: a plain TypeScript module is written for the standard library,
 and the TypeShade program has none. Pulling it in would put its own text under `lib: []` and
 produce errors inside a file the user never asked to be a shader. The compiler's own multi-file
-story is unsettled (`docs/language-service-api.md` §11: `compileTsSources` exists in two
-incompatible forms), so the editor is not the place to invent one.
+story is a story about shaders only: `compileTsSources` now has one form
+(`src/compiler/ts/module.ts`), taking a list of `{ fileName, source }`, and since #74 it merges
+every file's structs, bindings and overrides into one module, while naming a struct in an
+import is still open (`docs/language-service-api.md` §11). A plain module has no place in it,
+so the editor is not the place to invent one.
 
 Concretely, the plugin's `readDocument` host hook (`TypeshadeLanguageServiceHost.readDocument`,
 `src/language-service/host.ts`) reads the file through tsserver's host, parses its first
@@ -320,12 +337,11 @@ code in its own build. That is §8 item 9.
 ## 2. The compiler dependency before 0.1.0
 
 The compiler is not on npm. Its `package.json` `exports` point at TypeScript sources
-(`"." : "./src/index.ts"`), its name becomes `typeshade` on the publishing branches
-(`claude/c6-rename` through `claude/c6-publish`), and the `dist/` layout arrives on
-`claude/c6-dist-exports`, which `claude/c6-ambient-lib` inherits and adds one entry to
-(`"./shade": "./dist/shade.d.ts"`). The checked-in `exports` stay on `./src/*.ts` even there:
-`scripts/publish-manifest.ts --write` rewrites them onto `dist/` at publish time, in a checkout
-that is thrown away. That is what makes "the compiler's exports pointing at `.ts` costs us
+(`"." : "./src/index.ts"`), its name is `typeshade` (it was `@xgis/shader-dsl` until #29, which
+also brought the `dist/` layout and the publish workflow), and one entry already points at
+`dist/`: `"./shade": "./dist/shade.d.ts"`, the ambient lib as a types-only subpath. Every other
+checked-in export stays on `./src/*.ts`: `scripts/publish-manifest.ts` rewrites them onto
+`dist/` at publish time, in a checkout that is thrown away. That is what makes "the compiler's exports pointing at `.ts` costs us
 nothing" true, before and after it publishes.
 
 **Decision: a pinned git submodule at `vendor/typeshade`, bundled from sources with esbuild,
@@ -346,10 +362,9 @@ How it is wired:
   `typeshade`, `typeshade/language-service`, and, once PR 4 needs it, `typeshade/debug`. The
   workspace root maps them to `vendor/typeshade` through `tsconfig` `paths` for type-checking
   and through an esbuild alias for the bundle, in one place each, so the eventual npm
-  dependency deletes three entries and changes no source file. `./debug` exists only on
-  `claude/d1-stepping-oracle` and `claude/d1-launch-config` today, on none of the publishing
-  branches, so PR 4's switch to npm waits on that subpath reaching the published `exports` and
-  `files` list, separately from the other two.
+  dependency deletes three entries and changes no source file. All three are in the pinned
+  `exports` (`"./debug": "./src/debug.ts"` since #35), so the switch to npm waits on nothing but
+  the compiler publishing.
 - **Both bundles inline `typescript`, and the plugin's copy is a correction PR 3 made.** The
   extension bundle always inlined it: the VS Code extension host injects only `vscode` and
   resolves everything else from what the `.vsix` ships, and §4's preview panel runs a
@@ -367,7 +382,7 @@ How it is wired:
   is that the bundle needs no `typescript` of its own: the bundled compiler builds a TypeScript
   program of its own, with `lib: []` and the ambient `SHADE_DTS`, so it requires `typescript` at
   run time whatever the plugin does, and `external` means node resolves that by walking up from
-  wherever the bundle sits. In this repository it finds the workspace's own 5.6.3 and everything
+  wherever the bundle sits. In this repository it finds the workspace's own copy and everything
   appears to work; in a packaged `.vsix` it finds nothing.
 
   A real VS Code is what settled it. `packages/vscode-typeshade/test-electron/` ran the plugin
@@ -399,8 +414,26 @@ moved to a specific SHA of `typeshade/typeshade` `main` (never a branch), the co
 generated list of every public export, and `git diff` over two SHAs of it is exactly the list of
 what changed for us, which is what the compiler's own `src/api-surface.test.ts` exists to
 guarantee), and the full local gate green. A bump that changes what the plugin maps also changes
-§3's table in the same pull request. Nothing else may move the pin: no floating branch, no
-`--remote` update in CI.
+§3's table in the same pull request. Nothing else may move the pin: no floating branch, and
+nothing in CI that moves the pin on `main` (no `--remote` update in a build, no auto-merge).
+
+**Who proposes the bump.** A workflow does, so the pin stops falling behind: by hand it had
+drifted 104 commits by #4. `.github/workflows/pin-compiler.yml` runs once a day, on demand, and
+on a `compiler-updated` repository dispatch. It resolves the compiler's `main` to one SHA,
+commits the submodule at that SHA on the `pin/compiler` branch, and opens one pull request (or
+refreshes the one already open) whose body lists the compiler commits it takes in and quotes the
+`surface.md` diff between `main`'s pin and the new SHA. A diff over 200 lines is summarised
+instead of quoted, by `scripts/surface-diff.mjs`: the export count per subpath, and every export
+and every shape definition added, removed or changed. That keeps the decision above intact, not
+relaxed. The workflow proposes a specific SHA and never a branch, it never merges, and a person
+reads the surface diff, fixes on the branch whatever the new compiler breaks, updates §3's table
+if the mapping moved, and merges it. A run that finds the pull request open pushes on top of it
+and never force-pushes over the fixes on it. A pull request opened with `GITHUB_TOKEN` starts no
+`pull_request` run, so the workflow dispatches `ci.yml` on the branch, which is why `ci.yml`
+takes `workflow_dispatch`; `ci.yml` only checks and publishes nothing from any ref. The
+repository needs one setting for the pull request step: Settings > Actions > General > "Allow
+GitHub Actions to create and approve pull requests". Without it the branch is pushed and the
+pull request step fails, so the proposal is never silent.
 
 ## 3. The feature matrix
 
@@ -499,12 +532,15 @@ every row above.** No compiler change is required for PR 2.
 
 Seven conversions carry all the risk, and each is a decision.
 
-**Diagnostic codes collide with TypeScript's own, across the whole range.** TypeShade's codes
-run from `TS8001` (`MISSING_DIRECTIVE`) to `TS8030` (`SYNTAX`) with 8011 retired, plus `TS8099`
-(`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`. TypeScript's own family occupies 8001 to
-8039, verified by extracting every `diag(...)` code from `typescript/lib/typescript.js`: 2063
-distinct codes, maximum 95195. So the overlap is total except for TS8099, and it starts at the
-first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
+**Diagnostic codes collide with TypeScript's own, across the whole sequential range.**
+TypeShade's codes run from `TS8001` (`MISSING_DIRECTIVE`) to `TS8038` (`F64_ENTRY_IO`) with 8011
+retired, then `TS8041` (`TEXTURE_ARGUMENT`), `TS8050` to `TS8053`, `TS8068` (`RESERVED_NAME`)
+and `TS8099` (`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`, whose header explains the gaps:
+codes were handed out in blocks while several branches worked at once, and an unspent number is
+never reused. TypeScript's own family occupies 8001 to 8039, verified by extracting every
+`diag(...)` code from `typescript/lib/typescript.js`: 2063 distinct codes, maximum 95195. So the
+overlap covers the whole sequential range, only TS8041, TS8050 to TS8053, TS8068 and TS8099
+fall outside it, and it starts at the first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
 TypeScript library", which is a rename diagnostic, and this document maps `findRenameLocations`
 and `getRenameInfo`. A `ts.Diagnostic.code` is a number, so something has to give.
 
@@ -513,9 +549,9 @@ and `getRenameInfo`. A `ts.Diagnostic.code` is a number, so something has to giv
 what tells the two apart. The collision is then only dangerous through code-keyed behavior,
 which is why `getCodeFixesAtPosition` and `getCombinedCodeFix` answer nothing for a directive
 file: VS Code asks for fixes by error code, and a fix TypeScript registered for its own 8003
-must never be offered for TypeShade's. Open PRs #49 and #50 add TS8031 and TS8032 on the
-compiler side, so this range is written as "TS8001 upward" and re-checked when the pin moves
-(§2).
+must never be offered for TypeShade's. The range grew from TS8030 to the list above between
+`a2240e0` and `ef049e4`, which is why it is written as "TS8001 upward" in the code and
+re-checked when the pin moves (§2).
 
 **Severity maps to category.** `'error' | 'warning' | 'information' | 'hint'` to
 `ts.DiagnosticCategory.Error | Warning | Message | Suggestion`.
@@ -625,12 +661,12 @@ alternative, an unsupported command, would put the panel's correctness on an API
 removed in a VS Code patch release.
 
 What it costs is mostly fixed rather than mostly per-document, measured with the same harness
-as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 305.2 to 340.3 ms and 35.4 MB, then
-building a one-document program and compiling it 101.2 to 109.4 ms and 3.8 MB, for **39.2 MB
-retained** against 40.6 MB for the six-document case. So the panel's marginal cost per file is
+as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 243.3 to 294.3 ms and 45 MB, then
+building a one-document program and compiling it 109 to 164.3 ms and 7.3 MB, for **52.3 MB
+retained** against 54.8 MB for the six-document case, at `7f0b482`. So the panel's marginal cost per file is
 small and its fixed cost is what matters, and §7 has to count it twice: the plugin's copy in
-tsserver and the extension's copy in the extension host, roughly **80 MB across the two
-processes** on top of what each already holds. About 24 MB of each copy is the bundled
+tsserver and the extension's copy in the extension host, roughly **107 MB across the two
+processes** on top of what each already holds. About 15.5 MB of each copy is the bundled
 `typescript` that §1.3 explains and §8 item 11 asks about.
 
 **Commands.**
@@ -682,13 +718,13 @@ one-way channel is for.
 
 ## 5. The debugger
 
-Designed here, implemented in PR 4, after PR #35 and PR #41 merge. Its engine is the
+Designed here, implemented in PR 4, now that PR #35 and PR #41 have merged. Its engine is the
 compiler's, on the `./debug` subpath (`src/debug.ts`), and its design is `docs/debugging.md`,
 whose §5 decision 8 puts the adapter in this repository and decision 7 puts the engine on that
 subpath. The adapter holds no TypeShade semantics: per that document's §2.3, its size is a
 measure of drift.
 
-**What the engine offers**, across the two branches. PR #35 has
+**What the engine offers**, from those two pull requests. PR #35 has
 `startDebugSession(module, entry, args, opts)`, returning a `DebugSession` with `stepOver`,
 `stepIn`, `stepOut`, `continue` and `setBreakpoints`, plus `pause`, `done`, `result`,
 `discarded`, `stubbedIntrinsics` and `precision`. A `DebugPause` carries a reason (`entry`,
@@ -850,7 +886,7 @@ the editor, and that the plugin the manifest contributes actually loaded.
 `DebugClient` over a pipe: launch a fixture shader, set a breakpoint on a known line, assert the
 `stopped` event's line, read `scopes` and `variables`, step, and assert the value of a local
 after the step. The engine's own correctness is the compiler's `step.test.ts` and
-`step-differential.test.ts` on `claude/d1-stepping-oracle`; the adapter's test asserts
+`step-differential.test.ts` (`src/core/debug/`); the adapter's test asserts
 translation only, which is the same split §5 states for its size.
 
 **The gate.** Everything above runs in `npm run check`: typecheck, eslint, prettier, the em dash
@@ -878,10 +914,10 @@ file and copies it, with a minimal `package.json`, into
 `vsce package` runs.
 
 **What the `.vsix` weighs, counted honestly.** It carries the compiler's language service
-twice, and `typescript` twice with it (§2). The plugin bundle is 9.8 MB (10,248,391 bytes) and
-the extension bundle 9.8 MB (10,273,566 bytes) as built today, so the `.vsix` carries about
-20 MB of JavaScript before compression and before anything else. At run time that is roughly
-**80 MB of live heap across two processes**: about 40.6 MB in tsserver (§1.3) and about 39.2 MB
+twice, and `typescript` twice with it (§2). The plugin bundle is 10.6 MB (11,131,568 bytes) and
+the extension bundle 10.7 MB (11,178,709 bytes) as built at `7f0b482`, so the `.vsix` carries
+about 21 MB of JavaScript before compression and before anything else. At run time that is roughly
+**107 MB of live heap across two processes**: about 54.8 MB in tsserver (§1.3) and about 52.3 MB
 in the extension host (§4). Sharing one bundled module between the two is possible later and
 nothing in this layout prevents it; the larger saving is §8 item 11, which is about not bundling
 `typescript` at all. Neither is worth doing before the numbers are a complaint, and both are now
@@ -941,24 +977,27 @@ the way it was for an unscoped name: a scoped package defaults to restricted, an
 publish without it fails on a private-package payment error rather than on anything that reads
 like the real cause.
 
-**Authentication prefers trusted publishing, with a token as the fallback**, which is the
-compiler's choice too. With npm's OIDC flow the workflow needs no secret at all: the job asks
-for `id-token: write` and npm verifies it against a publisher the package owner registers once
-on npmjs.com, naming this repository and this workflow file. With an `NPM_ACCESS_TOKEN` secret
-present instead, the workflow writes it to `.npmrc` and npm uses that. Two things follow, and
-both are the kind that are only ever learned the expensive way. Trusted publishing needs
-npm 11.5.1 or newer, so the job upgrades npm before publishing rather than trusting the
-runner's bundled 10.x. And **renaming the workflow file breaks trusted publishing**, because
-the registered publisher names the filename, so the file is named once and left alone.
+**Authentication is meant to be trusted publishing, once the package exists.** With npm's OIDC
+flow the workflow needs no secret at all: the job asks for `id-token: write` and npm verifies it
+against a publisher the package owner registers once on npmjs.com, naming this repository and
+this workflow file. npm registers a publisher only for a package that already exists, so the
+first release goes through an `NPM_ACCESS_TOKEN` secret that the workflow writes to `.npmrc`.
+And npm does not yet match the OIDC subject GitHub gives repositories created after 2026-07-15,
+this one included ([npm/cli#9969](https://github.com/npm/cli/issues/9969)), so for now the token
+publishes every release. `publish-mcp.yml` keeps it as the fallback, and its dry run says when
+trusted publishing starts to authenticate (`docs/agents.md` §6). Two more things are the kind
+that are only ever learned the expensive way. Trusted publishing needs npm 11.5.1 or newer, so
+the job upgrades npm before publishing rather than trusting the runner's bundled 10.x. And
+**renaming the workflow file breaks trusted publishing**, because the registered publisher names
+the filename, so the file is named once and left alone.
 
 **What the owner had to do once, and nobody else could.** Two of three are done, on
 2026-09-14: the Marketplace publisher with its `VSCE_PAT`, and the Open VSX decision with its
-`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5:
-either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-`typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret here.
-Trusted publishing is the better end state, since there is nothing to leak and nothing to
-rotate, and it has to be registered BEFORE the first release: a release that fails on a missing
-publisher is a tag already pushed with nothing on the registry.
+`OVSX_PAT`. The third is only needed when the plugin publishes to npm, which is after PR 5: a
+token for the first release, then npm trusted publishing for `@typeshade/tsserver-plugin`,
+naming `typeshade/vscode-typeshade` and the workflow file. Trusted publishing is the better end
+state, since there is nothing to leak and nothing to rotate, but it cannot come first (§8,
+item 4).
 
 ## 8. Open questions
 
@@ -980,11 +1019,14 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    editor rather than predicted here.
 4. **A standalone LSP server for editors with no tsserver plugin support (§1.2).** _Suggested:
    not now, and not never._ It is a second adapter over the same service; the plugin covers the
-   editors that matter first.
+   editors that matter first. `docs/agents.md` §0.2 measured the nearer route for agents: the
+   plugin loaded by `typescript-language-server` through its `initializationOptions.plugins`,
+   which gives every tsserver-based agent tool the plugin's answers, and §1 there adds the third
+   adapter this document did not foresee, an MCP server.
 5. **Hover on an imported entry inside a host `.ts` file reads as TypeScript sees it (§1.6).**
-   _Suggested: leave it, and revisit when the compiler's `./shade` subpath
-   (`claude/c6-ambient-lib`) lets a project type-check its shaders as their own tsconfig
-   project, which changes the question from "one program or two" to "which project"._
+   _Suggested: leave it, and revisit now that the compiler's `./shade` subpath (on `main` since
+   #29) lets a project type-check its shaders as their own tsconfig project, which changes the
+   question from "one program or two" to "which project"._
 6. **Unused locals in a shader file get no hint, because the suggestion pass is replaced with
    nothing (§3).** _Suggested: ask the compiler for an `UNUSED` diagnostic rather than borrowing
    TypeScript's, since only the compiler knows whether a binding is dead in GPU terms._
@@ -1005,8 +1047,8 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     three APIs to reach users on 2022 releases. Revisit if a real user reports being stuck
     below it.
 11. **Whether the plugin's bundled `typescript` could be the host's instead (§1.3, §2).** The
-    plugin carries its own copy, which is 24 of the 41 MB it adds to a tsserver process and
-    about 9.7 MB of the `.vsix`. tsserver hands every plugin its own instance as
+    plugin carries its own copy, which is about 15.5 of the 55 MB it adds to a tsserver process
+    and most of the 8.9 MB `typescript.js` in each bundle of the `.vsix`. tsserver hands every plugin its own instance as
     `modules.typescript`, and feeding that to the bundled compiler instead of a bundled copy
     would give all of it back. _Suggested: no, until the compiler is tested against the
     versions editors actually ship._ The saving is real and the risk is specific: the TypeShade
@@ -1032,12 +1074,15 @@ is still open and is not needed until after PR 5.
    revision of this document recorded the unscoped name; `packages/tsserver-plugin/package.json`
    and the probe now carry the scoped one, and the probe was re-run to confirm tsserver resolves
    it (§6).
-4. **Still open: how the plugin authenticates to npm**, which matters only when it publishes,
-   after PR 5. Either register npm trusted publishing for `@typeshade/tsserver-plugin`, naming
-   `typeshade/vscode-typeshade` and the workflow file, or add an `NPM_ACCESS_TOKEN` secret to
-   this repository. Trusted publishing is the better end state and has to be registered before
-   the first release; the workflow is designed to take either (§7).
+4. **Still open: how the plugin's first release authenticates to npm**, which matters only when
+   it publishes, after PR 5. npm registers a trusted publisher only for a package that already
+   exists, so trusted publishing cannot come first. `@typeshade/mcp` went out first on a token
+   that bypasses two-factor authentication, and its publisher was registered after that
+   (`docs/agents.md` §6). npm stops such tokens from publishing in January 2027, so a first
+   release after that needs another route, such as a maintainer publishing it by hand with 2FA.
+   And trusted publishing does not authenticate this repository at all until npm fixes
+   [npm/cli#9969](https://github.com/npm/cli/issues/9969).
 
 Nothing before that step is blocked on an answer.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-23

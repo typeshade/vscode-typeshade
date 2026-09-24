@@ -1,36 +1,58 @@
 # TypeShade for editors
 
-Editor support for [TypeShade](https://github.com/typeshade/typeshade), the TypeScript shader
-language whose files start with the `"use typeshade"` directive and compile to WGSL and
+Editor and agent support for [TypeShade](https://github.com/typeshade/typeshade), the TypeScript
+shader language whose files start with the `"use typeshade"` directive and compile to WGSL and
 GLSL ES 3.00.
 
-This repository holds two packages:
+This repository holds three packages and a Claude Code plugin:
 
-| Package                                                    | What it is                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `@typeshade/tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server. |
-| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                              |
+| Package                                                    | What it is                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`packages/tsserver-plugin`](./packages/tsserver-plugin)   | `@typeshade/tsserver-plugin`, a TypeScript server plugin. Every editor that runs tsserver (VS Code, Cursor, WebStorm, Neovim) gets TypeShade diagnostics, hover, completions, signature help, definitions, references and rename for `"use typeshade"` files, with no separate language server.                                                  |
+| [`packages/vscode-typeshade`](./packages/vscode-typeshade) | The VS Code extension. It activates the plugin and adds what tsserver cannot carry: a WGSL and GLSL preview panel, commands, and a debug adapter for stepping a shader on the CPU.                                                                                                                                                               |
+| [`packages/mcp-server`](./packages/mcp-server)             | `@typeshade/mcp`, a Model Context Protocol server. Coding agents (Claude Code, Codex, Cursor, VS Code agent mode, Gemini CLI) get the same diagnostics as the editor, the emitted WGSL and GLSL, types and navigation, the vocabulary, which corrects a name from another shading language (`lerp` → `mix`), and a CPU run of a shader function. |
+| [`plugins/typeshade`](./plugins/typeshade)                 | A Claude Code plugin, installable from this repository as a marketplace: a skill that teaches the language, with every example compiled in CI, and the MCP server.                                                                                                                                                                               |
 
 ## Status
 
-Early. Nothing is published to npm or to the Visual Studio Marketplace yet, and the compiler
-itself is not on npm either, so both packages are marked private while the interfaces settle.
-The plan, the architecture and the decisions behind them are in
-[`docs/design.md`](./docs/design.md).
+Early. `@typeshade/mcp` 0.1.1 is on npm, published by pushing its tag
+([`docs/agents.md`](./docs/agents.md) §6). Nothing else is published yet, to npm or to the Visual
+Studio Marketplace: the compiler itself is not on npm, so the other two packages stay private
+while the interfaces settle. The plan, the architecture and the decisions behind them are in
+[`docs/design.md`](./docs/design.md) for the editor and [`docs/agents.md`](./docs/agents.md) for
+coding agents.
 
 | Piece                            | State                                                 |
 | -------------------------------- | ----------------------------------------------------- |
 | Workspace, CI, conventions       | done                                                  |
 | Design document                  | done, [`docs/design.md`](./docs/design.md)            |
 | TypeScript server plugin         | done, tested against a real tsserver                  |
+| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client  |
+| MCP server publish workflow      | done; 0.1.1 published from the tag `mcp-v0.1.1`       |
+| Skill and Claude Code plugin     | done; the server entry runs the npm package           |
 | VS Code extension and preview    | done, tested in a real VS Code                        |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
 
+## Use with a coding agent
+
+In Claude Code, the plugin brings the skill and the server together:
+
+```text
+/plugin marketplace add typeshade/vscode-typeshade
+/plugin install typeshade@typeshade
+```
+
+Both work at once: the server entry runs `npx -y @typeshade/mcp`, so nothing needs building.
+Codex, Cursor, Gemini CLI and VS Code start the same package, as
+[`packages/mcp-server/README.md`](./packages/mcp-server/README.md) shows. The skill's directory,
+[`plugins/typeshade/skills/typeshade`](./plugins/typeshade/skills/typeshade), is in the portable
+Agent Skills format, so it can also be copied into Codex, Cursor or Gemini CLI as it is.
+
 ## Develop
 
 The compiler is a pinned git submodule under `vendor/typeshade` until it publishes to npm
-([`docs/design.md`](./docs/design.md) §2), and both artifacts bundle it, so a checkout without
+([`docs/design.md`](./docs/design.md) §2), and every artifact bundles it, so a checkout without
 it fails at the first import:
 
 ```bash
@@ -49,7 +71,15 @@ nothing.
 Individually: `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test`.
 `npm run format` rewrites instead of checking.
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs the same steps on every push and
-pull request.
+pull request. On a pull request it also runs the pinned compiler's
+`scripts/downstream-impact.ts`, which fails while a file here still names an export or a file
+that the new pin removes, while a compiler `LINT.ThenChange(//vscode-typeshade/...)` target has
+not changed with its block, or while a compiler change proposal that the new pin implements
+names this repository and [`compiler-changes.md`](./compiler-changes.md) does not record its
+id. The compiler's `scripts/ifchange.ts` checks this repository's own `LINT.IfChange` pairs the
+same way. In a Claude Code session, `scripts/commit-gate.mjs` runs the fast checks (prettier,
+eslint, the em dash check) before every commit, so a convention costs a local retry rather than
+a CI round trip.
 
 `npm run test:electron` is separate, and separate on purpose. It launches a real VS Code with
 the extension loaded and asserts what only a real host can answer, including that the server

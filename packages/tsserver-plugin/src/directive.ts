@@ -19,8 +19,8 @@
 //
 // So: the rule is the compiler's, applied with the instance that owns the node.
 
-import type ts from 'typescript'
-import { USE_TYPESHADE } from './compiler.js'
+import type ts from 'typescript';
+import { USE_TYPESHADE } from './compiler.js';
 
 /**
  * Whether a source file carries the directive, decided with the TypeScript instance that built
@@ -33,10 +33,10 @@ import { USE_TYPESHADE } from './compiler.js'
  */
 export function sourceFileHasDirective(typescript: typeof ts, sourceFile: ts.SourceFile): boolean {
   return sourceFile.statements.some((statement) => {
-    if (!typescript.isExpressionStatement(statement)) return false
-    const expression = statement.expression
-    return typescript.isStringLiteral(expression) && expression.text === USE_TYPESHADE
-  })
+    if (!typescript.isExpressionStatement(statement)) return false;
+    const expression = statement.expression;
+    return typescript.isStringLiteral(expression) && expression.text === USE_TYPESHADE;
+  });
 }
 
 /**
@@ -56,8 +56,8 @@ export function isTypeshadeFile(
   service: ts.LanguageService,
   fileName: string,
 ): boolean {
-  const sourceFile = service.getProgram()?.getSourceFile(fileName)
-  return sourceFile !== undefined && sourceFileHasDirective(typescript, sourceFile)
+  const sourceFile = service.getProgram()?.getSourceFile(fileName);
+  return sourceFile !== undefined && sourceFileHasDirective(typescript, sourceFile);
 }
 
 /**
@@ -80,6 +80,6 @@ export function textHasDirective(typescript: typeof ts, fileName: string, text: 
     text,
     typescript.ScriptTarget.ES2022,
     /* setParentNodes */ false,
-  )
-  return sourceFileHasDirective(typescript, parsed)
+  );
+  return sourceFileHasDirective(typescript, parsed);
 }

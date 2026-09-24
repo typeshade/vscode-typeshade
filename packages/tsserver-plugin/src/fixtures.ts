@@ -26,11 +26,11 @@ export function tint(x: f32): f32 {
 export function fs(): Color {
   return { color: vec4(tint(1.), 0., 0., 1.) }
 }
-`
+`;
 
 /** The same shader with its directive removed, for the transition that only `closeDocument` can
  *  handle: the file stays in the project, so no prune reaches it. */
-export const CLEAN_WITHOUT_DIRECTIVE = CLEAN.replace('"use typeshade"\n', '')
+export const CLEAN_WITHOUT_DIRECTIVE = CLEAN.replace('"use typeshade"\n', '');
 
 /** A shader with a real TypeShade error: a call to a function that does not exist, which the
  *  front end reports as `UNKNOWN_FN` (TS8004). */
@@ -40,7 +40,7 @@ export const BROKEN = `"use typeshade"
 export function fs(): f32 {
   return nope(1.)
 }
-`
+`;
 
 /** A shader with a parse error, for the assertion that one broken paren is underlined once. */
 export const SYNTAX = `"use typeshade"
@@ -49,7 +49,7 @@ export const SYNTAX = `"use typeshade"
 export function fs(): f32 {
   return vec4(1., 0.
 }
-`
+`;
 
 /** The imported half of the pair. */
 export const LIB = `"use typeshade"
@@ -57,7 +57,7 @@ export const LIB = `"use typeshade"
 export function double(x: f32): f32 {
   return x * 2.
 }
-`
+`;
 
 /** The importing half. The specifier is `./lib.shade.js`, not `./lib.js`: the service resolves
  *  a relative import by rewriting a trailing `.js` to `.ts`, so `./lib.js` would look for
@@ -70,7 +70,7 @@ import { double } from './lib.shade.js'
 export function fs(): f32 {
   return double(2.)
 }
-`
+`;
 
 /** A shader whose struct field carries a `@builtin(...)`, for the one completion no TypeScript
  *  program could produce. The cursor goes inside that string, and a STRUCT FIELD is the right
@@ -87,7 +87,7 @@ class Clip {
 export function vs(): Clip {
   return { pos: vec4(0., 0., 0., 1.) }
 }
-`
+`;
 
 /** A shader whose exported function carries a doc comment, for the hover split. The service
  *  renders a documented symbol as a fenced signature followed by prose, which is the only shape
@@ -104,7 +104,7 @@ export function tint(x: f32): f32 {
 export function fs(): f32 {
   return tint(1.)
 }
-`
+`;
 
 /** A shader with an import it does not use, so `organizeImports` and `getPasteEdits` have
  *  something to do. On `broken.shade.ts` they answer empty from both servers, which made the
@@ -117,7 +117,7 @@ import { double } from './lib.shade.js'
 export function fs(): f32 {
   return 1.
 }
-`
+`;
 
 /** A plain TypeScript file, for the pass-through equality assertion. Nothing about it is
  *  TypeShade, and the plugin must leave every answer about it byte for byte as it was. */
@@ -131,14 +131,14 @@ export function area(frame: Frame): number {
 }
 
 export const first: Frame = { width: 1, height: 1 }
-`
+`;
 
 /** A host file that imports a shader, which is the §1.6 case: the host side stays plain
  *  TypeScript and the plugin does not touch it. */
 export const HOST_IMPORTS_SHADER = `import { fs } from './clean.shade.js'
 
 export const entry = fs
-`
+`;
 
 /**
  * A shader of at least `lines` lines, which is what puts it past tsserver's 500-line region
@@ -148,12 +148,12 @@ export const entry = fs
  * @returns the shader's text.
  */
 export function longShader(lines: number): string {
-  const parts = ['"use typeshade"', '']
+  const parts = ['"use typeshade"', ''];
   for (let i = 0; parts.length < lines; i++) {
-    parts.push(`export function h${i}(x: f32): f32 {`, `  return x * ${i + 1}.`, '}', '')
+    parts.push(`export function h${i}(x: f32): f32 {`, `  return x * ${i + 1}.`, '}', '');
   }
-  parts.push('@fragment', 'export function fs(): f32 {', '  return h0(1.)', '}')
-  return parts.join('\n')
+  parts.push('@fragment', 'export function fs(): f32 {', '  return h0(1.)', '}');
+  return parts.join('\n');
 }
 
 /** The tsconfig the fixture project uses: ordinary settings, with no mention of TypeShade. The
@@ -172,7 +172,7 @@ export const TSCONFIG = JSON.stringify(
   },
   null,
   2,
-)
+);
 
 /** Every file of the fixture project, by name. */
 export const PROJECT: Readonly<Record<string, string>> = {
@@ -188,11 +188,11 @@ export const PROJECT: Readonly<Record<string, string>> = {
   'host.ts': HOST,
   'host-imports-shader.ts': HOST_IMPORTS_SHADER,
   'big.shade.ts': longShader(520),
-}
+};
 
 /** A workspace with no `tsconfig.json` at all, which is how most people first open a shader:
  *  tsserver puts the file in an inferred project, whose constructor calls `enableGlobalPlugins`
  *  (`typescript.js:184978`), so the plugin is enabled there too. */
 export const INFERRED_PROJECT: Readonly<Record<string, string>> = {
   'clean.shade.ts': CLEAN,
-}
+};

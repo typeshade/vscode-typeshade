@@ -5,7 +5,7 @@
 // as risky lives here, with the reason beside it, so the risky ones are read together rather
 // than found one at a time.
 
-import type ts from 'typescript'
+import type ts from 'typescript';
 import type {
   TypeshadeCompletionItem,
   TypeshadeCompletionKind,
@@ -19,13 +19,13 @@ import type {
   TypeshadeSemanticTokenType,
   TypeshadeSignatureHelp,
   TypeshadeSymbolKind,
-} from './compiler.js'
+} from './compiler.js';
 
 /** What every conversion needs: the host's `typescript` module for its enums, and the service
  *  for position arithmetic, which is the only place offsets and line/character meet. */
 export interface ConvertContext {
-  readonly typescript: typeof ts
-  readonly shade: TypeshadeLanguageService
+  readonly typescript: typeof ts;
+  readonly shade: TypeshadeLanguageService;
 }
 
 /** The 2020 semantic classifier's token types, by index.
@@ -47,13 +47,13 @@ const V2020_TOKEN_TYPE = {
   property: 9,
   function: 10,
   member: 11,
-} as const
+} as const;
 
 /** `TokenEncodingConsts.typeOffset`. A classification is `(type + 1) << typeOffset | modifiers`. */
-const TYPE_OFFSET = 8
+const TYPE_OFFSET = 8;
 
 /** The 2020 classifier's modifier bits, by index (`typescript.js:148610`). */
-const V2020_MODIFIER = { declaration: 0, readonly: 3, defaultLibrary: 4 } as const
+const V2020_MODIFIER = { declaration: 0, readonly: 3, defaultLibrary: 4 } as const;
 
 /** TypeShade's thirteen token types onto the twelve TypeScript has.
  *
@@ -69,13 +69,13 @@ const TOKEN_TYPE: Partial<Record<TypeshadeSemanticTokenType, number>> = {
   parameter: V2020_TOKEN_TYPE.parameter,
   variable: V2020_TOKEN_TYPE.variable,
   property: V2020_TOKEN_TYPE.property,
-}
+};
 
 /** Converts a range in `uri` to the offset span tsserver speaks in. */
 function spanOf(ctx: ConvertContext, uri: string, range: TypeshadeRange): ts.TextSpan {
-  const start = ctx.shade.offsetAt(uri, range.start)
-  const end = ctx.shade.offsetAt(uri, range.end)
-  return { start, length: Math.max(0, end - start) }
+  const start = ctx.shade.offsetAt(uri, range.start);
+  const end = ctx.shade.offsetAt(uri, range.end);
+  return { start, length: Math.max(0, end - start) };
 }
 
 /**
@@ -101,7 +101,7 @@ export function toTsDiagnostic(
   file: ts.SourceFile,
   diagnostic: TypeshadeDiagnostic,
 ): ts.Diagnostic {
-  const isTypeshade = diagnostic.source === 'typeshade'
+  const isTypeshade = diagnostic.source === 'typeshade';
   return {
     file,
     start: diagnostic.span.start,
@@ -112,24 +112,24 @@ export function toTsDiagnostic(
     ...(isTypeshade ? { source: 'typeshade' } : {}),
     reportsUnnecessary: undefined,
     reportsDeprecated: undefined,
-  }
+  };
 }
 
 /** `TS8003` to 8003, and a number through unchanged. A code that parses to nothing becomes
  *  8099, the compiler's own catch-all, rather than NaN. */
 function numericCode(code: string | number): number {
-  if (typeof code === 'number') return code
-  const digits = /(\d+)/.exec(code)
-  return digits ? Number(digits[1]) : 8099
+  if (typeof code === 'number') return code;
+  const digits = /(\d+)/.exec(code);
+  return digits ? Number(digits[1]) : 8099;
 }
 
 /** TypeShade's four severities onto TypeScript's four categories. */
 function categoryOf(ctx: ConvertContext, severity: TypeshadeDiagnostic['severity']) {
-  const c = ctx.typescript.DiagnosticCategory
-  if (severity === 'error') return c.Error
-  if (severity === 'warning') return c.Warning
-  if (severity === 'information') return c.Message
-  return c.Suggestion
+  const c = ctx.typescript.DiagnosticCategory;
+  if (severity === 'error') return c.Error;
+  if (severity === 'warning') return c.Warning;
+  if (severity === 'information') return c.Message;
+  return c.Suggestion;
 }
 
 /**
@@ -148,8 +148,8 @@ export function withoutSyntacticDuplicates(
   diagnostics: readonly TypeshadeDiagnostic[],
   syntactic: readonly ts.DiagnosticWithLocation[],
 ): TypeshadeDiagnostic[] {
-  if (syntactic.length === 0) return [...diagnostics]
-  const seen = new Set(syntactic.map((d) => `${d.code}:${d.start}:${d.length}`))
+  if (syntactic.length === 0) return [...diagnostics];
+  const seen = new Set(syntactic.map((d) => `${d.code}:${d.start}:${d.length}`));
   // Only a TypeScript-sourced diagnostic can be a duplicate of the syntactic pass, and this
   // runs BEFORE conversion so that is still visible: converting first erased `source`, and a
   // TypeShade code that happened to share a number and a span with a TypeScript one would have
@@ -158,7 +158,7 @@ export function withoutSyntacticDuplicates(
     (d) =>
       d.source !== 'typescript' ||
       !seen.has(`${numericCode(d.code)}:${d.span.start}:${d.span.length}`),
-  )
+  );
 }
 
 /**
@@ -176,7 +176,7 @@ export function withoutSyntacticDuplicates(
  * @returns the hover in tsserver's shape.
  */
 export function toQuickInfo(ctx: ConvertContext, uri: string, hover: TypeshadeHover): ts.QuickInfo {
-  const { signature, prose } = splitHover(hover.contents)
+  const { signature, prose } = splitHover(hover.contents);
   return {
     kind: ctx.typescript.ScriptElementKind.unknown,
     kindModifiers: '',
@@ -184,17 +184,17 @@ export function toQuickInfo(ctx: ConvertContext, uri: string, hover: TypeshadeHo
     displayParts: signature === '' ? [] : [{ text: signature, kind: 'text' }],
     documentation: prose === '' ? [] : [{ text: prose, kind: 'text' }],
     tags: undefined,
-  }
+  };
 }
 
 /** The first fenced code block of a Markdown hover, and everything else, in order. */
 export function splitHover(contents: string): { signature: string; prose: string } {
-  const fence = /^```[^\n]*\n([\s\S]*?)\n?```[ \t]*$/m.exec(contents)
-  if (!fence) return { signature: '', prose: contents.trim() }
+  const fence = /^```[^\n]*\n([\s\S]*?)\n?```[ \t]*$/m.exec(contents);
+  if (!fence) return { signature: '', prose: contents.trim() };
   const prose = (contents.slice(0, fence.index) + contents.slice(fence.index + fence[0].length))
     .replace(/\n{3,}/g, '\n\n')
-    .trim()
-  return { signature: fence[1].trim(), prose }
+    .trim();
+  return { signature: fence[1].trim(), prose };
 }
 
 /** TypeShade's completion kinds onto TypeScript's element kinds.
@@ -203,24 +203,24 @@ export function splitHover(contents: string): { signature: string; prose: string
  *  `ts.ScriptElementKind`, so they borrow the nearest one and the item's own `detail` carries
  *  the true kind. Only the icon is approximate; nothing the user reads is lost. */
 function completionKind(ctx: ConvertContext, kind: TypeshadeCompletionKind): ts.ScriptElementKind {
-  const k = ctx.typescript.ScriptElementKind
+  const k = ctx.typescript.ScriptElementKind;
   switch (kind) {
     case 'keyword':
     case 'attribute':
     case 'builtin':
-      return k.keyword
+      return k.keyword;
     case 'type':
     case 'struct':
-      return k.interfaceElement
+      return k.interfaceElement;
     case 'function':
-      return k.functionElement
+      return k.functionElement;
     case 'variable':
     case 'resource':
-      return k.variableElement
+      return k.variableElement;
     case 'field':
-      return k.memberVariableElement
+      return k.memberVariableElement;
     case 'snippet':
-      return k.string
+      return k.string;
   }
 }
 
@@ -258,7 +258,7 @@ export function toCompletionInfo(
         : { replacementSpan: spanOf(ctx, uri, item.textEdit.range) }),
       ...(item.detail === undefined ? {} : { labelDetails: { description: item.detail } }),
     })),
-  }
+  };
 }
 
 /**
@@ -280,7 +280,7 @@ export function toCompletionEntryDetails(
     documentation:
       item.documentation === undefined ? [] : [{ text: item.documentation, kind: 'text' }],
     tags: undefined,
-  }
+  };
 }
 
 /**
@@ -301,10 +301,10 @@ export function toSignatureHelpItems(
 ): ts.SignatureHelpItems {
   return {
     items: help.signatures.map((signature) => {
-      const open = signature.label.indexOf('(')
-      const prefix = open === -1 ? signature.label : signature.label.slice(0, open + 1)
-      const close = signature.label.lastIndexOf(')')
-      const suffix = close === -1 ? '' : signature.label.slice(close)
+      const open = signature.label.indexOf('(');
+      const prefix = open === -1 ? signature.label : signature.label.slice(0, open + 1);
+      const close = signature.label.lastIndexOf(')');
+      const suffix = close === -1 ? '' : signature.label.slice(close);
       return {
         isVariadic: false,
         prefixDisplayParts: [{ text: prefix, kind: 'text' }],
@@ -325,13 +325,13 @@ export function toSignatureHelpItems(
             ? []
             : [{ text: signature.documentation, kind: 'text' }],
         tags: [],
-      }
+      };
     }),
     applicableSpan,
     selectedItemIndex: help.activeSignature,
     argumentIndex: help.activeParameter,
     argumentCount: help.signatures[help.activeSignature]?.parameters.length ?? 0,
-  }
+  };
 }
 
 /**
@@ -354,7 +354,7 @@ export function toDefinitionInfos(
     name,
     containerKind: ctx.typescript.ScriptElementKind.unknown,
     containerName: '',
-  }))
+  }));
 }
 
 /**
@@ -376,7 +376,7 @@ export function toReferenceEntries(
     // where nothing is the definition reads worse than the wrong answer it replaced.
     isDefinition: isDeclaration(location, declarations),
     isWriteAccess: isDeclaration(location, declarations),
-  }))
+  }));
 }
 
 /** Whether `location` is one of the declarations, by uri and start position.
@@ -398,7 +398,7 @@ function isDeclaration(
       declaration.uri === location.uri &&
       declaration.range.start.line === location.range.start.line &&
       declaration.range.start.character === location.range.start.character,
-  )
+  );
 }
 
 /**
@@ -418,14 +418,14 @@ export function toReferencedSymbols(
   declarations: readonly TypeshadeLocation[],
   name: string,
 ): ts.ReferencedSymbol[] {
-  const byFile = new Map<string, TypeshadeLocation[]>()
+  const byFile = new Map<string, TypeshadeLocation[]>();
   for (const location of locations) {
-    const group = byFile.get(location.uri)
-    if (group) group.push(location)
-    else byFile.set(location.uri, [location])
+    const group = byFile.get(location.uri);
+    if (group) group.push(location);
+    else byFile.set(location.uri, [location]);
   }
   return [...byFile].map(([uri, group]) => {
-    const declaration = declarations.find((d) => d.uri === uri) ?? group[0]
+    const declaration = declarations.find((d) => d.uri === uri) ?? group[0];
     return {
       definition: {
         containerKind: ctx.typescript.ScriptElementKind.unknown,
@@ -437,7 +437,7 @@ export function toReferencedSymbols(
         displayParts: [{ text: name, kind: 'text' }],
       },
       references: group.map((location) => {
-        const textSpan = spanOf(ctx, uri, location.range)
+        const textSpan = spanOf(ctx, uri, location.range);
         return {
           fileName: uri,
           textSpan,
@@ -447,10 +447,10 @@ export function toReferencedSymbols(
           contextSpan: textSpan,
           isDefinition: isDeclaration(location, declarations),
           isWriteAccess: isDeclaration(location, declarations),
-        }
+        };
       }),
-    }
-  })
+    };
+  });
 }
 
 /**
@@ -467,32 +467,32 @@ export function toRenameLocations(
   ctx: ConvertContext,
   edits: Readonly<Record<string, readonly { range: TypeshadeRange }[]>>,
 ): ts.RenameLocation[] {
-  const out: ts.RenameLocation[] = []
+  const out: ts.RenameLocation[] = [];
   for (const [uri, fileEdits] of Object.entries(edits)) {
     for (const edit of fileEdits)
-      out.push({ fileName: uri, textSpan: spanOf(ctx, uri, edit.range) })
+      out.push({ fileName: uri, textSpan: spanOf(ctx, uri, edit.range) });
   }
-  return out
+  return out;
 }
 
 /** TypeShade's symbol kinds onto TypeScript's element kinds, for the outline. */
 function symbolKind(ctx: ConvertContext, kind: TypeshadeSymbolKind): ts.ScriptElementKind {
-  const k = ctx.typescript.ScriptElementKind
+  const k = ctx.typescript.ScriptElementKind;
   switch (kind) {
     case 'function':
     case 'entry':
-      return k.functionElement
+      return k.functionElement;
     case 'struct':
-      return k.interfaceElement
+      return k.interfaceElement;
     case 'field':
-      return k.memberVariableElement
+      return k.memberVariableElement;
     case 'resource':
     case 'variable':
-      return k.variableElement
+      return k.variableElement;
     case 'constant':
-      return k.constElement
+      return k.constElement;
     case 'parameter':
-      return k.parameterElement
+      return k.parameterElement;
   }
 }
 
@@ -514,7 +514,7 @@ export function toNavigationTree(
 ): ts.NavigationTree {
   // The root stands for the whole file, so its span is the whole file: a zero-length root makes
   // an outline whose top entry cannot be revealed.
-  const fullSpan: ts.TextSpan = { start: 0, length: fileLength }
+  const fullSpan: ts.TextSpan = { start: 0, length: fileLength };
   return {
     text: rootText,
     kind: ctx.typescript.ScriptElementKind.moduleElement,
@@ -522,7 +522,7 @@ export function toNavigationTree(
     spans: [fullSpan],
     nameSpan: undefined,
     childItems: symbols.map((symbol) => toNavigationNode(ctx, uri, symbol)),
-  }
+  };
 }
 
 /** One outline node, with its children. */
@@ -538,7 +538,7 @@ function toNavigationNode(
     spans: [spanOf(ctx, uri, symbol.range)],
     nameSpan: spanOf(ctx, uri, symbol.selectionRange),
     childItems: symbol.children?.map((child) => toNavigationNode(ctx, uri, child)),
-  }
+  };
 }
 
 /**
@@ -563,8 +563,8 @@ export function toNavigationBarItems(
     indent,
     bolded: false,
     grayed: false,
-  })
-  return symbols.map((symbol) => item(symbol, 0))
+  });
+  return symbols.map((symbol) => item(symbol, 0));
 }
 
 /**
@@ -583,17 +583,17 @@ export function toClassifications(
   uri: string,
   tokens: readonly TypeshadeSemanticToken[],
 ): ts.Classifications {
-  const spans: number[] = []
+  const spans: number[] = [];
   for (const token of tokens) {
-    const type = TOKEN_TYPE[token.type]
-    if (type === undefined) continue
-    const start = ctx.shade.offsetAt(uri, { line: token.line, character: token.character })
-    let modifiers = 0
+    const type = TOKEN_TYPE[token.type];
+    if (type === undefined) continue;
+    const start = ctx.shade.offsetAt(uri, { line: token.line, character: token.character });
+    let modifiers = 0;
     for (const modifier of token.modifiers) {
-      const bit = V2020_MODIFIER[modifier as keyof typeof V2020_MODIFIER]
-      if (bit !== undefined) modifiers |= 1 << bit
+      const bit = V2020_MODIFIER[modifier as keyof typeof V2020_MODIFIER];
+      if (bit !== undefined) modifiers |= 1 << bit;
     }
-    spans.push(start, token.length, ((type + 1) << TYPE_OFFSET) | modifiers)
+    spans.push(start, token.length, ((type + 1) << TYPE_OFFSET) | modifiers);
   }
-  return { spans, endOfLineState: ctx.typescript.EndOfLineState.None }
+  return { spans, endOfLineState: ctx.typescript.EndOfLineState.None };
 }

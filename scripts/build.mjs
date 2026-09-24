@@ -1,40 +1,47 @@
 // === The build: esbuild, not tsc ===
 //
-// Both artifacts are CommonJS bundles, because tsserver `require`s a plugin and the VS Code
-// extension host loads the extension's `main` the same way, and both have to carry the compiler
-// with them: it is a pinned submodule rather than an installed dependency until it publishes
-// (`docs/design.md` §2). `tsc` does the type-checking and emits nothing.
+// All three artifacts are CommonJS bundles, because tsserver `require`s a plugin, the VS Code
+// extension host loads the extension's `main` the same way, and an MCP client runs the server's
+// `bin` under node; and all three have to carry the compiler with them: it is a pinned submodule
+// rather than an installed dependency until it publishes (`docs/design.md` §2). `tsc` does the
+// type-checking and emits nothing.
 //
-// The two bundles differ only in what the host injects: `vscode` for the extension, nothing for
-// the plugin.
+// The bundles are NOT configured alike, and the difference is load-bearing.
 //
-// Both INLINE `typescript`, and the plugin's copy is a correction: it was external until a real
-// VS Code proved it could not be.
-//
-//   why it is inlined   The bundled compiler builds a TypeScript program of its own, with
-//               `lib: []` and the ambient `SHADE_DTS`, so the bundle requires `typescript` at
-//               run time whatever the plugin itself does. External, that require resolves by
-//               node walking up from wherever the bundle sits: in this repository it finds the
-//               workspace's own 5.6.3, and in a packaged `.vsix` it finds nothing at all.
-//               Neither is the host's instance, and the first is worse than the second, because
-//               it works. `packages/vscode-typeshade/test-electron/` ran the plugin in
+//   plugin      `typescript` is INLINED, and that is a correction: it was external until a real
+//               VS Code proved it could not be. The bundled compiler builds a TypeScript program
+//               of its own, with `lib: []` and the ambient `SHADE_DTS`, so the bundle requires
+//               `typescript` at run time whatever the plugin itself does. External, that require
+//               resolves by node walking up from wherever the bundle sits: in this repository it
+//               finds the workspace's own copy, and in a packaged `.vsix` it finds nothing at
+//               all. Neither is the host's instance, and the first is worse than the second,
+//               because it works. `packages/vscode-typeshade/test-electron/` ran the plugin in
 //               VS Code 1.137, whose tsserver is TypeScript 6.0.3, and the two `SyntaxKind`
-//               tables disagreed on the first request.
-//   what stays host-owned   Every node that came from tsserver. The plugin reads those with
-//               `modules.typescript`, the instance tsserver handed it, and never with the
-//               bundled copy; `packages/tsserver-plugin/src/directive.ts` is where that rule
-//               lives and what it cost when it was broken.
-//   extension   The VS Code extension host injects `vscode` and resolves everything else from
-//               what the `.vsix` ships, and the preview panel runs a language service of its
-//               own (§4), so an external `typescript` would throw on its first require in a
-//               packaged extension while working perfectly in the development host, where
-//               `node_modules` is on disk.
+//               tables disagreed on the first request. What stays host-owned is every node that
+//               came from tsserver: the plugin reads those with `modules.typescript`, the
+//               instance tsserver handed it, and never with the bundled copy;
+//               `packages/tsserver-plugin/src/directive.ts` is where that rule lives.
+//   extension   `typescript` is INLINED. The VS Code extension host injects `vscode` and
+//               resolves everything else from what the `.vsix` ships, and the preview panel
+//               runs a language service of its own (§4), so an external `typescript` would
+//               throw on its first require in a packaged extension while working perfectly in
+//               the development host, where `node_modules` is on disk.
+//   MCP server  `typescript` is EXTERNAL again, for a third reason: the server is an npm
+//               package with a `bin`, so npm installs `typescript` beside it as an ordinary
+//               dependency, and nothing hands it one. The MCP SDK and zod are external too:
+//               the SDK's own build carries ajv, ajv-formats and three of ajv's dependencies,
+//               and a bundle of that would republish their code without their license notices.
+//               Installed by npm, each package keeps its own, and the bundle holds only the
+//               compiler and this repository, both under the LICENSE the publish copies in
+//               (`docs/agents.md` §3.6).
 
-import { build } from 'esbuild'
-import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { build } from 'esbuild';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The compiler's published specifiers, resolved to the pinned submodule. The same three
  *  mappings are in `tsconfig.base.json` `paths` for type-checking and in `vitest.config.mts`
@@ -43,7 +50,7 @@ const alias = {
   typeshade: join(root, 'vendor/typeshade/src/index.ts'),
   'typeshade/language-service': join(root, 'vendor/typeshade/src/language-service/index.ts'),
   'typeshade/debug': join(root, 'vendor/typeshade/src/debug.ts'),
-}
+};
 
 /** What every bundle shares.
  *
@@ -64,29 +71,31 @@ const common = {
     js: "const __typeshadeModuleUrl = require('node:url').pathToFileURL(__filename).href;",
   },
   logLevel: 'warning',
-}
+};
 
 /**
  * Builds one package.
  *
- * @param {{ entry: string, outfile: string, external: string[], footer?: string }} options - the
- *   entry point, where the bundle goes, what stays external, and any trailing source.
+ * @param {{ entry: string, outfile: string, external: string[], footer?: string,
+ *   define?: Record<string, string> }} options - the entry point, where the bundle goes, what
+ *   stays external, any trailing source, and any build-time constants.
  * @returns {Promise<{ outfile: string, bytes: number }>} what was written.
  */
-async function bundle({ entry, outfile, external, footer }) {
+async function bundle({ entry, outfile, external, footer, define }) {
   const result = await build({
     ...common,
     entryPoints: [join(root, entry)],
     outfile: join(root, outfile),
     external,
     ...(footer === undefined ? {} : { footer: { js: footer } }),
+    define: { ...common.define, ...define },
     metafile: true,
-  })
-  const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]]
-  return { outfile, bytes: output.bytes }
+  });
+  const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]];
+  return { outfile, bytes: output.bytes };
 }
 
-const built = []
+const built = [];
 
 built.push(
   await bundle({
@@ -99,7 +108,7 @@ built.push(
     // one, because a plugin with the wrong export loads without an error and never runs.
     footer: '\nmodule.exports = module.exports.init\n',
   }),
-)
+);
 
 built.push(
   await bundle({
@@ -107,7 +116,39 @@ built.push(
     outfile: 'packages/vscode-typeshade/dist/extension.js',
     external: ['vscode'],
   }),
-)
+);
+
+/** The compiler the bundles carry, as `version (commit)`, for the MCP server to report: an agent
+ *  told which commit it is talking to can tell a language change from its own mistake. The
+ *  commit is read from the submodule's checkout, and a build outside git says so rather than
+ *  failing. */
+function compilerVersion() {
+  const vendor = join(root, 'vendor/typeshade');
+  const { version } = JSON.parse(readFileSync(join(vendor, 'package.json'), 'utf8'));
+  let commit = 'unknown commit';
+  try {
+    commit = execFileSync('git', ['-C', vendor, 'rev-parse', '--short', 'HEAD'], {
+      encoding: 'utf8',
+    }).trim();
+  } catch {
+    // Not a git checkout (an unpacked source archive): the version alone is still true.
+  }
+  return `${version} (${commit})`;
+}
+
+const mcpPackage = JSON.parse(readFileSync(join(root, 'packages/mcp-server/package.json'), 'utf8'));
+
+built.push(
+  await bundle({
+    entry: 'packages/mcp-server/src/index.ts',
+    outfile: 'packages/mcp-server/dist/index.js',
+    external: ['typescript', '@modelcontextprotocol/server', 'zod'],
+    define: {
+      __TYPESHADE_MCP_VERSION__: JSON.stringify(mcpPackage.version),
+      __TYPESHADE_COMPILER__: JSON.stringify(compilerVersion()),
+    },
+  }),
+);
 
 // The electron suite and its launcher, built the same way for the same reason: the extension
 // host loads the suite with `require`, and the launcher runs under plain node. Neither belongs in
@@ -119,7 +160,7 @@ built.push(
     outfile: 'packages/vscode-typeshade/dist/test-electron/suite.js',
     external: ['vscode'],
   }),
-)
+);
 
 built.push(
   await bundle({
@@ -127,8 +168,8 @@ built.push(
     outfile: 'packages/vscode-typeshade/dist/test-electron/main.js',
     external: ['@vscode/test-electron'],
   }),
-)
+);
 
 for (const { outfile, bytes } of built) {
-  console.log(`${outfile.padEnd(48)} ${(bytes / 1024).toFixed(0)} KB`)
+  console.log(`${outfile.padEnd(48)} ${(bytes / 1024).toFixed(0)} KB`);
 }

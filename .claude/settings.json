@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && { [ ! -f vendor/typeshade/scripts/downstream-impact.ts ] || bun vendor/typeshade/scripts/downstream-impact.ts --hook --repo vscode-typeshade --submodule vendor/typeshade; }",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && node scripts/commit-gate.mjs",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

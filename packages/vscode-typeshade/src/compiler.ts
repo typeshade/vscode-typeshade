@@ -12,8 +12,8 @@
 // hand out. So the extension calls `compileTsSource` itself for those two, with the same
 // `emit: false` the service uses, and the service only for what the panel shows as text.
 
-export { compileModule, compileTsSource, isTypeshadeSource, reflect } from 'typeshade'
-export { createTypeshadeLanguageService } from 'typeshade/language-service'
+export { compileModule, compileTsSource, isTypeshadeSource, reflect } from 'typeshade';
+export { createTypeshadeLanguageService } from 'typeshade/language-service';
 
 export type {
   CpuModule,
@@ -24,7 +24,7 @@ export type {
   ModuleDecl,
   Reflection,
   ShaderType,
-} from 'typeshade'
+} from 'typeshade';
 
 export type {
   TypeshadeCompiledOutput,
@@ -34,4 +34,4 @@ export type {
   TypeshadeLanguageServiceHost,
   TypeshadePosition,
   TypeshadeRange,
-} from 'typeshade/language-service'
+} from 'typeshade/language-service';
