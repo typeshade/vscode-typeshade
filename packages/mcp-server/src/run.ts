@@ -186,12 +186,30 @@ function describeLog(
 ): string {
   const lines = logged.slice(0, LOG_LIMIT).map((e) => {
     const where = e.span ? `line ${e.span.line + 1}, ` : '';
+    if (e.method === 'table' && e.args.length === 1 && typeof e.args[0] !== 'string') {
+      return `${where}console.table:\n${tableRows(e.args[0]!, format).join('\n')}`;
+    }
     const text = e.args.map((a) => (typeof a === 'string' ? a : format(a))).join(' ');
     return `${where}console.${e.method}: ${text}`;
   });
   const heading = `Logged ${logged.length === 1 ? '1 line' : `${logged.length} lines`}:`;
   const more = logged.length > LOG_LIMIT ? `\n(${logged.length - LOG_LIMIT} more not shown)` : '';
   return `${heading}\n${lines.join('\n')}${more}`;
+}
+
+/** A `console.table` value as the host's table would show it, one indented row each: an
+ *  array by index (a matrix arrives as its columns), a struct by field, anything else alone. */
+function tableRows(
+  value: CpuValue,
+  format: (value: CpuValue, type?: ShaderType) => string,
+): string[] {
+  if (Array.isArray(value)) {
+    return (value as readonly CpuValue[]).map((row, i) => `  ${i}: ${format(row)}`);
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).map(([field, v]) => `  ${field}: ${format(v as CpuValue)}`);
+  }
+  return [`  ${format(value)}`];
 }
 
 /** The heading over the breakpoint stops, saying when they were cut short. */

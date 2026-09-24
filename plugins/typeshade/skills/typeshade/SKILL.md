@@ -180,8 +180,10 @@ written one component at a time (`v.x = 1.`; `v.xy = ...` is `TS8018`).
 
 **6. There are no strings, no `==`, no JavaScript runtime.** Use `===` and `!==`. `console.log`
 takes values and string-literal labels (`console.log("x =", x)`); a template with a value in it
-is refused. A CPU run hands each call to the host's sink, and a compile with `console: 'gpu'`
-records it on WebGPU too, for `decodeConsole` to read back as the same lines. `Math.random()` is refused; `random(seed)`
+is refused, and `console.table(x)` takes one value. `log`, `info`, `debug`, `warn`, `error`
+and `table` are the whole console. A CPU run hands each call to the host's sink, and a compile
+with `console: 'gpu'` records it on WebGPU too, for `decodeConsole` to read back as the same
+lines. `Math.random()` is refused; `random(seed)`
 is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`. Of the JavaScript
 array methods, `map`, `forEach`, `some`, `every` and `reduce` compile (`map` only on a fixed-size
 array); `filter`, `find` and the rest are `TS8099`, and the answer is a loop. Functions are written as TypeScript writes them: a nested `function` or

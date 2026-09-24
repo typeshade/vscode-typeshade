@@ -16,6 +16,7 @@ import {
   MAIN,
   PLAIN,
   RUNAWAY,
+  TABLE,
   testProject,
   type TestProject,
 } from './fixtures.js';
@@ -306,6 +307,20 @@ describe('run', () => {
     // A run whose branch skips the warning logs one line, and says so in the singular.
     expect(run(1)).toBe(
       'main returned nothing.\nprecision: f32\n\nLogged 1 line:\nline 5, console.log: i = 1 1.5',
+    );
+  });
+
+  it('prints a console.table as rows: an array by index, a matrix by column', () => {
+    const { tools } = setup({ 'table.shade.ts': TABLE });
+    expect(tools.run({ file: 'table.shade.ts', function: 'main' })).toBe(
+      'main returned nothing.\nprecision: f32\n\n' +
+        'Logged 2 lines:\n' +
+        'line 10, console.table:\n' +
+        '  0: { pos: [1, 2], speed: 3 }\n' +
+        '  1: { pos: [4, 5], speed: 6 }\n' +
+        'line 11, console.table:\n' +
+        '  0: [1, 2]\n' +
+        '  1: [3, 4]',
     );
   });
 
