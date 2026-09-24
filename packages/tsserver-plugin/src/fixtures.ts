@@ -89,6 +89,36 @@ export function vs(): Clip {
 }
 `;
 
+/** A shader whose exported function carries a doc comment, for the hover split. The service
+ *  renders a documented symbol as a fenced signature followed by prose, which is the only shape
+ *  that exercises both halves of `splitHover`: an undocumented one is fence-only and a builtin
+ *  id is prose-only. */
+export const DOCUMENTED = `"use typeshade"
+
+/** Halves a value, which is the whole of what it does. */
+export function tint(x: f32): f32 {
+  return x * 0.5
+}
+
+@fragment
+export function fs(): f32 {
+  return tint(1.)
+}
+`;
+
+/** A shader with an import it does not use, so `organizeImports` and `getPasteEdits` have
+ *  something to do. On `broken.shade.ts` they answer empty from both servers, which made the
+ *  assertion about them true without the plugin. */
+export const UNUSED_IMPORT = `"use typeshade"
+
+import { double } from './lib.shade.js'
+
+@fragment
+export function fs(): f32 {
+  return 1.
+}
+`;
+
 /** A plain TypeScript file, for the pass-through equality assertion. Nothing about it is
  *  TypeShade, and the plugin must leave every answer about it byte for byte as it was. */
 export const HOST = `export interface Frame {
@@ -153,6 +183,8 @@ export const PROJECT: Readonly<Record<string, string>> = {
   'lib.shade.ts': LIB,
   'main.shade.ts': MAIN,
   'builtin.shade.ts': BUILTIN,
+  'documented.shade.ts': DOCUMENTED,
+  'unused-import.shade.ts': UNUSED_IMPORT,
   'host.ts': HOST,
   'host-imports-shader.ts': HOST_IMPORTS_SHADER,
   'big.shade.ts': longShader(520),

@@ -2,5 +2,9 @@
   // Type-checking only, for the same reason as the plugin's: esbuild builds the artifact.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "types": ["vscode", "node"] },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test-electron/**/*.ts"],
+  // The electron suite's fixture is a shader, and a shader is exactly what this repository's own
+  // `tsc` cannot read: it reports the six false-positive classes the plugin exists to remove.
+  // The host that runs it has the plugin; this pass does not.
+  "exclude": ["test-electron/fixture"]
 }

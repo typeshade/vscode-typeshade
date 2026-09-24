@@ -113,7 +113,8 @@ export class Harness {
     timer: NodeJS.Timeout;
   }[] = [];
   private readonly logFile: string;
-  private buffer = '';
+  /** Unframed bytes, as BYTES. See `read`. */
+  private buffer = Buffer.alloc(0);
   private seq = 0;
 
   constructor(private readonly options: HarnessOptions) {
@@ -132,8 +133,9 @@ export class Harness {
       args.push('--globalPlugins', '@typeshade/tsserver-plugin', '--pluginProbeLocations', ROOT);
     }
     this.child = spawn('node', args, { cwd: options.dir, stdio: 'pipe' });
-    this.child.stdout.setEncoding('utf8');
-    this.child.stdout.on('data', (chunk: string) => this.read(chunk));
+    // No `setEncoding`: the framing is counted in bytes and a decoded string is counted in
+    // UTF-16 code units. `read` says what that cost.
+    this.child.stdout.on('data', (chunk: Buffer) => this.read(chunk));
   }
 
   /** The file's absolute path inside the fixture. */
@@ -308,17 +310,37 @@ export class Harness {
     return this.seq;
   }
 
-  /** Frames the server's stdout and hands each message to whoever is waiting. */
-  private read(chunk: string): void {
-    this.buffer += chunk;
+  /** Frames the server's stdout and hands each message to whoever is waiting.
+   *
+   *  Everything here is a `Buffer`, and that is the whole point. `Content-Length` counts BYTES;
+   *  a decoded JavaScript string counts UTF-16 code units. The first version decoded to a string
+   *  and sliced by `length`, which agrees with the byte count for as long as every message is
+   *  ASCII. The first message that was not took the whole harness down: an `@builtin("` hover
+   *  carries the compiler's own documentation, whose text has an em dash in it, so the slice cut
+   *  a character short, `JSON.parse` threw inside a `data` handler, and every message after it
+   *  was lost. What that looked like from a test was one request timing out and then every
+   *  later request in the same suite timing out too, with the server's log showing it had
+   *  answered all of them.
+   */
+  private read(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
     for (;;) {
-      const header = /Content-Length: (\d+)\r\n\r\n/.exec(this.buffer);
+      const separator = this.buffer.indexOf('\r\n\r\n');
+      if (separator === -1) return;
+      const header = /Content-Length: (\d+)/.exec(this.buffer.subarray(0, separator).toString());
       if (!header) return;
-      const start = header.index + header[0].length;
+      const start = separator + 4;
       const length = Number(header[1]);
       if (this.buffer.length < start + length) return;
-      const message = JSON.parse(this.buffer.slice(start, start + length)) as ServerMessage;
-      this.buffer = this.buffer.slice(start + length);
+      const text = this.buffer.subarray(start, start + length).toString('utf8');
+      this.buffer = this.buffer.subarray(start + length);
+      let message: ServerMessage;
+      try {
+        message = JSON.parse(text) as ServerMessage;
+      } catch (error) {
+        // Never silently: a throw in a `data` handler is what made the framing bug invisible.
+        throw new Error(`unframed message from tsserver: ${String(error)}\n${text.slice(0, 200)}`);
+      }
       this.messages.push(message);
       for (let i = this.waiters.length - 1; i >= 0; i--) {
         if (this.waiters[i].predicate(message)) {

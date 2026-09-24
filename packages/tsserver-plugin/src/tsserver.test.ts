@@ -121,14 +121,42 @@ describe('the plugin, in a real tsserver', () => {
 
   it('splits a hover into a signature and its prose', async () => {
     // `ts.QuickInfo` renders display parts inside a TypeScript code fence, so the Markdown the
-    // service returns has to be split rather than pasted into one field.
-    server.open('clean.shade.ts');
+    // service returns has to be split rather than pasted into one field. An undocumented symbol
+    // is fence-only and exercises half of that, which is what this asserted first and why it
+    // passed with the plugin unloaded: the bare server answers the same signature and an empty
+    // documentation. A documented one has both halves.
+    server.open('documented.shade.ts');
     const body = await server.request<{ displayString?: string; documentation?: string }>(
       'quickinfo',
-      { file: server.file('clean.shade.ts'), ...Harness.at(6, 17) },
+      { file: server.file('documented.shade.ts'), ...Harness.at(3, 17) },
     );
     expect(body?.displayString).toBe('function tint(x: f32): f32');
     expect(body?.displayString ?? '').not.toContain('```');
+    expect(body?.documentation).toBe('Halves a value, which is the whole of what it does.');
+    expect(body?.documentation ?? '').not.toContain('```');
+  });
+
+  it('answers a hover no TypeScript program could, inside @builtin("', async () => {
+    // The contrast the split test cannot draw. Inside the string of a `@builtin(...)` the
+    // service describes the WGSL builtin; a bare server has nothing to say about a position
+    // inside a string literal at all.
+    server.open('builtin.shade.ts');
+    const at = { file: server.file('builtin.shade.ts'), ...Harness.at(3, 14) };
+    const body = await server.request<{ displayString?: string; documentation?: string }>(
+      'quickinfo',
+      at,
+    );
+    expect(body?.documentation ?? '').toContain("The vertex's clip-space position");
+    expect(body?.documentation ?? '').not.toContain('```');
+
+    const bare = await withBareServer(PROJECT, async (s) => {
+      s.open('builtin.shade.ts');
+      return s.request<{ documentation?: string }>('quickinfo', {
+        ...at,
+        file: s.file('builtin.shade.ts'),
+      });
+    });
+    expect(bare?.documentation ?? '').not.toContain('clip-space');
   });
 
   it('offers the attribute vocabulary, and the builtin ids inside @builtin("', async () => {
@@ -201,49 +229,139 @@ describe('the plugin, in a real tsserver', () => {
     // Every one of these takes an options object rather than a file name first, which is how an
     // earlier guard let them through: Fix All then answered with the project program's
     // `function nope(arg0: number): f32 { throw new Error(...) }`, written into a shader.
+    //
+    // Each assertion is paired with what the bare server answers to the same request, because
+    // an empty answer is only evidence when the other server's is not empty. The first version
+    // of this test aimed `organizeImports` and `getPasteEdits` at `broken.shade.ts`, which has
+    // no imports, so both servers answered empty and those two halves passed with the plugin
+    // deleted.
     server.open('broken.shade.ts');
-    const file = server.file('broken.shade.ts');
+    server.open('unused-import.shade.ts');
+    server.open('lib.shade.ts');
+    const broken = server.file('broken.shade.ts');
+    const unused = server.file('unused-import.shade.ts');
 
     const combined = await server.request<{ changes?: unknown[] }>('getCombinedCodeFix', {
-      scope: { type: 'file', args: { file } },
+      scope: { type: 'file', args: { file: broken } },
       fixId: 'fixMissingFunctionDeclaration',
     });
     expect(combined?.changes ?? []).toEqual([]);
 
     const organized = await server.request<unknown[]>('organizeImports', {
-      scope: { type: 'file', args: { file } },
+      scope: { type: 'file', args: { file: unused } },
     });
     expect(organized ?? []).toEqual([]);
 
+    const mapped = await server.request<unknown[]>('mapCode', {
+      file: broken,
+      mapping: { contents: ['export const zz = 1\n'], focusLocations: [] },
+    });
+    expect(mapped ?? []).toEqual([]);
+
+    // `getPasteEdits` is the one member with no shader-side contrast to draw: a bare server
+    // answers empty here too, because the symbols a paste into a shader would need do not
+    // resolve in TypeScript's view of it either. So the empty answer below states the contract,
+    // and the assertion that the override is correctly routed is the plain-file one further
+    // down, where the bare server's answer is not empty and the plugin's matches it.
     const pasted = await server.request<{ edits?: unknown[] }>('getPasteEdits', {
-      file,
+      file: broken,
       pastedText: ['const x = 1'],
       pasteLocations: [{ start: { line: 5, offset: 1 }, end: { line: 5, offset: 1 } }],
     });
     expect(pasted?.edits ?? []).toEqual([]);
 
-    const mapped = await server.request<unknown[]>('mapCode', {
-      file,
-      mapping: { contents: ['const x = 1'], focusLocations: [] },
-    });
-    expect(mapped ?? []).toEqual([]);
-
-    // What the bare server does with the same request, so the assertions above are a contrast
-    // rather than a description of an empty feature.
     const bare = await withBareServer(PROJECT, async (s) => {
       s.open('broken.shade.ts');
-      return s.request<{ changes?: { textChanges?: { newText?: string }[] }[] }>(
-        'getCombinedCodeFix',
+      s.open('unused-import.shade.ts');
+      s.open('lib.shade.ts');
+      return {
+        combined: await s.request<{ changes?: { textChanges?: { newText?: string }[] }[] }>(
+          'getCombinedCodeFix',
+          {
+            scope: { type: 'file', args: { file: s.file('broken.shade.ts') } },
+            fixId: 'fixMissingFunctionDeclaration',
+          },
+        ),
+        organized: await s.request<{ textChanges?: { newText?: string }[] }[]>('organizeImports', {
+          scope: { type: 'file', args: { file: s.file('unused-import.shade.ts') } },
+        }),
+        mapped: await s.request<{ textChanges?: { newText?: string }[] }[]>('mapCode', {
+          file: s.file('broken.shade.ts'),
+          mapping: { contents: ['export const zz = 1\n'], focusLocations: [] },
+        }),
+      };
+    });
+
+    // Fix All invents the function the shader calls, in TypeScript.
+    expect(
+      (bare.combined?.changes ?? [])
+        .flatMap((change) => (change.textChanges ?? []).map((edit) => edit.newText ?? ''))
+        .join(''),
+    ).toContain('function nope');
+    // Organize Imports deletes the shader's import of another shader.
+    expect(bare.organized ?? []).toHaveLength(1);
+    expect((bare.organized ?? [])[0].textChanges).toHaveLength(1);
+    // Map Code writes a TypeScript statement into the shader.
+    expect(
+      (bare.mapped ?? [])
+        .flatMap((change) => (change.textChanges ?? []).map((edit) => edit.newText ?? ''))
+        .join(''),
+    ).toContain('export const zz = 1;');
+  });
+
+  it('still answers the code-action family for a plain TypeScript file', async () => {
+    // The other half of the guard. A per-method file-name extractor that read the wrong property
+    // would answer nothing for EVERY file, and every assertion above would still pass; this is
+    // what fails then. `getPasteEdits` reads `targetFile` rather than `fileName`, which is the
+    // one that is easy to get wrong.
+    server.open('host.ts');
+    server.open('host-imports-shader.ts');
+    const request = {
+      file: server.file('host-imports-shader.ts'),
+      pastedText: ['export const n = area(first)\n'],
+      pasteLocations: [{ start: { line: 3, offset: 1 }, end: { line: 3, offset: 1 } }],
+      copiedFrom: {
+        file: server.file('host.ts'),
+        spans: [{ start: { line: 6, offset: 1 }, end: { line: 8, offset: 2 } }],
+      },
+    };
+    const pasted = await server.request<{ edits?: { textChanges?: { newText?: string }[] }[] }>(
+      'getPasteEdits',
+      request,
+    );
+    const written = (pasted?.edits ?? []).flatMap((edit) =>
+      (edit.textChanges ?? []).map((change) => change.newText ?? ''),
+    );
+    expect(written.join('')).toContain("import { Frame } from './host.js'");
+
+    const bare = await withBareServer(PROJECT, async (s) => {
+      s.open('host.ts');
+      s.open('host-imports-shader.ts');
+      const answer = await s.request<{ edits?: { textChanges?: { newText?: string }[] }[] }>(
+        'getPasteEdits',
         {
-          scope: { type: 'file', args: { file: s.file('broken.shade.ts') } },
-          fixId: 'fixMissingFunctionDeclaration',
+          ...request,
+          file: s.file('host-imports-shader.ts'),
+          copiedFrom: { ...request.copiedFrom, file: s.file('host.ts') },
         },
       );
+      return (answer?.edits ?? []).flatMap((edit) =>
+        (edit.textChanges ?? []).map((change) => change.newText ?? ''),
+      );
     });
-    const written = (bare?.changes ?? []).flatMap((change) =>
-      (change.textChanges ?? []).map((edit) => edit.newText ?? ''),
-    );
-    expect(written.join('')).toContain('function nope');
+    expect(written).toEqual(bare);
+
+    // The same for `mapCode`, which is the other member with no declaration in `typescript.d.ts`
+    // and so the other one reached through a cast.
+    const mapped = await server.request<{ textChanges?: { newText?: string }[] }[]>('mapCode', {
+      file: server.file('host.ts'),
+      mapping: { contents: ['export const zz = 1\n'], focusLocations: [] },
+    });
+    expect(
+      (mapped ?? [])
+        .flatMap((change) => (change.textChanges ?? []).map((edit) => edit.newText ?? ''))
+        .join(''),
+    ).toContain('export const zz = 1;');
   });
 
   it('resolves an import between two shaders, and sees an edit to the imported one', async () => {
@@ -288,6 +406,11 @@ describe('the plugin, in a real tsserver', () => {
     // A plugin that throws is caught and passed through, which keeps the editor working and
     // makes the failure silent. The log is the only place it shows.
     expect(server.log()).not.toContain('decoration failed');
+    // tsserver catches an exception thrown inside an overridden member, logs this line and
+    // drops the whole answer. That is how the region method lost its event for two pull
+    // requests while every assertion stayed green (`decorate.ts`'s `toTextSpan`), so the log is
+    // asserted directly rather than only through the features that would notice.
+    expect(server.log()).not.toContain('Exception on executing command');
     expect(server.log()).toContain('[typeshade] plugin loaded');
   });
 });

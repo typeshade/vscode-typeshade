@@ -163,11 +163,15 @@ function measureProject() {
 function measurePlugin() {
   const { shadeFiles } = fixtureFiles();
 
-  // `typescript` is loaded BEFORE the baseline, and deliberately. The bundle leaves it
-  // external, so requiring the bundle also requires `typescript`, and a first run of this
-  // harness charged the plugin for that: 284.6 to 350.5 ms and 27 MB, most of it the 8.5 MB
-  // `typescript.js` the plugin does not pay for. tsserver has `typescript` loaded before any
-  // plugin is asked for, so the honest baseline is a process that already holds it.
+  // `typescript` is loaded BEFORE the baseline, because tsserver has one loaded before it asks
+  // for any plugin and the plugin must not be charged for the host's copy.
+  //
+  // What the plugin IS charged for is its own. The bundle carries `typescript` rather than
+  // leaving it external, which an earlier version of this measurement did on the argument that
+  // tsserver already has one. It does, but not one the bundle can reach: external resolves by
+  // node walking up from the bundle's own path, which finds a different copy in a checkout and
+  // nothing at all in a packaged extension. So the second instance is real, this baseline does
+  // not hide it, and the require phase below is the honest number rather than a third of it.
   require('typescript');
   const base = heapMb();
 

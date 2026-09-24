@@ -169,8 +169,14 @@ function writeFixture(): { hosts: number; shaders: number } {
 
 /**
  * Bundles the compiler's `./language-service` subpath the way `docs/design.md` §2 says the
- * plugin ships it: one CommonJS file for node, with `typescript` external, because tsserver
- * hands the plugin its own instance.
+ * plugin ships it: one CommonJS file for node, carrying its own `typescript`.
+ *
+ * That last part is a correction, and it moves the numbers. The bundle used to leave
+ * `typescript` external on the argument that tsserver already has one, and the measurement
+ * loaded `typescript` before its baseline so the plugin was not charged for it. A real VS Code
+ * showed the argument was wrong: external means node resolves it from wherever the bundle sits,
+ * which in a packaged extension is nothing at all and in a development checkout is a DIFFERENT
+ * copy from the host's. So the plugin does carry a second `typescript`, and it does pay for it.
  *
  * @returns the bundle's path and its size in kilobytes.
  */
@@ -184,7 +190,7 @@ async function bundleLanguageService(): Promise<{ path: string; kb: number }> {
     platform: 'node',
     format: 'cjs',
     target: 'node20',
-    external: ['typescript'],
+    external: [],
     logLevel: 'error',
   });
   return { path: out, kb: Math.round(statSync(out).size / 1024) };
@@ -223,7 +229,7 @@ async function main(): Promise<number> {
   console.log(`driver: bun ${process.versions.bun ?? '?'}, measuring under node`);
   console.log(`fixture: ${fixture.hosts} .ts files, ${fixture.shaders} .shade.ts files`);
   console.log(`compiler: ${COMPILER_DIR}`);
-  console.log(`bundle: ${bundle.kb} KB (esbuild, cjs, node20, typescript external)`);
+  console.log(`bundle: ${bundle.kb} KB (esbuild, cjs, node20, typescript inlined)`);
   console.log(`runs: ${RUNS} per mode, each in its own process`);
   console.log('');
 

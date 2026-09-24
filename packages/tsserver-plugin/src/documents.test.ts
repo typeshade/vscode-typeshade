@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import typescript from 'typescript';
 import { createTypeshadeLanguageService } from './compiler.js';
 import { DocumentSync } from './documents.js';
-import { CLEAN, CLEAN_WITHOUT_DIRECTIVE, LIB } from './fixtures.js';
+import { CLEAN, CLEAN_WITHOUT_DIRECTIVE, LIB, MAIN } from './fixtures.js';
 import { testProject } from './testing.js';
 
 /** A sync over a project, with the service it feeds. */
@@ -60,16 +60,48 @@ describe('document sync', () => {
     expect(sync.readDocument('/p/missing.shade.ts')).toBeUndefined();
   });
 
-  it('promotes a served import to a real document, so an edit to it is seen', () => {
+  it('carries an edit to an imported shader into the importer, without being asked about it', () => {
     // The service's host caches a file pulled in through `readDocument` and never re-reads it,
     // so an edit to an imported shader would otherwise be invisible to the importer.
-    const { project, sync } = setup({ '/p/main.shade.ts': CLEAN, '/p/lib.shade.ts': LIB });
-    sync.readDocument('/p/lib.shade.ts');
+    //
+    // The assertion is the importer's ANSWER, not the sync's own bookkeeping. An earlier version
+    // of this test checked `openFileNames()`, which stayed true when `refreshOthers` walked only
+    // the served set and the imported file was therefore frozen after one send: the name was
+    // still in the list, the text behind it was stale, and the test passed either way. Reverting
+    // that fix has to fail here.
+    const { project, shade, sync } = setup({ '/p/main.shade.ts': MAIN, '/p/lib.shade.ts': LIB });
+    sync.sync('/p/main.shade.ts', true);
+    // Asking is what pulls the import in: the service resolves `./lib.shade.js` while it
+    // analyses the importer, and `readDocument` is how it gets the text.
+    expect(codesFor(shade, '/p/main.shade.ts')).not.toContain(2305);
     sync.sync('/p/main.shade.ts', true);
     expect(sync.openFileNames()).toContain('/p/lib.shade.ts');
 
-    project.edit('/p/lib.shade.ts', LIB.replace('x * 2.', 'x * 3.'));
+    // Rename the export, and ask only about the importer. Nothing names `lib.shade.ts`.
+    project.edit('/p/lib.shade.ts', LIB.replace('double', 'twice'));
     sync.sync('/p/main.shade.ts', true);
-    expect(sync.openFileNames()).toContain('/p/lib.shade.ts');
+    expect(codesFor(shade, '/p/main.shade.ts')).toContain(2305);
+
+    project.edit('/p/lib.shade.ts', LIB);
+    sync.sync('/p/main.shade.ts', true);
+    expect(codesFor(shade, '/p/main.shade.ts')).not.toContain(2305);
+  });
+
+  it('serves a file again after its directive comes back', () => {
+    // The close path clears `served` as well as `open`, so a file that loses its directive and
+    // then regains it is not remembered as something the service already holds. The window this
+    // leaves open is documented in `documents.ts`: while the directive is gone, an importer's
+    // answer only refreshes once something names the imported file again.
+    const { sync } = setup({ '/p/lib.shade.ts': LIB });
+    expect(sync.readDocument('/p/lib.shade.ts')).toContain('use typeshade');
+    sync.sync('/p/lib.shade.ts', false);
+    expect(sync.openFileNames()).toEqual([]);
+    expect(sync.readDocument('/p/lib.shade.ts')).toContain('use typeshade');
   });
 });
+
+/** The numeric diagnostic codes on a document, for the assertions that read an answer rather
+ *  than the sync's own bookkeeping. */
+function codesFor(shade: ReturnType<typeof createTypeshadeLanguageService>, uri: string): number[] {
+  return shade.getDiagnostics(uri).map((d) => (typeof d.code === 'number' ? d.code : 0));
+}

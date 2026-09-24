@@ -30,7 +30,7 @@ coding agents.
 | MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client  |
 | MCP server publish workflow      | done; 0.1.1 published from the tag `mcp-v0.1.1`       |
 | Skill and Claude Code plugin     | done; the server entry runs the npm package           |
-| VS Code extension and preview    | after the plugin                                      |
+| VS Code extension and preview    | done, tested in a real VS Code                        |
 | Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
 | Marketplace publish workflow     | last, and it needs a publisher the owner creates once |
 
@@ -80,6 +80,12 @@ id. The compiler's `scripts/ifchange.ts` checks this repository's own `LINT.IfCh
 same way. In a Claude Code session, `scripts/commit-gate.mjs` runs the fast checks (prettier,
 eslint, the em dash check) before every commit, so a convention costs a local retry rather than
 a CI round trip.
+
+`npm run test:electron` is separate, and separate on purpose. It launches a real VS Code with
+the extension loaded and asserts what only a real host can answer, including that the server
+plugin loaded at all. It downloads VS Code once (327 MB) and needs a display, so on a headless
+machine run it as `xvfb-run -a npm run test:electron`; CI runs it as its own job for the same
+reason, and a Marketplace publish must not wait on it.
 
 ## Conventions
 
