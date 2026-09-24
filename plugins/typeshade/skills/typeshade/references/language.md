@@ -27,7 +27,7 @@ compiler's normative surface, `docs/use-typeshade-surface.md` in `typeshade/type
 | emulated double | `f64`, `vec2f64` `vec3f64` `vec4f64` (also `vec2d` ...)                                                                                                               | two f32s; a few operations only; never on stage input or output (`TS8038`) |
 | float vectors   | `vec2` `vec3` `vec4`, the same as `vec2f` ..., `vec3<f32>`                                                                                                            |                                                                            |
 | other vectors   | `vec2i` ... `vec4i`, `vec2u` ... `vec4u`, `vec2b` ... `vec4b`                                                                                                         | a `vecNb` is what comparing two vectors gives                              |
-| matrices        | `mat2` `mat3` `mat4` and every `matCxR` (`mat2x3`, `mat4x3` ...)                                                                                                      | column-major: `m[j]` is column `j`                                         |
+| matrices        | `mat2` `mat3` `mat4`, every `matCxR` (`mat2x3`, `mat4x3` ...) and WGSL's `matCxRf` aliases (`mat4x4f`)                                                                | column-major: `m[j]` is column `j`                                         |
 | arrays          | `array<T, N>`; `array<T>` runtime-sized, storage only                                                                                                                 | `T[]` is `TS8002`; an array of arrays is refused, so flatten               |
 | tuples          | `[f32, f32]` is `array<f32, 2>`                                                                                                                                       | a mixed tuple is refused: declare a struct                                 |
 | structs         | `class`, `interface`, `type X = { ... }`                                                                                                                              | the same struct; only class fields carry `@location` and `@builtin`        |
@@ -120,7 +120,9 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   read-write storage only, used through `atomicAdd(bins[i], 1)` and the other atomic builtins.
 - **Slots.** Every `declare` resource is `@group(0)`, numbered `@binding(0)`, `@binding(1)` ...
   in declaration order, textures and samplers included; overrides and module variables take no
-  slot. There is no syntax to choose a slot. Read them from the reflection.
+  slot. There is no syntax to choose a slot. Read them from the reflection. The compiler's own
+  bindings come after yours: `_fp64` when emulated doubles need it, and `_console` under
+  `compile(src, { console: 'gpu' })`.
 - **Runtime-sized arrays.** `array<T>` only as a storage binding or the last field of a storage
   struct. Its `.length` (or `arrayLength(xs)`) is a runtime `u32`; on anything not in storage
   it is `TS8032`.
@@ -264,8 +266,13 @@ export function fs(@location(0) uv: vec2): vec4 {
 - `Math.sin` and the rest of `Math` map to the builtins, and `Math.PI`, `PI` and `TAU` are
   constants. `Math.random()` is refused; `random(seed)` is a `fract(sin(...))` hash of an f32,
   vec2 or vec3 seed, whose result can differ between drivers.
-- `console.log(values)` (also `info`, `debug`, `warn`, `error`) takes numbers, vectors and
-  structs, never a string. It is removed from WGSL and GLSL and prints only in a CPU run.
+- `console.log(...)` (also `info`, `debug`, `warn`, `error`) takes values of any fixed size
+  (numbers, vectors, matrices, arrays, structs) and string literals, which are labels the host
+  keeps; `"x" + y` and a template with a value in it are refused. A CPU run hands each call to
+  the sink (`compile(src, { consoleSink })`). By default the WGSL and GLSL record nothing; with
+  `compile(src, { console: 'gpu' })` the WGSL records every call a compute or fragment entry
+  reaches in a `_console` storage buffer, and `decodeConsole(words, result.console)` reads it
+  back as the CPU's lines, in the CPU's order. A call a vertex entry reaches is `TS8071` there.
 
 ## Textures
 

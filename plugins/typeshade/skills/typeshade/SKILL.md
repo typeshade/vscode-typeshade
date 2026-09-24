@@ -177,7 +177,9 @@ inferred from its first `return` with a value (none without one); an entry (`@ve
 written one component at a time (`v.x = 1.`; `v.xy = ...` is `TS8018`).
 
 **6. There are no strings, no `==`, no JavaScript runtime.** Use `===` and `!==`. `console.log`
-takes values, never text, and runs only on the CPU. `Math.random()` is refused; `random(seed)`
+takes values and string-literal labels (`console.log("x =", x)`); a template with a value in it
+is refused. A CPU run hands each call to the host's sink, and a compile with `console: 'gpu'`
+records it on WebGPU too, for `decodeConsole` to read back as the same lines. `Math.random()` is refused; `random(seed)`
 is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`. Of the JavaScript
 array methods, `map`, `forEach`, `some`, `every` and `reduce` compile (`map` only on a fixed-size
 array); `filter`, `find` and the rest are `TS8099`, and the answer is a loop. Functions are written as TypeScript writes them: a nested `function` or
@@ -185,7 +187,9 @@ an arrow constant may read and write the locals around it, and a function may ta
 (`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
 **7. Resources are declared, and numbered for you.** Every `declare` resource is `@group(0)`,
-bound in declaration order; `compile` with the reflection target prints the slots. Make a
+bound in declaration order; `compile` with the reflection target prints the slots. The
+compiler adds its own after yours: `_fp64` for emulated doubles, and `_console` under
+`console: 'gpu'`. Make a
 uniform's type a struct, or the GLSL output is dropped with a `TS8015` warning.
 
 **8. Stage input and output are explicit.** Builtins are parameters (`@builtin("position") p:
