@@ -1,9 +1,61 @@
 # TypeShade on the host side
 
-TypeShade is a compiler and nothing else: it has no runtime, creates no pipeline and binds no
-buffer. The host reads a shader file's text, compiles it (in a build step or at start-up) and
-hands the emitted code to WebGPU or WebGL2. A `.shade.ts` file is never imported as a module at
-run time.
+A host uses a shader module one of two ways:
+
+- **It imports the module** through the `typeshade/vite` plugin and calls its exports. A helper
+  runs on the CPU. A `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry
+  draws into a canvas. The runtime creates the device and the pipelines.
+- **It compiles the file** (in a build step or at start-up) and hands the emitted WGSL or GLSL to
+  its own WebGPU or WebGL2 code. Nothing of TypeShade runs then.
+
+## Importing a .shade.ts
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import { typeshade } from 'typeshade/vite'
+
+export default defineConfig({ plugins: [typeshade()] })
+```
+
+```jsonc
+// tsconfig.json of the host project: two lines
+"moduleSuffixes": [".typeshade", ""],
+"exclude": ["src/**/*.shade.ts"]
+```
+
+Add `"prepare": "typeshade sync"` to `package.json` and `*.shade.typeshade.ts` to `.gitignore`.
+The plugin writes a host view, `name.shade.typeshade.ts`, beside each module, and
+`moduleSuffixes` makes `tsc` and the editor read it in place of the source. `typeshade sync`
+writes every view before `tsc` runs on a clean checkout.
+
+```ts
+import { height } from './terrain.shade.ts'
+import { scale } from './kernels.shade.ts'
+
+const k = [1, 0.5, 2, 0.25] as const
+const h = height([0.5, 0.5], k) // a number
+await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is filled in place
+```
+
+- **A helper** a host can call is exported, not generic, takes no function, and reaches no
+  binding, workgroup variable or GPU-only builtin. It runs on the CPU at f32, synchronously.
+- **A `@compute` entry** is `entry(bindings, workgroups)`. The promise resolves once every
+  storage binding it writes has been read back into the caller's value. It runs on WebGPU, and
+  on the CPU where there is none (Node). An entry that reaches a barrier needs WebGPU.
+- **A full-screen `@fragment` entry** is `entry(canvas, bindings)`. It draws one frame on WebGPU,
+  then WebGL2, then the CPU.
+- Every other export is `never` in the view, with the reason, so calling one is a type error.
+- **Host values:**
+  - a number for a scalar, a boolean for a `bool`
+  - a tuple for a `vecN`
+  - a flat column-major array for a matrix
+  - an object for a struct
+  - a typed array for a runtime-sized storage array
+- The module must be named `*.shade.ts`. A compile error fails the build with its `TS80xx`
+  diagnostics.
+- In `vite dev`, a `console.*` call in an entry prints in the browser console from the GPU. A
+  production build records nothing.
 
 ## compile() and reflect()
 

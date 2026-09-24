@@ -102,7 +102,7 @@ the compiler ships.
 | `references` | Every use across the workspace's shaders                                                                    | `getReferences`, over every shader under the roots                |
 | `outline`    | Structs, resources with their slots, functions, entries, each with its type                                 | `getDocumentSymbols`, with `getHover` for each type               |
 | `docs`       | A name's sentence and every overload; a name from another shading language, corrected; the whole vocabulary | `TYPE_DOCS` and the five other tables, `SHADE_DTS`                |
-| `run`        | One function's result at f32 or f64, with breakpoint stops that list every local                            | `typeshade/debug` (§3.4)                                          |
+| `run`        | One function's result at f32 or f64, with the lines it logged and breakpoint stops that list every local    | `typeshade/debug` (§3.4)                                          |
 
 Three conventions hold for every tool, and each is there for the model reading the answer.
 

@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { BROKEN, CLEAN, CLEAN_WITHOUT_DIRECTIVE, INFERRED_PROJECT, PROJECT } from './fixtures.js';
+import {
+  BROKEN,
+  CLEAN,
+  CLEAN_WITHOUT_DIRECTIVE,
+  HOST_IMPORT_PROJECT,
+  INFERRED_PROJECT,
+  PROJECT,
+} from './fixtures.js';
 import {
   Harness,
   removeFixture,
@@ -485,5 +492,40 @@ describe('the fixture with a real error', () => {
     // function that does not exist, the contrast test above would still pass while proving
     // nothing.
     expect(BROKEN).toContain('nope(1.)');
+  });
+});
+
+describe('a host file that imports a shader through its host view (compiler 0009)', () => {
+  let dir: string;
+  let server: Harness;
+
+  beforeAll(() => {
+    dir = writeFixture(HOST_IMPORT_PROJECT);
+    server = startServer({ dir });
+  });
+
+  afterAll(() => {
+    server.stop();
+    removeFixture(dir);
+  });
+
+  it('type-checks a call with vector arguments against the view, and the plugin leaves it be', async () => {
+    server.open('app.ts');
+    expect(all(await server.diagnostics('app.ts'))).toEqual([]);
+
+    // The view is what the host reads: a vector of the wrong length is TypeScript's own error
+    // at the host's line, where the source's `vec2` would have been unresolved.
+    server.reopen(
+      'app.ts',
+      HOST_IMPORT_PROJECT['app.ts'].replace('height([0.5, 0.5], k)', 'height([0.5], k)'),
+    );
+    const wrong = await server.diagnostics('app.ts');
+    expect(wrong.semantic.map((d) => d.code)).toEqual([2345]);
+    expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
+  });
+
+  it('still answers the shader itself from the TypeShade program', async () => {
+    server.open('terrain.shade.ts');
+    expect(all(await server.diagnostics('terrain.shade.ts'))).toEqual([]);
   });
 });

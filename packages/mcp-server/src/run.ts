@@ -22,6 +22,7 @@ import {
   stageOf,
   startDebugSession,
   typeKey,
+  type ConsoleEvent,
   type CpuValue,
   type DebugInvocation,
   type DebugPause,
@@ -39,6 +40,9 @@ export const STEP_LIMIT = 2_000_000;
 
 /** Breakpoint stops one run reports before it stops stopping and runs to the end. */
 export const STOP_LIMIT = 20;
+
+/** Logged lines one run reports; later ones are counted, not printed. */
+export const LOG_LIMIT = 50;
 
 /** What the agent asked to run. */
 export interface RunRequest {
@@ -123,9 +127,12 @@ export function runOnCpu(
   const precision = request.precision ?? 'f32';
   const format = createValueFormatter(module, precision);
   const stops: string[] = [];
+  // Every `console.*` call the run makes, in order (compiler proposal 0018, surface §66).
+  const logged: ConsoleEvent[] = [];
   let failure: string | undefined;
   try {
     const session = startDebugSession(module, decl.name, args, {
+      consoleSink: (e) => logged.push(e),
       precision,
       gpuStubs: request.gpuStubs === true,
       bindings,
@@ -153,6 +160,7 @@ export function runOnCpu(
           'GPU computes, and so does anything computed from them.',
       );
     }
+    if (logged.length > 0) out.push(describeLog(logged, format));
     if (stops.length > 0) out.push(`${stopsHeading(stops.length, request)}\n${stops.join('\n')}`);
     else if ((request.breakpoints ?? []).length > 0) {
       out.push('No breakpoint was reached: those lines hold no statement this run executed.');
@@ -165,8 +173,25 @@ export function runOnCpu(
   // The engine's own message already names the way out where there is one (a GPU-only
   // intrinsic says to start with `gpuStubs: true`, which is this tool's parameter too).
   const report = [`The run of ${decl.name} failed: ${failure}`];
+  if (logged.length > 0) report.push(describeLog(logged, format));
   if (stops.length > 0) report.push(`${stopsHeading(stops.length, request)}\n${stops.join('\n')}`);
   throw new ToolError(report.join('\n\n'));
+}
+
+/** The lines a run logged, one per call, as the host console would print them: the labels as
+ *  written and each value through the formatter, after the line and the method. */
+function describeLog(
+  logged: readonly ConsoleEvent[],
+  format: (value: CpuValue, type?: ShaderType) => string,
+): string {
+  const lines = logged.slice(0, LOG_LIMIT).map((e) => {
+    const where = e.span ? `line ${e.span.line + 1}, ` : '';
+    const text = e.args.map((a) => (typeof a === 'string' ? a : format(a))).join(' ');
+    return `${where}console.${e.method}: ${text}`;
+  });
+  const heading = `Logged ${logged.length === 1 ? '1 line' : `${logged.length} lines`}:`;
+  const more = logged.length > LOG_LIMIT ? `\n(${logged.length - LOG_LIMIT} more not shown)` : '';
+  return `${heading}\n${lines.join('\n')}${more}`;
 }
 
 /** The heading over the breakpoint stops, saying when they were cut short. */

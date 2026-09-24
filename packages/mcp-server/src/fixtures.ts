@@ -60,6 +60,19 @@ export function paint(@builtin("global_invocation_id") gid: vec3u) {
 }
 `;
 
+/** A compute kernel that logs, for the lines a run prints: `console.log` on line 5 at every
+ *  invocation, and `console.warn` on line 7 only past `gid.x` 1. */
+export const LOGGING = `"use typeshade"
+@compute([4])
+export function main(@builtin("global_invocation_id") gid: vec3u): void {
+  const x = f32(gid.x) * 1.5
+  console.log("i =", gid.x, x)
+  if (gid.x > 1) {
+    console.warn("big", vec2(x, 2.))
+  }
+}
+`;
+
 /** A fragment shader that reads a uniform struct and its own position, for a run of an entry
  *  point: at position (100.5, 50.5) with `gain` 2 it returns `vec4(2, 1, 0, 2)`. Line 16 is the
  *  statement after `u` is computed, where a breakpoint sees `u` and not yet `v`. */

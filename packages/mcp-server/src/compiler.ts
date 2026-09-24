@@ -9,6 +9,7 @@
 export { compile, reflect, stageOf, typeKey } from 'typeshade';
 export type {
   CompileResult,
+  ConsoleEvent,
   FuncDecl,
   ModuleDecl,
   ShaderType,

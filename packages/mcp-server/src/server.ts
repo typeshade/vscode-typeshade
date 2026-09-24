@@ -222,7 +222,8 @@ export function createServer(options: ServerOptions): McpServer {
         'or {"global_invocation_id": [3, 0, 0]}, and @location inputs under "inputs"). Uniform ' +
         'and storage values go in `bindings` by name. Values: a number or boolean for a scalar, ' +
         'a flat array for a vector or column-major matrix, an object for a struct. `breakpoints` ' +
-        'lists lines at which to report every local.',
+        'lists lines at which to report every local. Each console.log (or info, debug, warn, ' +
+        'error) the run makes is printed under the result, with its line.',
       inputSchema: z.object({
         ...source,
         function: z.string().describe('The function to run: an entry point or a helper.'),

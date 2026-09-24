@@ -1,14 +1,16 @@
 ---
 name: typeshade
-description: Write, fix and review TypeShade shaders, which are TypeScript files that start with the "use typeshade" directive and compile to WGSL and GLSL ES 3.00. Use when creating or editing a .shade.ts or "use typeshade" file, porting a GLSL, HLSL or WGSL shader to TypeShade, wiring TypeShade output into WebGPU or WebGL2 host code, or reading TypeShade diagnostics (TS8001 to TS8099). Covers the rules that differ from both TypeScript and GLSL, the common diagnostics and their fixes, and the typeshade MCP tools (check, compile, docs, run).
+description: Write, fix and review TypeShade shaders, which are TypeScript files that start with the "use typeshade" directive and compile to WGSL and GLSL ES 3.00. Use when creating or editing a .shade.ts or "use typeshade" file, porting a GLSL, HLSL or WGSL shader to TypeShade, wiring TypeShade output into WebGPU or WebGL2 host code, importing a .shade.ts into a host file through typeshade/vite, or reading TypeShade diagnostics (TS8001 to TS8099). Covers the rules that differ from both TypeScript and GLSL, the common diagnostics and their fixes, and the typeshade MCP tools (check, compile, docs, run).
 ---
 
 # TypeShade
 
 TypeShade is a shader language written as TypeScript. A file whose first line is
 `"use typeshade"` is one shader module: the compiler lowers it to WGSL for WebGPU and, where a
-form exists, to GLSL ES 3.00 for WebGL2. It is a compiler only. The host application reads the
-emitted text and builds its own pipelines.
+form exists, to GLSL ES 3.00 for WebGL2. A host uses it one of two ways: it compiles the file and
+builds its own pipelines from the emitted text, or, through the `typeshade/vite` plugin, it
+imports the `.shade.ts` and calls its exports, a helper on the CPU and a `@compute` or
+full-screen `@fragment` entry on the GPU.
 
 The file looks like TypeScript and is not checked like TypeScript. **The TypeShade compiler
 decides what is valid.** Plain `tsc` or a plain TypeScript language server reports errors on
@@ -274,6 +276,21 @@ Every code, with its causes, is in [references/diagnostics.md](references/diagno
 
 ## The host side
 
+Import the module, with `typeshade()` from `typeshade/vite` in the Vite config:
+
+```ts
+import { height } from './terrain.shade.ts'
+import { scale } from './kernels.shade.ts'
+
+const h = height([0.5, 0.5], k) // a helper runs on the CPU, synchronously, at f32
+await scale({ k: 2.5, xs, ys }, 4) // a @compute entry dispatches on WebGPU; ys is filled in place
+```
+
+A vector is a tuple of numbers, a struct an object of its fields. `tsc` reads a generated host
+view, `terrain.shade.typeshade.ts`, through `"moduleSuffixes": [".typeshade", ""]` and an
+`exclude` of the shader sources; `typeshade sync` writes the views. Or compile the file and wire
+the output yourself:
+
 ```ts
 import { compile, reflect } from 'typeshade'
 
@@ -284,4 +301,4 @@ const layout = reflect(result.module) // bind groups, uniform offsets, entry poi
 ```
 
 Pack uniform buffers at the offsets `reflect` reports, never by hand: a `vec3` aligns to 16
-bytes. WebGPU, WebGL2 and the editor setup are in [references/host.md](references/host.md).
+bytes. The import, WebGPU, WebGL2 and the editor setup are in [references/host.md](references/host.md).

@@ -245,10 +245,13 @@ exact text `use typeshade` (`src/compiler/ts/directive.ts`). Using the compiler'
 predicate rather than a copy is what keeps the editor's answer and the compiler's answer the
 same when the rule changes.
 
-`.shade.ts` is a convention, and a useful one: it is what the Vite plugin matches and what the
-examples are named. It is not the rule, because the compiler's rule is the directive, and an
+`.shade.ts` is a convention for what a shader is, and a useful one: it is what the examples are
+named. It is not the rule for that, because the compiler's rule is the directive, and an
 editor that disagreed with the compiler about which files are shaders would be worse than an
-editor with no support at all. The extension is free to use the name where the name is all it
+editor with no support at all. For a module a host imports, the name is the rule (the compiler's
+Rule 3.8, since proposal 0009): `typeshade/vite` refuses a directive file under any other name
+that the bundle reads, with the rename. That rule decides what may be imported, not what is a
+shader, so the plugin keeps reading the directive. The extension is free to use the name where the name is all it
 has, which is exactly one place: a glob for an activation event (§4).
 
 The cost of reading the directive is a parse, and the plugin pays nothing for it: the source
@@ -269,23 +272,24 @@ the plugin absent and requires them to be identical for non-directive files.
 **Decision: the host side stays plain TypeScript, answered by tsserver's own program, and the
 plugin does not touch it.**
 
-A host module that does `import { fs } from './shader.shade.js'` is asking a question about
-values and types in its own program, not about shader semantics. tsserver already answers it:
-the shader file is in the project, so its exported entry functions have types there, computed
-against the standard library rather than against `SHADE_DTS`. Those types are approximate
-(`vec4` is unresolved in that program, so an entry's return type degrades to an error type), but
-they are approximate in the file the user is not editing as a shader, and the alternative is
-strictly worse: for the plugin to answer a host file's question about an imported shader, it
-would have to hold host files in the TypeShade program, which is the collision of §0 point 2.
+A host module that does `import { height } from './terrain.shade.ts'` is asking a question about
+values and types in its own program, not about shader semantics. Since compiler proposal 0009
+the compiler answers it with a generated file: `typeshade/vite` (and `typeshade sync`, for a
+clean checkout) writes a _host view_, `terrain.shade.typeshade.ts`, beside each module, declaring
+what a host can call with host types (a `vec2` parameter is `readonly [number, number]`, an entry
+point a host cannot call is `never` with the reason). The host `tsconfig.json` adds
+`"moduleSuffixes": [".typeshade", ""]`, so tsserver resolves `./terrain.shade.ts` to the view,
+and an `exclude` of the shader sources, so the source is not pulled back in. The host file then
+type-checks exactly, in its own program, and the plugin has nothing to add: a wrong vector length
+is TypeScript's own TS2345 at the host's line. `HOST_IMPORT_PROJECT` in
+`packages/tsserver-plugin/src/fixtures.ts` pins this.
 
-What the user sees, then, is that a host file importing a shader has the TypeShade file's errors
-attributed to the TypeShade file (where the plugin replaces them) and the import itself resolved
-normally. The one visible rough edge is hover on an imported entry inside a host file, which
-reads as TypeScript sees it. §8 item 5 keeps a better answer open now that the compiler ships
-`shade.d.ts` as a real file (the `./shade` types-only subpath, `"./shade": "./dist/shade.d.ts"`
-in `package.json` at the pin, written by `scripts/emit-shade-dts.ts` at build time), because a
-host project can then put its shader sources in a separate `tsconfig` and the question stops
-being about one program.
+A project without that setup still resolves the import to the source itself, under the older
+`./x.shade.js` specifier, and gets approximate types (`vec4` is unresolved in the host program,
+so an entry's return type degrades to an error type). The plugin does not repair that either:
+for it to answer a host file's question about an imported shader, it would have to hold host
+files in the TypeShade program, which is the collision of §0 point 2. The shader-to-shader
+`./lib.shade.js` specifier of §1.7 is a different case, the service's own resolution, and stays.
 
 ### 1.7 A `.shade.ts` file that imports a plain `.ts` file
 
@@ -319,7 +323,9 @@ of them across the six examples, while the editor shows a clean file. An editor 
 that disagree about whether the code compiles is worse than either being wrong on its own.
 
 The remedy exists and is measured, on `claude/c6-ambient-lib`: the shader sources go in a
-project of their own, a `tsconfig.shade.json` with `lib: []`, `types: ["typeshade/shade"]`,
+project of their own (and, where a host imports them, the main config also gets the host view's
+`"moduleSuffixes": [".typeshade", ""]`, since an `exclude` alone does not stop an import from
+pulling a source back in, §1.6), a `tsconfig.shade.json` with `lib: []`, `types: ["typeshade/shade"]`,
 `experimentalDecorators` and `strictPropertyInitialization: false`, which leaves 11 TS1206 and
 one TS2542 across the five examples there (the TS2542 is fixed on `main`, since the ambient
 `array<T, N>` index signature is writable now). `lib: []` is not a preference in that file
@@ -328,8 +334,9 @@ either, for §0 point 2's reason.
 **Decision: the extension notices and offers, and never edits a `tsconfig.json` on its own.**
 Concretely: when a directive file is open and the workspace has a `tsconfig.json` whose
 `include` reaches it, the status bar item (§4) says so, and a command,
-`typeshade.createShaderTsconfig`, writes `tsconfig.shade.json` beside it and prints the one
-line the user must add to the main config's `exclude`. Writing into an existing `tsconfig.json`
+`typeshade.createShaderTsconfig`, writes `tsconfig.shade.json` beside it and prints the two
+lines the user must add to the main config: the shader sources in its `exclude`, and
+`"moduleSuffixes": [".typeshade", ""]` beside it. Writing into an existing `tsconfig.json`
 unasked is the kind of help that loses trust the first time it reformats a file.
 
 The residual TS1206 is not something this repository can close: it is a grammar rule, and only
@@ -715,8 +722,10 @@ one-way channel is for.
   passes the formatting methods through.
 - **A WGSL or GLSL language server for the output panel.** The panel is read-only.
 - **Rendering a shader.** A preview that draws pixels needs a GPU, a pipeline and a host
-  runtime, and the compiler deliberately ships none of those (its README: "TypeShade ships the
-  authoring and emit surface only").
+  runtime. The compiler ships a runtime now (`typeshade/vite` draws a full-screen `@fragment`
+  entry into a canvas, proposal 0016), but it runs in the host application's page, and a
+  webview preview would still need its own device and its own copy of the bindings. That is a
+  feature to propose on its own, not part of this surface.
 
 ## 5. The debugger
 
@@ -760,7 +769,7 @@ re-implementing any, which is the layering rule this section opened with.
 | `next`, `stepIn`, `stepOut`, `continue` | The four engine methods, then a `stopped` event with the new pause's reason                                                                                                                                                                                                                                                                                                                                               |
 | `evaluate`                              | `docs/debugging.md` §4.5's synthesised snippet, which is the compiler's own work and not the adapter's. Until it lands, `evaluate` answers only a bare name that the frame has, and says so for anything else                                                                                                                                                                                                             |
 | (no request) `terminated`, `exited`     | When a step or `continue` leaves `session.done` true, the adapter emits `output` with `session.result` (or "discarded" when `session.discarded`), then `terminated`. Without this row a finished invocation looks like a hung one: the engine simply stops handing back pauses                                                                                                                                            |
-| (no request) `output` for `console`     | A `console.log` the program steps over becomes one `output` event of category `console`, its labels as written and its values through `formatCpuValue`, the line the compiler's CPU sink delivers (compiler proposal 0014, surface §66). Pending: the stepping engine takes no console sink yet, so the adapter waits on that option rather than re-implementing the call                                                 |
+| (no request) `output` for `console`     | A `console.log` the program steps over becomes one `output` event of category `console`, its labels as written and its values through `formatCpuValue`, the event the session's `consoleSink` delivers at the step that runs the call (compiler proposals 0014 and 0018, surface §66). The adapter passes the sink as `startDebugSessionFromConfig`'s third argument, beside the launch configuration                     |
 | `disconnect`, `terminate`               | Drops the session                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 **The launch configuration is contributed verbatim.** `contributes.debuggers[0].type` is
@@ -1031,9 +1040,9 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    which gives every tsserver-based agent tool the plugin's answers, and §1 there adds the third
    adapter this document did not foresee, an MCP server.
 5. **Hover on an imported entry inside a host `.ts` file reads as TypeScript sees it (§1.6).**
-   _Suggested: leave it, and revisit now that the compiler's `./shade` subpath (on `main` since
-   #29) lets a project type-check its shaders as their own tsconfig project, which changes the
-   question from "one program or two" to "which project"._
+   _Answered by the compiler's host view (proposal 0009)_: with `moduleSuffixes`, the hover is
+   the view's declaration, host types and all. A project without the setup keeps the
+   approximate answer, and the plugin still does not repair it.
 6. **Unused locals in a shader file get no hint, because the suggestion pass is replaced with
    nothing (§3).** _Suggested: ask the compiler for an `UNUSED` diagnostic rather than borrowing
    TypeScript's, since only the compiler knows whether a binding is dead in GPU terms._
@@ -1046,7 +1055,9 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
 9. **The residual TS1206 on a `tsconfig.shade.json` build (§1.8).** A project that wants a
    silent `tsc` has to filter that code itself, because only the language service can drop it.
    _Suggested: document the one-line filter in the extension's README when PR 3 ships the
-   command that writes the file, and do not build a `tsc` wrapper._ A wrapper is a second build
+   command that writes the file, and do not build a `tsc` wrapper._ The command's printed lines
+   include `moduleSuffixes` beside the `exclude` (§1.8), for a project that also imports its
+   shaders. A wrapper is a second build
    tool to maintain for one diagnostic code.
 10. **The `engines.vscode` floor of `^1.90.0` (§4).** _Suggested: keep it._ It buys implicit
     activation events, the stable inline debug adapter API, and a TypeScript extension that
