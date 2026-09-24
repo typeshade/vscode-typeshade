@@ -8,19 +8,22 @@
 //
 // What this adds is the lookup an agent needs and an editor does not. A model writing a shader
 // reaches first for the names it has read most, which are GLSL's and HLSL's, so a name TypeShade
-// does not have is answered with the TypeShade name for the same thing when there is one
-// (`FOREIGN_NAMES`, whose every target `vocabulary.test.ts` checks against the tables), and with
-// the nearest spellings otherwise, rather than with nothing.
+// does not have is answered with the TypeShade name for the same thing when there is one, and
+// with the nearest spellings otherwise, rather than with nothing. The GLSL and HLSL names are the
+// compiler's own table (`FOREIGN_NAMES`), answered in the sentence its refusal of the name ends
+// with (`foreignNameRemedy`), so `docs lerp` and the error on a call of `lerp` say one thing.
 
 import typescript from 'typescript';
 import {
   ATTRIBUTE_DOCS,
   BUILTIN_DOCS,
   CONSTANT_DOCS,
+  FOREIGN_NAMES,
   FUNCTION_DOCS,
   MATH_MEMBER_DOCS,
   SHADE_DTS,
   TYPE_DOCS,
+  foreignNameRemedy,
 } from './compiler.js';
 import { plural } from './format.js';
 
@@ -36,134 +39,6 @@ interface Category {
 
 /** The most overloads one hit prints; `textureSample` and the vector constructors have many. */
 const OVERLOAD_LIMIT = 16;
-
-/** A name from another shading language and what TypeShade calls the same thing. */
-interface ForeignName {
-  /** The language the name comes from. */
-  readonly from: 'GLSL' | 'HLSL' | 'GLSL and HLSL';
-  /** The TypeShade name, as the tables key it, when there is one. */
-  readonly name?: string;
-  /** What to write instead, when it is not one name (an operator, a statement). */
-  readonly note?: string;
-}
-
-/** Names a model is likely to bring from GLSL or HLSL, for things TypeShade spells otherwise.
- *  Only names TypeShade does not itself have are listed; a name both languages share with
- *  TypeShade (`clamp`, `smoothstep`, `saturate`) is found by the ordinary lookup. */
-export const FOREIGN_NAMES: Readonly<Record<string, ForeignName>> = {
-  lerp: { from: 'HLSL', name: 'mix' },
-  frac: { from: 'HLSL', name: 'fract' },
-  rsqrt: { from: 'HLSL', name: 'inverseSqrt' },
-  inversesqrt: { from: 'GLSL', name: 'inverseSqrt' },
-  ddx: { from: 'HLSL', name: 'dpdx' },
-  ddy: { from: 'HLSL', name: 'dpdy' },
-  dFdx: { from: 'GLSL', name: 'dpdx' },
-  dFdy: { from: 'GLSL', name: 'dpdy' },
-  fmod: { from: 'HLSL', note: 'the `%` operator, which truncates like `fmod`; `mod()` floors' },
-  mul: { from: 'HLSL', note: 'the `*` operator: `m * v` is a matrix-vector product' },
-  clip: { from: 'HLSL', note: '`if (x < 0.) { discard }` in a fragment entry' },
-  texture: { from: 'GLSL', name: 'textureSample' },
-  texture2D: { from: 'GLSL', name: 'textureSample' },
-  textureLod: { from: 'GLSL', name: 'textureSampleLevel' },
-  textureGrad: { from: 'GLSL', name: 'textureSampleGrad' },
-  texelFetch: { from: 'GLSL', name: 'textureLoad' },
-  textureSize: { from: 'GLSL', name: 'textureDimensions' },
-  imageLoad: { from: 'GLSL', name: 'textureLoad' },
-  imageStore: { from: 'GLSL', name: 'textureStore' },
-  bitCount: { from: 'GLSL', name: 'countOneBits' },
-  countbits: { from: 'HLSL', name: 'countOneBits' },
-  bitfieldReverse: { from: 'GLSL', name: 'reverseBits' },
-  reversebits: { from: 'HLSL', name: 'reverseBits' },
-  bitfieldExtract: { from: 'GLSL', name: 'extractBits' },
-  bitfieldInsert: { from: 'GLSL', name: 'insertBits' },
-  findMSB: { from: 'GLSL', name: 'firstLeadingBit' },
-  firstbithigh: { from: 'HLSL', name: 'firstLeadingBit' },
-  findLSB: { from: 'GLSL', name: 'firstTrailingBit' },
-  firstbitlow: { from: 'HLSL', name: 'firstTrailingBit' },
-  floatBitsToUint: { from: 'GLSL', name: 'bitcast' },
-  floatBitsToInt: { from: 'GLSL', name: 'bitcast' },
-  uintBitsToFloat: { from: 'GLSL', name: 'bitcast' },
-  intBitsToFloat: { from: 'GLSL', name: 'bitcast' },
-  asuint: { from: 'HLSL', name: 'bitcast' },
-  asfloat: { from: 'HLSL', name: 'bitcast' },
-  packUnorm4x8: { from: 'GLSL', name: 'pack4x8unorm' },
-  packSnorm4x8: { from: 'GLSL', name: 'pack4x8snorm' },
-  unpackUnorm4x8: { from: 'GLSL', name: 'unpack4x8unorm' },
-  unpackSnorm4x8: { from: 'GLSL', name: 'unpack4x8snorm' },
-  packHalf2x16: { from: 'GLSL', name: 'pack2x16float' },
-  unpackHalf2x16: { from: 'GLSL', name: 'unpack2x16float' },
-  packUnorm2x16: { from: 'GLSL', name: 'pack2x16unorm' },
-  unpackUnorm2x16: { from: 'GLSL', name: 'unpack2x16unorm' },
-  packSnorm2x16: { from: 'GLSL', name: 'pack2x16snorm' },
-  unpackSnorm2x16: { from: 'GLSL', name: 'unpack2x16snorm' },
-  barrier: { from: 'GLSL', name: 'workgroupBarrier' },
-  GroupMemoryBarrierWithGroupSync: { from: 'HLSL', name: 'workgroupBarrier' },
-  atomicCompSwap: { from: 'GLSL', name: 'atomicCompareExchangeWeak' },
-  InterlockedAdd: { from: 'HLSL', name: 'atomicAdd' },
-  InterlockedMin: { from: 'HLSL', name: 'atomicMin' },
-  InterlockedMax: { from: 'HLSL', name: 'atomicMax' },
-  InterlockedAnd: { from: 'HLSL', name: 'atomicAnd' },
-  InterlockedOr: { from: 'HLSL', name: 'atomicOr' },
-  InterlockedXor: { from: 'HLSL', name: 'atomicXor' },
-  InterlockedExchange: { from: 'HLSL', name: 'atomicExchange' },
-  float: { from: 'GLSL and HLSL', name: 'f32' },
-  int: { from: 'GLSL and HLSL', name: 'i32' },
-  uint: { from: 'GLSL and HLSL', name: 'u32' },
-  double: { from: 'GLSL and HLSL', name: 'f64' },
-  float2: { from: 'HLSL', name: 'vec2' },
-  float3: { from: 'HLSL', name: 'vec3' },
-  float4: { from: 'HLSL', name: 'vec4' },
-  int2: { from: 'HLSL', name: 'vec2i' },
-  int3: { from: 'HLSL', name: 'vec3i' },
-  int4: { from: 'HLSL', name: 'vec4i' },
-  uint2: { from: 'HLSL', name: 'vec2u' },
-  uint3: { from: 'HLSL', name: 'vec3u' },
-  uint4: { from: 'HLSL', name: 'vec4u' },
-  ivec2: { from: 'GLSL', name: 'vec2i' },
-  ivec3: { from: 'GLSL', name: 'vec3i' },
-  ivec4: { from: 'GLSL', name: 'vec4i' },
-  uvec2: { from: 'GLSL', name: 'vec2u' },
-  uvec3: { from: 'GLSL', name: 'vec3u' },
-  uvec4: { from: 'GLSL', name: 'vec4u' },
-  bvec2: { from: 'GLSL', name: 'vec2b' },
-  bvec3: { from: 'GLSL', name: 'vec3b' },
-  bvec4: { from: 'GLSL', name: 'vec4b' },
-  dvec2: { from: 'GLSL', name: 'vec2f64' },
-  dvec3: { from: 'GLSL', name: 'vec3f64' },
-  dvec4: { from: 'GLSL', name: 'vec4f64' },
-  float4x4: { from: 'HLSL', name: 'mat4x4' },
-  groupshared: { from: 'HLSL', name: 'workgroup' },
-  shared: { from: 'GLSL', name: 'workgroup' },
-  numthreads: { from: 'HLSL', name: 'compute' },
-  local_size_x: { from: 'GLSL', name: 'compute' },
-  SV_Target: { from: 'HLSL', name: 'location' },
-  gl_Position: { from: 'GLSL', name: 'position' },
-  gl_FragCoord: { from: 'GLSL', name: 'position' },
-  SV_Position: { from: 'HLSL', name: 'position' },
-  gl_VertexID: { from: 'GLSL', name: 'vertex_index' },
-  gl_VertexIndex: { from: 'GLSL', name: 'vertex_index' },
-  SV_VertexID: { from: 'HLSL', name: 'vertex_index' },
-  gl_InstanceID: { from: 'GLSL', name: 'instance_index' },
-  gl_InstanceIndex: { from: 'GLSL', name: 'instance_index' },
-  SV_InstanceID: { from: 'HLSL', name: 'instance_index' },
-  gl_FrontFacing: { from: 'GLSL', name: 'front_facing' },
-  SV_IsFrontFace: { from: 'HLSL', name: 'front_facing' },
-  gl_FragDepth: { from: 'GLSL', name: 'frag_depth' },
-  SV_Depth: { from: 'HLSL', name: 'frag_depth' },
-  gl_SampleID: { from: 'GLSL', name: 'sample_index' },
-  SV_SampleIndex: { from: 'HLSL', name: 'sample_index' },
-  gl_SampleMaskIn: { from: 'GLSL', name: 'sample_mask' },
-  SV_Coverage: { from: 'HLSL', name: 'sample_mask' },
-  gl_GlobalInvocationID: { from: 'GLSL', name: 'global_invocation_id' },
-  SV_DispatchThreadID: { from: 'HLSL', name: 'global_invocation_id' },
-  gl_LocalInvocationID: { from: 'GLSL', name: 'local_invocation_id' },
-  SV_GroupThreadID: { from: 'HLSL', name: 'local_invocation_id' },
-  gl_LocalInvocationIndex: { from: 'GLSL', name: 'local_invocation_index' },
-  SV_GroupIndex: { from: 'HLSL', name: 'local_invocation_index' },
-  gl_WorkGroupID: { from: 'GLSL', name: 'workgroup_id' },
-  SV_GroupID: { from: 'HLSL', name: 'workgroup_id' },
-  gl_NumWorkGroups: { from: 'GLSL', name: 'num_workgroups' },
-};
 
 /**
  * The TypeShade vocabulary, indexed for lookup.
@@ -246,13 +121,12 @@ export class Vocabulary {
     }
     if (hits.length > 0) return hits.join('\n\n');
 
-    if (!mathOnly && Object.hasOwn(FOREIGN_NAMES, name)) {
-      const foreign = FOREIGN_NAMES[name];
-      if (foreign.name === undefined) {
-        return `${name} is ${foreign.from}. TypeShade writes it as ${foreign.note}.`;
-      }
-      const target = this.lookup(foreign.name);
-      return `${name} is ${foreign.from}; TypeShade calls it ${foreign.name}.\n\n${target}`;
+    const remedy = mathOnly ? undefined : foreignNameRemedy(name);
+    if (remedy !== undefined) {
+      // A row with a TypeShade name goes on to that name's own entry; a row that is an operator
+      // or a statement has no entry, and its sentence is the whole answer.
+      const target = FOREIGN_NAMES[name].name;
+      return target === undefined ? remedy : `${remedy}\n\n${this.lookup(target)}`;
     }
 
     const near = this.nearest(name);

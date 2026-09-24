@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `7f0b482`
-(2026-09-23). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `c9dc8c0`
+(2026-09-24). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
@@ -9,7 +9,9 @@ from `a2240e0` to `ef049e4` renames the package from `@xgis/shader-dsl` to `type
 `./debug` and `./shade` subpaths, and grows `./language-service` by three exports
 (`FUNCTION_DOCS`, `CONSTANT_DOCS`, `MATH_MEMBER_DOCS`) and nothing the plugin maps, so every
 mapping in §3 stands as written. The moves from `ef049e4` to `eb0dde6` and on to `7f0b482` remove nothing this
-repository names and change no mapping. §1.3, §4 and §7 were re-measured at `7f0b482` with the
+repository names and change no mapping, and so does the move on to `c9dc8c0`, which adds
+`typeshade check` as a function (`checkOpenDocument`) and the GLSL and HLSL names
+(`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
@@ -828,11 +830,15 @@ imports a shader, a directive file of 500 lines or more, and a second workspace 
 
 One assertion this table first carried has been corrected by writing it: "no diagnostic on a
 directive file carries `ts` as its source" is false, and should be. The service's own answer is
-a MERGED list (`src/language-service/diagnostics.ts` concatenates the front end's diagnostics
-with the TypeScript ones its own program reports, after filtering), so a shader calling a
-function that does not exist correctly reports both TypeScript's TS2304 and TypeShade's TS8004.
-Replacement means the false positives are gone, not that TypeScript is silenced, and the
-assertion now says that as a contrast between a server with the plugin and one without.
+a MERGED list (`src/language-service/diagnostics.ts` puts the front end's diagnostics together
+with the TypeScript ones its own program reports, after filtering), so a TypeScript error the
+front end does not also report reaches the editor as TypeScript's: a broken paren is
+TypeScript's TS1005. Where the two report one mistake, the merge keeps one diagnostic, the
+compiler's, which names the fix (the compiler's Rule 12.4, since typeshade/typeshade#210): a
+shader calling a function that does not exist reports TypeShade's TS8004 alone, where it used
+to report TypeScript's TS2304 beside it. Replacement means the false positives are gone, not
+that TypeScript is silenced, and the assertion says that as a contrast between a server with
+the plugin and one without.
 
 The last two files are fixtures for specific holes: the 500-line file is the
 only size at which `getRegionSemanticDiagnostics` fires (§3), and the config-less workspace is

@@ -5,7 +5,7 @@
 // diagnostic per line with its code, the offending line underneath with a caret. A model has read
 // millions of those and acts on them without being told how.
 
-import type { TsCompilerDiagnostic, TypeshadeDiagnostic } from './compiler.js';
+import type { CheckDiagnostic, TsCompilerDiagnostic } from './compiler.js';
 import { excerpt, linesOf } from './text.js';
 
 /** A diagnostic from either source, reduced to what is printed. Lines and columns zero-based. */
@@ -20,20 +20,20 @@ export interface Problem {
   readonly length: number;
 }
 
-/** A language-service diagnostic as a {@link Problem}. */
-export function fromServiceDiagnostic(d: TypeshadeDiagnostic): Problem {
-  const { start, end } = d.range;
+/** A diagnostic of the compiler's check (`checkOpenDocument`) as a {@link Problem}. The check
+ *  reports one-based lines and columns, the way `typeshade check` prints them. */
+export function fromCheckDiagnostic(d: CheckDiagnostic): Problem {
   return {
-    severity: d.severity,
-    // TypeShade's codes are already `TS8xxx` strings; TypeScript's are numbers, printed the way
-    // TypeScript prints them. The source is printed beside the code because the two families
-    // overlap from 8001 to 8039 (`docs/design.md` §3).
-    code: typeof d.code === 'number' ? `TS${d.code}` : d.code,
+    severity: d.severity === 'info' ? 'information' : d.severity,
+    // Both families arrive as `TS` strings, TypeScript's `TS2304` as well as TypeShade's
+    // `TS8004`. The source is printed beside the code because the two overlap from 8001 to 8039
+    // (`docs/design.md` §3).
+    code: d.code,
     source: d.source,
     message: d.message,
-    line: start.line,
-    character: start.character,
-    length: end.line === start.line ? end.character - start.character : Number.MAX_SAFE_INTEGER,
+    line: d.line - 1,
+    character: d.column - 1,
+    length: d.endLine === d.line ? d.endColumn - d.column : Number.MAX_SAFE_INTEGER,
   };
 }
 

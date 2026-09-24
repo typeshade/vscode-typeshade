@@ -74,9 +74,10 @@ describe('the plugin, in a real tsserver', () => {
   it('reports the real errors and only those, from the TypeShade program', async () => {
     // Not just "8004 is present": a regression that concatenated the project program's answer
     // would pass that. The contrast is exact. The bare server reports TS1206 on the decorator
-    // and TS2304 twice, once for `f32` and once for `nope`; the plugin reports the `nope` one,
-    // which is real, with no source because it came from the TypeShade program's own TypeScript
-    // pass, plus TS8004 from the front end.
+    // and TS2304 twice, once for `f32` and once for `nope`. The plugin reports the one real
+    // mistake once: TS8004 from the front end, which names the fix. TypeScript's TS2304 on
+    // `nope` is the same mistake, and the language service keeps the compiler's report of it
+    // (the compiler's Rule 12.4).
     server.open('broken.shade.ts');
     const withPlugin = (await server.diagnostics('broken.shade.ts')).semantic;
     const bare = await withBareServer(PROJECT, async (s) => {
@@ -85,9 +86,8 @@ describe('the plugin, in a real tsserver', () => {
     });
 
     expect(summarize(bare).sort()).toEqual(['1206@3', '2304@4', '2304@5']);
-    expect(summarize(withPlugin).sort()).toEqual(['2304@5', '8004/typeshade@5']);
-    expect(withPlugin.find((d) => d.code === 2304)?.source).toBeUndefined();
-    expect(withPlugin.find((d) => d.code === 8004)?.text).toContain('Unknown function');
+    expect(summarize(withPlugin)).toEqual(['8004/typeshade@5']);
+    expect(withPlugin[0]?.text).toContain('Unknown function');
   });
 
   it('underlines a broken paren once, not twice', async () => {

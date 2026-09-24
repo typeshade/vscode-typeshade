@@ -12,14 +12,20 @@
 
 import typescript from 'typescript';
 import { textHasDirective } from '../../tsserver-plugin/src/directive.js';
-import { compile, reflect, stageOf, type TypeshadeLocation } from './compiler.js';
+import {
+  checkOpenDocument,
+  compile,
+  reflect,
+  stageOf,
+  type TypeshadeLocation,
+} from './compiler.js';
 import { DiskDocuments, type OpenedFile } from './documents.js';
 import { ToolError } from './errors.js';
 import {
   fenced,
   formatProblems,
+  fromCheckDiagnostic,
   fromCompilerDiagnostic,
-  fromServiceDiagnostic,
   plural,
   type Problem,
 } from './format.js';
@@ -43,11 +49,6 @@ export interface LocationInput extends PositionInput {
 
 /** What `compile` can print. */
 export type OutputKind = 'wgsl' | 'glsl' | 'reflection' | 'determinism';
-
-/** `compile()`'s code for an emitter that threw on a program the front end accepted (`BACKEND`
- *  in the compiler's `src/compiler/ts/codes.ts`). The code table is not exported, and the number
- *  is stable by that file's own rule: a code is never reused. */
-const BACKEND_CODE = 'TS8015';
 
 /** The most shader files one `check` of a directory reports on. */
 const CHECK_FILE_LIMIT = 200;
@@ -274,20 +275,16 @@ export class TypeshadeTools {
     return runOnCpu(result.module, input);
   }
 
-  /** The problems in one open shader: the editor's diagnostics, then, when those hold no error,
-   *  whatever the emitters refuse, which the editor's front-end analysis never runs into. */
+  /** The problems in one open shader, as the compiler's own check finds them
+   *  (`checkOpenDocument`, the one `typeshade check` runs): the editor's diagnostics, then
+   *  whatever the emitters refuse, which the editor's front-end analysis never runs into. One
+   *  check, so this tool, the command and the editor cannot give two answers about one file. */
   private problemsOf(f: OpenedFile): Problem[] {
-    const problems = this.documents.shade
-      .getDiagnostics(f.uri)
-      .filter((d) => d.uri === f.uri)
-      .map(fromServiceDiagnostic);
-    if (!problems.some((p) => p.severity === 'error')) {
-      const emitted = compile(f.text, { fileName: f.uri });
-      problems.push(
-        ...emitted.diagnostics.filter((d) => d.code === BACKEND_CODE).map(fromCompilerDiagnostic),
-      );
-    }
-    return problems.sort((a, b) => a.line - b.line || a.character - b.character);
+    return checkOpenDocument(this.documents.shade, {
+      path: f.uri,
+      uri: f.uri,
+      text: f.text,
+    }).map(fromCheckDiagnostic);
   }
 
   /** Adds one file's report to the lists `check` prints. */

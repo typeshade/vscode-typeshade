@@ -19,3 +19,10 @@ id first, then the pull request that did the work.
   and its three examples (SKILL.md, references/language.md, references/examples.md), the TS8005
   and TS8099 rows, the MCP server's KERNEL fixture, and the outline test that reads the access
   mode off the resource line, handled in #20.
+- 0007: one diagnostic per mistake, with its fix in it, and switch fall-through refused: the
+  skill's working loop and its TS8022 row, the first-error paragraph and the TS8017 and TS8022
+  rows of references/diagnostics.md, the switch line of references/language.md, the TS2304 and
+  TS8004 note of `docs/design.md` §6, the MCP server's `FOREIGN_NAMES` (the compiler's now, with
+  `docs` answering in `foreignNameRemedy`'s words) and its `check` (the compiler's
+  `checkOpenDocument` now), `docs/agents.md` §3.1 and §3.5, and the three tests that counted
+  TypeScript's TS2304 beside TS8004, handled in #24.

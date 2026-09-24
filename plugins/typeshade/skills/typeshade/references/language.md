@@ -196,8 +196,9 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   are `TS8099`: an array's length is fixed, so they are a loop.
 - `while` takes any `bool` condition; `while (true)` needs a `break` or a `return` in its body
   (`TS8007`). `do...while`, labels and `for...in` are refused.
-- `switch` is on an integer, with integer constant labels (`TS8017` otherwise). Cases never fall
-  through; `case 0: case 1:` stacked above one body share it.
+- `switch` is on an integer, with integer constant labels (`TS8017` otherwise). A case body that
+  would fall through into the next case is refused (`TS8017`), so end each case with `break`
+  (the last one may leave it out); `case 0: case 1:` stacked above one body share it.
 
 ```ts
 "use typeshade"
