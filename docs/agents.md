@@ -3,7 +3,7 @@
 Status: **proposal**, with all three built and tested in the pull request that adds this file,
 and `@typeshade/mcp` on npm since 2026-09-23 (§6). The owner answered its open questions on
 the same day, taking every suggestion (§8). The pinned compiler is `typeshade/typeshade` at
-`7f0b482`, as in `docs/design.md`. Every claim about the compiler names the file it comes from,
+`c9dc8c0`, as in `docs/design.md`. Every claim about the compiler names the file it comes from,
 and every claim about another tool names where it was checked, because the tools this document
 compares move faster than the compiler does.
 
@@ -125,14 +125,18 @@ Every tool is annotated read-only; nothing in the server writes a file.
 
 ### 3.1 Diagnostics: the editor's, plus what only the emitters see
 
-`check` returns what the plugin shows: the service's merged list, TypeScript's findings with the
-false positives filtered (`TS_DIAGNOSTIC_FILTERS`, compiler `src/language-service/diagnostics.ts`)
-and the front end's own. The service analyses with `emit: false` (compiler
+`check` returns what the plugin shows, and what `typeshade check` prints, because it calls the
+command's own function: `checkOpenDocument` (compiler `src/language-service/check.ts`), over the
+server's service and its open documents. That is the service's merged list, TypeScript's
+findings with the false positives filtered (`TS_DIAGNOSTIC_FILTERS`, compiler
+`src/language-service/diagnostics.ts`) and one diagnostic where the two report one mistake, and
+the front end's own. The service analyses with `emit: false` (compiler
 `src/language-service/service.ts`), so it never meets an emitter that refuses a module the front
 end accepted: a non-struct `uniform<vec4>` is valid TypeShade that the GLSL ES 3.00 emitter
-refuses, as a `BACKEND` (`TS8015`) warning. So when the service reports no error, `check` also
-runs `compile()` and adds its `TS8015` entries. "No problems" then means what an agent assumes
-it means: the file emits.
+refuses, as a `BACKEND` (`TS8015`) warning. So the check also runs `compile()` and adds its
+`TS8015` entries. "No problems" then means what an agent assumes it means: the file emits. The
+server assembled the same list itself until the compiler exported the function; two copies of
+one check are two answers about one file as soon as either changes.
 
 ### 3.2 Files come from the disk, through the plugin's own sync
 
@@ -192,9 +196,14 @@ signatures out of `SHADE_DTS`, so it cannot disagree with the editor and needs n
 builtin is added. What it adds is for the way models write shaders: they reach first for the
 names they have read most, which are GLSL's and HLSL's. `FOREIGN_NAMES` maps 112 of
 those to TypeShade's (`lerp` to `mix`, `gl_FragCoord` to `@builtin("position")`, `fmod` to the
-`%` operator), and a test holds it to two rules: every target is a name the tables have, and no
-source is one, since the tables are asked first and such an entry could never be reached.
-Anything else gets the nearest names by edit distance.
+`%` operator). The table began in this server and is the compiler's now (compiler
+`src/compiler/ts/foreign-names.ts`), because the compiler's refusal of `lerp` names `mix` from
+it. `docs` answers a foreign name with that refusal's own sentence (`foreignNameRemedy`,
+"HLSL's lerp is mix here."), then the TypeShade name's entry, so the tool and the error say one
+thing. A test holds the table to two rules, in the compiler and again here against the server's
+lookup: every target is a name the tables have, and no source is one, since the tables are
+asked first and such an entry could never be reached. Anything else gets the nearest names by
+edit distance.
 
 ### 3.6 The SDK, and what the bundle carries
 

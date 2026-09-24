@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { compile } from './compiler.js';
+import { FOREIGN_NAMES, compile, foreignNameRemedy } from './compiler.js';
 import { ToolError } from './errors.js';
 import {
   BARE_UNIFORM,
@@ -20,7 +20,7 @@ import {
 } from './fixtures.js';
 import { runOnCpu } from './run.js';
 import { TypeshadeTools } from './tools.js';
-import { FOREIGN_NAMES, Vocabulary } from './vocabulary.js';
+import { Vocabulary } from './vocabulary.js';
 import { Workspace } from './workspace.js';
 
 const projects: TestProject[] = [];
@@ -59,14 +59,17 @@ describe('check', () => {
   it("reports the compiler's errors with their code, their source and a caret under the span", () => {
     const { tools } = setup({ 'broken.shade.ts': BROKEN });
     const report = tools.check({ file: 'broken.shade.ts' });
-    expect(report).toContain('broken.shade.ts: 4 errors');
+    expect(report).toContain('broken.shade.ts: 2 errors');
     // One-based, the way the file viewer an agent reads from numbers its lines.
     expect(report).toContain('error TS8004 [typeshade] broken.shade.ts:5:13');
     expect(report).toContain('error TS8003 [typeshade] broken.shade.ts:6:7');
-    // TypeScript's own finding on the same call survives, labelled as TypeScript's: the service
-    // replaces the false positives, it does not silence TypeScript (`docs/design.md` §6).
-    expect(report).toContain('error TS2304 [typescript] broken.shade.ts:5:13');
-    expect(report).toContain('    5 |   const a = nope(1.)\n      |             ^^^^^^^^');
+    // One mistake, one report (`docs/design.md` §6). TypeScript's TS2304 on the same call is
+    // the same mistake, so the compiler's TS8004, which names the fix, stands alone; and the
+    // read of `a` on line 7 adds no TS8022, since a refused declaration is the one diagnostic
+    // for its name.
+    expect(report).not.toContain('TS2304');
+    expect(report).not.toContain('TS8022');
+    expect(report).toContain('    5 |   const a = nope(1.)\n      |             ^^^^');
   });
 
   it('checks every shader under a directory and leaves plain TypeScript alone', () => {
@@ -77,7 +80,7 @@ describe('check', () => {
     });
     const report = tools.check({ file: 'shaders' });
     expect(report).toMatch(/^Checked 2 shader files: 1 with problems\./);
-    expect(report).toContain('shaders/b.shade.ts: 4 errors');
+    expect(report).toContain('shaders/b.shade.ts: 2 errors');
     expect(report).toContain('No problems: shaders/a.shade.ts');
     expect(report).not.toContain('plain.ts');
   });
@@ -257,10 +260,13 @@ describe('docs', () => {
     expect(vocabulary.lookup('Math.sin')).toMatch(/^Math\.sin: math member/);
   });
 
-  it('translates a GLSL or HLSL name, and offers the nearest names for a typo', () => {
-    expect(vocabulary.lookup('lerp')).toMatch(/^lerp is HLSL; TypeShade calls it mix\.\n\nmix\(\)/);
-    expect(vocabulary.lookup('gl_FragCoord')).toContain('@builtin("position")');
-    expect(vocabulary.lookup('fmod')).toContain('the `%` operator');
+  it("translates a GLSL or HLSL name in the words of the compiler's refusal, and offers the nearest names for a typo", () => {
+    expect(vocabulary.lookup('lerp')).toMatch(/^HLSL's lerp is mix here\.\n\nmix\(\)/);
+    expect(vocabulary.lookup('gl_FragCoord')).toContain('@builtin("position") pos: vec4');
+    // An operator has no entry of its own, so the compiler's sentence is the whole answer: the
+    // one its refusal of `fmod(a, b)` ends with.
+    expect(vocabulary.lookup('fmod')).toBe(foreignNameRemedy('fmod'));
+    expect(vocabulary.lookup('fmod')).toContain('the % operator');
     expect(vocabulary.lookup('textureSampel')).toContain('Nearest names: textureSample().');
   });
 

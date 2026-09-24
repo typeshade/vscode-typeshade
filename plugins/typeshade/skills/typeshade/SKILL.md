@@ -24,8 +24,9 @@ The typeshade MCP server (tools `check`, `compile`, `hover`, `definition`, `refe
 `outline`, `docs`, `run`) answers from TypeShade's own compiler. Use it like this:
 
 1. **After every edit to a shader, call `check`** on the file (or on its directory) and fix what
-   it reports, first error first: a declaration that failed makes every later use of the name a
-   `TS8022 Unknown identifier` too. `check` also takes `source`, to try text before writing it.
+   it reports, first error first. Read each message to its end: where the compiler knows the
+   fix, the last sentence is it (`Unknown function "lerp". HLSL's lerp is mix here.`). `check`
+   also takes `source`, to try text before writing it.
 2. **Look names up instead of guessing.** GLSL and HLSL names mostly do not exist here (`lerp`,
    `texture`, `inversesqrt`, `float3`). `docs` with a name returns TypeShade's name for it and
    every overload; `docs` with no name lists the whole vocabulary.
@@ -260,7 +261,7 @@ which still runs, with its false positives on shader code filtered out. The ones
 | TS8015 | an emitter refused the module (a warning drops the GLSL only)               | read the message: often a uniform that is not a struct |
 | TS8018 | a write to a parameter or to a multi-component swizzle                      | copy into a `let`; write one component                 |
 | TS8021 | an entry that returns a value with no return annotation                     | annotate it                                            |
-| TS8022 | an unknown name, often after an earlier error                               | fix the first error                                    |
+| TS8022 | an unknown name, field or swizzle; a name read before its declaration       | the name the message suggests; declare before use      |
 | TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                        | splat: `max(v, vec3(0.))`                              |
 | TS8052 | `textureSample` or a derivative under a per-fragment branch                 | sample before branching                                |
 | TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource | read the message: it names the construct               |

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compile } from './compiler.js';
-import { FOREIGN_NAMES, Vocabulary } from './vocabulary.js';
+import { FOREIGN_NAMES, compile } from './compiler.js';
+import { Vocabulary } from './vocabulary.js';
 
 // The plugin's skill (`plugins/typeshade/skills/typeshade`) held to the compiler it describes.
 //

@@ -21,14 +21,17 @@ export {
   ATTRIBUTE_DOCS,
   BUILTIN_DOCS,
   CONSTANT_DOCS,
+  FOREIGN_NAMES,
   FUNCTION_DOCS,
   MATH_MEMBER_DOCS,
   SHADE_DTS,
   TYPE_DOCS,
+  checkOpenDocument,
   createTypeshadeLanguageService,
+  foreignNameRemedy,
 } from 'typeshade/language-service';
 export type {
-  TypeshadeDiagnostic,
+  CheckDiagnostic,
   TypeshadeDocumentSymbol,
   TypeshadeLanguageService,
   TypeshadeLocation,

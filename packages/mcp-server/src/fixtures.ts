@@ -28,9 +28,9 @@ export function fs(): Color {
 `;
 
 /** Two real errors, on lines 5 and 6: a call to a function that does not exist (`UNKNOWN_FN`,
- *  TS8004, which TypeScript also reports as TS2304) and a vector of the wrong size
- *  (`TYPE_MISMATCH`, TS8003). The front end then also reports `a` on line 7 as unknown
- *  (TS8022), since its declaration did not lower. */
+ *  TS8004, which TypeScript also finds as TS2304; the service keeps the compiler's report of the
+ *  one mistake) and a vector of the wrong size (`TYPE_MISMATCH`, TS8003). The read of `a` on
+ *  line 7 adds nothing: a refused declaration is the one diagnostic for its name. */
 export const BROKEN = `"use typeshade"
 
 @fragment
