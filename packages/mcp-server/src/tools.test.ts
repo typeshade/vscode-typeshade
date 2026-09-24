@@ -12,6 +12,7 @@ import {
   GRADIENT,
   KERNEL,
   LIB,
+  LOGGING,
   MAIN,
   PLAIN,
   RUNAWAY,
@@ -285,6 +286,26 @@ describe('run', () => {
     const { tools } = setup({ 'clean.shade.ts': CLEAN });
     expect(tools.run({ file: 'clean.shade.ts', function: 'tint', args: [3] })).toBe(
       'tint returned 1.5\nprecision: f32',
+    );
+  });
+
+  it('prints each line the run logged under its result, with the line it came from', () => {
+    const { tools } = setup({ 'logging.shade.ts': LOGGING });
+    const run = (x: number) =>
+      tools.run({
+        file: 'logging.shade.ts',
+        function: 'main',
+        invocation: { global_invocation_id: [x, 0, 0] },
+      });
+    expect(run(3)).toBe(
+      'main returned nothing.\nprecision: f32\n\n' +
+        'Logged 2 lines:\n' +
+        'line 5, console.log: i = 3 4.5\n' +
+        'line 7, console.warn: big [4.5, 2]',
+    );
+    // A run whose branch skips the warning logs one line, and says so in the singular.
+    expect(run(1)).toBe(
+      'main returned nothing.\nprecision: f32\n\nLogged 1 line:\nline 5, console.log: i = 1 1.5',
     );
   });
 

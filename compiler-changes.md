@@ -26,6 +26,13 @@ id first, then the pull request that did the work.
   `docs` answering in `foreignNameRemedy`'s words) and its `check` (the compiler's
   `checkOpenDocument` now), `docs/agents.md` §3.1 and §3.5, and the three tests that counted
   TypeScript's TS2304 beside TS8004, handled in #24.
+- 0009: a host file imports a `.shade.ts` through `typeshade/vite` and a generated host view:
+  the skill's compiler-only claims (SKILL.md intro, description and host section,
+  references/host.md) rewritten around the import; docs/design.md §1.4 (the name is the rule for
+  a host import), §1.6 (the host reads the view through `moduleSuffixes`), §1.8 and §8 items 5
+  and 9 (`createShaderTsconfig` prints `moduleSuffixes` beside the `exclude`), the preview-scope
+  reason; `HOST_IMPORT_PROJECT`, a tsserver fixture for a host file that calls an export with
+  vector arguments, handled in this pull request.
 - 0011: WGSL's `matCxRf` aliases are types and constructors: the type table in
   references/language.md names `mat4x4f` beside the other matrix spellings, handled in #25.
 - 0012: a `"use typeshade"` directive after another statement is `TS8069`: a `TS8069` row in
@@ -36,3 +43,7 @@ id first, then the pull request that did the work.
   the opt-in buffer, the binding rule noting the compiler's `_fp64` and `_console` after the
   author's, a `TS8071` row in references/diagnostics.md, and docs/design.md §5's DAP table gaining
   the `output` row for a console call, pending the stepping engine's sink, handled in #25.
+- 0018: a debug session delivers the `console` calls it steps over to a sink: docs/design.md §5's
+  DAP row for a console call no longer pending, and the MCP server's `run` tool printing the
+  lines a run logged under its result (`tools.test.ts` pins the output), handled in this pull
+  request.
