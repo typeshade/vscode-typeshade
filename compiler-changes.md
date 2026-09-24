@@ -26,3 +26,13 @@ id first, then the pull request that did the work.
   `docs` answering in `foreignNameRemedy`'s words) and its `check` (the compiler's
   `checkOpenDocument` now), `docs/agents.md` §3.1 and §3.5, and the three tests that counted
   TypeScript's TS2304 beside TS8004, handled in #24.
+- 0011: WGSL's `matCxRf` aliases are types and constructors: the type table in
+  references/language.md names `mat4x4f` beside the other matrix spellings, handled in #PR.
+- 0012: a `"use typeshade"` directive after another statement is `TS8069`: a `TS8069` row in
+  references/diagnostics.md, and the `TS8001` row, which now means no directive at all, handled in
+  #PR.
+- 0014: `console` calls reach the host from WebGPU under `console: 'gpu'`: the skill's
+  `console.log` rule (SKILL.md) and its line in references/language.md rewritten around labels and
+  the opt-in buffer, the binding rule noting the compiler's `_fp64` and `_console` after the
+  author's, a `TS8071` row in references/diagnostics.md, and docs/design.md §5's DAP table gaining
+  the `output` row for a console call, pending the stepping engine's sink, handled in #PR.
