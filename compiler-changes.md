@@ -46,3 +46,7 @@ id first, then the pull request that did the work.
 - 0018: a debug session delivers the `console` calls it steps over to a sink: docs/design.md §5's
   DAP row for a console call no longer pending, and the MCP server's `run` tool printing the
   lines a run logged under its result (`tools.test.ts` pins the output), handled in #26.
+- 0019: a shader calls `console.table` with one value: the skill's console rule (SKILL.md) and
+  references/language.md name `table` and its one argument; the MCP server's `run` tool prints a
+  `table` event as indented rows (`tools.test.ts` pins an array of structs and a matrix);
+  docs/design.md §5's DAP `output` row says how a `table` event reads, handled in #28.

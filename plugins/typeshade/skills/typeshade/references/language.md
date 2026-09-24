@@ -273,6 +273,11 @@ export function fs(@location(0) uv: vec2): vec4 {
   `compile(src, { console: 'gpu' })` the WGSL records every call a compute or fragment entry
   reaches in a `_console` storage buffer, and `decodeConsole(words, result.console)` reads it
   back as the CPU's lines, in the CPU's order. A call a vertex entry reaches is `TS8071` there.
+- `console.table(x)` takes one value (an array, a struct, a vector, a matrix or a scalar) and
+  the host prints it with its own `console.table`: an array of structs as a row per element, a
+  matrix by column (`m[j]` is column `j`). A second argument, the columns to show, and a text
+  argument are `TS8099`: pick the fields in the shader, into a smaller struct. Every other
+  `console` method (`count`, `assert`, `time`, `group`, …) is `TS8099` too.
 
 ## Textures
 

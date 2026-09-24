@@ -73,6 +73,22 @@ export function main(@builtin("global_invocation_id") gid: vec3u): void {
 }
 `;
 
+/** A kernel that shows an array of structs and a matrix with `console.table` (compiler proposal
+ *  0019): lines 10 and 11. */
+export const TABLE = `"use typeshade"
+class P {
+  pos: vec2
+  speed: f32
+}
+@compute([1])
+export function main(): void {
+  const ps: array<P, 2> = [{ pos: vec2(1., 2.), speed: 3. }, { pos: vec2(4., 5.), speed: 6. }]
+  const m = mat2x2(1., 2., 3., 4.)
+  console.table(ps)
+  console.table(m)
+}
+`;
+
 /** A fragment shader that reads a uniform struct and its own position, for a run of an entry
  *  point: at position (100.5, 50.5) with `gain` 2 it returns `vec4(2, 1, 0, 2)`. Line 16 is the
  *  statement after `u` is computed, where a breakpoint sees `u` and not yet `v`. */
