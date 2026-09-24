@@ -1047,21 +1047,23 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     three APIs to reach users on 2022 releases. Revisit if a real user reports being stuck
     below it.
 11. **Whether the plugin's bundled `typescript` could be the host's instead (§1.3, §2).** The
-    plugin carries its own copy, which is about 15.5 of the 55 MB it adds to a tsserver process
-    and most of the 8.9 MB `typescript.js` in each bundle of the `.vsix`. tsserver hands every plugin its own instance as
-    `modules.typescript`, and feeding that to the bundled compiler instead of a bundled copy
-    would give all of it back. _Suggested: no, until the compiler is tested against the
-    versions editors actually ship._ The saving is real and the risk is specific: the TypeShade
-    program's checking would then vary with the editor's TypeScript rather than with the pinned
-    compiler, and the host VS Code 1.137 tested here runs TypeScript 6.0.3 while the compiler
-    pins 5.6.3. A CI matrix over the TypeScript versions the compiler must accept is the thing
-    that would change this answer, and it is cheap to build once anyone wants the megabytes.
+    plugin carries its own copy, which is about 15.5 of the 55 MB it adds to a tsserver process and
+    most of the 8.9 MB `typescript.js` in each bundle of the `.vsix`. tsserver hands every plugin
+    its own instance as `modules.typescript`, and feeding that to the bundled compiler instead of a
+    bundled copy would give all of it back. **Decided on 2026-09-24: no, until the compiler is
+    tested against the versions editors actually ship** (typeshade/typeshade#259). The saving is
+    real and the risk is specific: the TypeShade program's checking would then vary with the
+    editor's TypeScript rather than with the pinned compiler, and the host VS Code 1.137 tested
+    here runs TypeScript 6.0.3 while the compiler pins 5.6.3. A CI matrix over the TypeScript
+    versions the compiler must accept is the thing that would change this answer, and it is cheap
+    to build once anyone wants the megabytes.
 
 ## Decisions for the owner
 
 Three of these were answered on 2026-09-14, through the orchestrating session, and are kept
-here as a record of what was decided rather than a list of what is waiting. One item, the last,
-is still open and is not needed until after PR 5.
+here as a record of what was decided rather than a list of what is waiting, as are the two
+PR 3 raised, answered on 2026-09-24. One item, the fourth, is still open and is not needed
+until after PR 5.
 
 1. **The Marketplace publisher and the `VSCE_PAT` secret.** Publisher `typeshade`, display name
    TypeShade, and the secret is set, so PR 5 can be run as well as written (§7).
@@ -1082,7 +1084,14 @@ is still open and is not needed until after PR 5.
    release after that needs another route, such as a maintainer publishing it by hand with 2FA.
    And trusted publishing does not authenticate this repository at all until npm fixes
    [npm/cli#9969](https://github.com/npm/cli/issues/9969).
+5. **The plugin keeps its bundled `typescript`** (§8 item 11). Handing the bundled compiler the
+   host's `modules.typescript` would save about 15.5 MB per tsserver process, and waits on the
+   compiler being tested against the TypeScript versions editors ship.
+6. **That testing is the compiler's to add**, as a CI matrix beyond its pinned 5.6.3:
+   typeshade/typeshade#259. VS Code 1.137 to 1.139 ship TypeScript 6.0.3, outside the
+   compiler's `>=5.0.0 <6` peer range, and the electron suite passing there is an observation
+   rather than a guarantee.
 
 Nothing before that step is blocked on an answer.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
