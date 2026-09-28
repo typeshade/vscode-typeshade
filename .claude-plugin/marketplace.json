@@ -12,7 +12,7 @@
       "description": "Write \"use typeshade\" shaders with an agent: a skill that teaches the language, and an MCP server that answers from TypeShade's own compiler (diagnostics, WGSL and GLSL output, navigation, vocabulary, a CPU run of a shader).",
       "homepage": "https://typeshade.dev",
       "repository": "https://github.com/typeshade/vscode-typeshade",
-      "license": "MIT",
+      "license": "Apache-2.0",
       "keywords": ["typeshade", "shader", "wgsl", "glsl", "webgpu", "mcp"]
     }
   ]

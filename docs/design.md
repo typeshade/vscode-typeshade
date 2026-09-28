@@ -959,8 +959,8 @@ written down so a complaint has something to point at.
 
 **The `.vsix` needs its own LICENSE.** `vsce` packages the directory its manifest sits in, and
 `packages/vscode-typeshade/` has no LICENSE file, so the extension would ship without one while
-the repository root has MIT. The package step copies the root `LICENSE` in beside the manifest
-before packaging.
+the repository root has Apache 2.0. The package step copies the root `LICENSE` and `NOTICE` in beside
+the manifest before packaging.
 
 **The publish workflow is PR 5**, and it is gated three ways: it runs only on a published GitHub
 release, only when the release tag matches the extension's `version`, and only with the

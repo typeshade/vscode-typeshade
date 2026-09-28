@@ -103,9 +103,10 @@ jobs:
 
       - run: npm run build
 
-      # npm packs a LICENSE only from the package's own directory, and this one has none.
-      - name: Copy the LICENSE beside the manifest
-        run: cp LICENSE packages/mcp-server/LICENSE
+      # npm packs a LICENSE and a NOTICE only from the package's own directory, and this one has
+      # neither. Apache 2.0 (section 4d) asks a redistribution to carry the NOTICE.
+      - name: Copy the LICENSE and the NOTICE beside the manifest
+        run: cp LICENSE NOTICE packages/mcp-server/
 
       - name: Pack, and record what is in the tarball
         working-directory: packages/mcp-server

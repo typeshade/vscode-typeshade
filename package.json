@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Editor and agent support for TypeShade: a TypeScript server plugin, a VS Code extension and an MCP server.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Seungup Noh",
   "homepage": "https://typeshade.dev",
   "bugs": {

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "TypeShade language support for VS Code: diagnostics, hover, completions and navigation for \"use typeshade\" files, with a WGSL and GLSL preview.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publisher": "typeshade",
   "author": "Seungup Noh",
   "homepage": "https://typeshade.dev",

@@ -97,4 +97,4 @@ nothing checks is a convention that drifts.
 
 ## License
 
-MIT. See [`LICENSE`](./LICENSE).
+Apache License 2.0. See [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE). The license grants no right to use the TypeShade name (section 6). Commits before the change to Apache 2.0 were released under the MIT License, and stay available under it.

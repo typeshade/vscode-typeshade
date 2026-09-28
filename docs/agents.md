@@ -211,8 +211,8 @@ edit distance.
 `@modelcontextprotocol/server` 2.0.0: the v2 line has been the stable one since 2026-07-27 and
 v1 is in maintenance. The SDK, zod and `typescript` are the package's dependencies, installed by
 npm beside it; `typescript` is external for the reason the plugin's is, one copy, the one npm
-installs. The bundle holds only the compiler and this repository's code, both under the MIT
-`LICENSE` the publish copies in beside the manifest (§6), and it is 1269 KB. Its handshake
+installs. The bundle holds only the compiler and this repository's code, both under the Apache 2.0
+`LICENSE` and `NOTICE` the publish copies in beside the manifest (§6), and it is 1269 KB. Its handshake
 reports the compiler it carries, as the vendored `package.json` version and the submodule's
 commit, because a model told which language it is talking to can tell a language change from
 its own mistake.

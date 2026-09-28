@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "A TypeScript server plugin that gives \"use typeshade\" files TypeShade's own diagnostics, hover, completions and navigation.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Seungup Noh",
   "repository": {
     "type": "git",
