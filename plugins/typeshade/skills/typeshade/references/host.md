@@ -24,34 +24,58 @@ export default defineConfig({ plugins: [typeshade()] })
 "exclude": ["src/**/*.shade.ts"]
 ```
 
-Add `"prepare": "typeshade sync"` to `package.json` and `*.shade.typeshade.ts` to `.gitignore`.
-The plugin writes a host view, `name.shade.typeshade.ts`, beside each module, and
-`moduleSuffixes` makes `tsc` and the editor read it in place of the source. `typeshade sync`
-writes every view before `tsc` runs on a clean checkout.
+Add `"prepare": "tshc sync"` to `package.json` and `*.shade.typeshade.ts` to `.gitignore`.
+`tshc` is the command the `typeshade` package installs. The plugin writes a host view,
+`name.shade.typeshade.ts`, beside each module, and `moduleSuffixes` makes `tsc` and the editor
+read it in place of the source. `tshc sync` writes every view before `tsc` runs on a clean
+checkout.
 
 ```ts
+import { resident } from 'typeshade'
 import { height } from './terrain.shade.ts'
-import { scale } from './kernels.shade.ts'
+import { scale, blockSum } from './kernels.shade.ts'
+import { fs } from './plasma.shade.ts'
 
 const k = [1, 0.5, 2, 0.25] as const
 const h = height([0.5, 0.5], k) // a number
 await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is filled in place
+
+const onGpu = resident(new Float32Array(256))
+const sums = resident(new Float32Array(4))
+scale({ k: 2.5, xs, ys: onGpu }, 4) // queued: every binding it writes is a Resident
+blockSum({ xs: onGpu, sums, scratch: resident(new Float32Array(256)) }, 4) // reads scale's output
+const out = await sums.read() // the one wait
+
+fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is read back
 ```
 
 - **A helper** a host can call is exported, not generic, takes no function, and reaches no
   binding, workgroup variable or GPU-only builtin. It runs on the CPU at f32, synchronously.
-- **A `@compute` entry** is `entry(bindings, workgroups)`. The promise resolves once every
+- **A `@compute` entry** is `entry(bindings, workgroups)`. `bindings` has one property for each
+  binding the entry reaches, typed exactly, so a missing or misspelled binding is a type error.
+  `workgroups` is `n` or `[x, y, z]`, dispatched as written. The promise resolves once every
   storage binding it writes has been read back into the caller's value. It runs on WebGPU, and
-  on the CPU where there is none (Node). An entry that reaches a barrier needs WebGPU.
-- **A full-screen `@fragment` entry** is `entry(canvas, bindings)`. It draws one frame on WebGPU,
-  then WebGL2, then the CPU.
+  on the CPU where there is none (Node). An entry that reaches a barrier or reads a texture needs
+  WebGPU, and `configure({ prefer })` orders the two tiers.
+- **A `Resident`**, `resident(array)` from `typeshade`, stands for a storage array with no size and
+  stays on the device: nothing is read back until `await r.read()`. When every binding an entry
+  writes is a `Resident`, the call only queues and returns nothing. Entry calls and kernel calls
+  run in the order they were made, and so does a draw that reads a `Resident`, so one call's
+  output can be the next one's input.
+- **A full-screen `@fragment` entry** is `entry(canvas, bindings)`, into an `HTMLCanvasElement`
+  or an `OffscreenCanvas`. It draws one frame that fills the canvas, on WebGPU, then WebGL2, then
+  the CPU, and the first draw into a canvas decides its tier. The promise resolves when the frame
+  is submitted, and nothing is read back. An entry that reads a storage buffer has no WebGL2 tier,
+  and one that reads a texture has no CPU tier.
 - Every other export is `never` in the view, with the reason, so calling one is a type error.
 - **Host values:**
   - a number for a scalar, a boolean for a `bool`
   - a tuple for a `vecN`
   - a flat column-major array for a matrix
   - an object for a struct
-  - a typed array for a runtime-sized storage array
+  - a typed array for a runtime-sized storage array, or an array of objects for one of structs
+  - an image source (`ImageBitmap`, `ImageData`, an image, a canvas or a video) for a
+    `texture_2d<f32>`, and `{ filter, address }` or nothing for a `sampler`
 - The module must be named `*.shade.ts`. A compile error fails the build with its `TS80xx`
   diagnostics.
 - A module that imports another shader module ([language.md](language.md)) is compiled with it:

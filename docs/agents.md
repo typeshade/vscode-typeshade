@@ -125,7 +125,7 @@ Every tool is annotated read-only; nothing in the server writes a file.
 
 ### 3.1 Diagnostics: the editor's, plus what only the emitters see
 
-`check` returns what the plugin shows, and what `typeshade check` prints, because it calls the
+`check` returns what the plugin shows, and what `tshc check` prints, because it calls the
 command's own function: `checkOpenDocument` (compiler `src/language-service/check.ts`), over the
 server's service and its open documents. That is the service's merged list, TypeScript's
 findings with the false positives filtered (`TS_DIAGNOSTIC_FILTERS`, compiler

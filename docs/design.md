@@ -274,7 +274,7 @@ plugin does not touch it.**
 
 A host module that does `import { height } from './terrain.shade.ts'` is asking a question about
 values and types in its own program, not about shader semantics. Since compiler proposal 0009
-the compiler answers it with a generated file: `typeshade/vite` (and `typeshade sync`, for a
+the compiler answers it with a generated file: `typeshade/vite` (and `tshc sync`, for a
 clean checkout) writes a _host view_, `terrain.shade.typeshade.ts`, beside each module, declaring
 what a host can call with host types (a `vec2` parameter is `readonly [number, number]`, an entry
 point a host cannot call is `never` with the reason). The host `tsconfig.json` adds
@@ -282,7 +282,9 @@ point a host cannot call is `never` with the reason). The host `tsconfig.json` a
 and an `exclude` of the shader sources, so the source is not pulled back in. The host file then
 type-checks exactly, in its own program, and the plugin has nothing to add: a wrong vector length
 is TypeScript's own TS2345 at the host's line. `HOST_IMPORT_PROJECT` in
-`packages/tsserver-plugin/src/fixtures.ts` pins this.
+`packages/tsserver-plugin/src/fixtures.ts` pins this for a helper call and, since compiler
+proposal 0016, for a `@compute` entry's call and a full-screen `@fragment` entry's draw, whose
+bindings object is typed exactly.
 
 A project without that setup still resolves the import to the source itself, under the older
 `./x.shade.js` specifier, and gets approximate types (`vec4` is unresolved in the host program,

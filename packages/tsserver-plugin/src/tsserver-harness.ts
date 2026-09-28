@@ -11,7 +11,15 @@
 // `at()` is the only place that conversion happens.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -398,6 +406,15 @@ export function writeFixture(files: Readonly<Record<string, string>>): string {
     writeFileSync(file, text);
   }
   return dir;
+}
+
+/** Links the pinned compiler into a fixture as `node_modules/typeshade`, the package a host
+ *  project installs, for a fixture whose files import it: a compute entry's host view imports
+ *  `Resident` from `typeshade/runtime`, which the compiler's `exports` resolve to its sources.
+ *  `removeFixture` removes the link and leaves the compiler alone. */
+export function linkCompiler(dir: string): void {
+  mkdirSync(join(dir, 'node_modules'), { recursive: true });
+  symlinkSync(join(ROOT, 'vendor/typeshade'), join(dir, 'node_modules/typeshade'), 'dir');
 }
 
 /** Removes a fixture directory. A tsserver that is still shutting down can write a file into

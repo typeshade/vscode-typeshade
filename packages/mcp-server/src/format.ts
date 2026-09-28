@@ -21,7 +21,7 @@ export interface Problem {
 }
 
 /** A diagnostic of the compiler's check (`checkOpenDocument`) as a {@link Problem}. The check
- *  reports one-based lines and columns, the way `typeshade check` prints them. */
+ *  reports one-based lines and columns, the way `tshc check` prints them. */
 export function fromCheckDiagnostic(d: CheckDiagnostic): Problem {
   return {
     severity: d.severity === 'info' ? 'information' : d.severity,
