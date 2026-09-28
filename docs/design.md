@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `c9dc8c0`
-(2026-09-24). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `41872ee`
+(2026-09-28). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
@@ -11,7 +11,9 @@ from `a2240e0` to `ef049e4` renames the package from `@xgis/shader-dsl` to `type
 mapping in §3 stands as written. The moves from `ef049e4` to `eb0dde6` and on to `7f0b482` remove nothing this
 repository names and change no mapping, and so does the move on to `c9dc8c0`, which adds
 `typeshade check` as a function (`checkOpenDocument`) and the GLSL and HLSL names
-(`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). §1.3, §4 and §7 were re-measured at `7f0b482` with the
+(`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). The moves
+after `c9dc8c0` record what each owed in `compiler-changes.md` and change no mapping either: at
+`41872ee` every service call in §3 type-checks and the tests pass. §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
@@ -282,9 +284,10 @@ point a host cannot call is `never` with the reason). The host `tsconfig.json` a
 and an `exclude` of the shader sources, so the source is not pulled back in. The host file then
 type-checks exactly, in its own program, and the plugin has nothing to add: a wrong vector length
 is TypeScript's own TS2345 at the host's line. `HOST_IMPORT_PROJECT` in
-`packages/tsserver-plugin/src/fixtures.ts` pins this for a helper call and, since compiler
-proposal 0016, for a `@compute` entry's call and a full-screen `@fragment` entry's draw, whose
-bindings object is typed exactly.
+`packages/tsserver-plugin/src/fixtures.ts` pins this for a helper call; since compiler proposal
+0016, for a `@compute` entry's call and a full-screen `@fragment` entry's draw, whose bindings
+object is typed exactly; and since proposal 0013, for a kernel function called with a
+`Float32Array`, which returns a promise, and with a `Resident`, which only queues and is `void`.
 
 A project without that setup still resolves the import to the source itself, under the older
 `./x.shade.js` specifier, and gets approximate types (`vec4` is unresolved in the host program,
