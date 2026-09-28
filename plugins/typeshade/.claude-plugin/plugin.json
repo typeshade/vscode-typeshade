@@ -7,6 +7,6 @@
   },
   "homepage": "https://typeshade.dev",
   "repository": "https://github.com/typeshade/vscode-typeshade",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["typeshade", "shader", "wgsl", "glsl", "webgpu", "mcp"]
 }
