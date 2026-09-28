@@ -104,14 +104,15 @@ live-shader contract fills them, and a checker texture on a `texture_2d<f32>` th
 
 Where the drawing code comes from is the decision:
 
-- **The compiler's public runtime (change 0025).** It is `accepted` and not implemented at the
-  pin: it is the right home, since it is the runtime the compiler ships to every host, and the
-  site means to move onto it too (0026, "It lines up with the public runtime").
+- **The compiler's public runtime (change 0025).** It is implemented at the pin,
+  `typeshade/runtime`: it is the right home, since it is the runtime the compiler ships to every
+  host, and the site means to move onto it too (0026, "It lines up with the public runtime").
 - **A copy of the site's `shader-runtime.ts`.** It works today, 2,160 lines, and would be a
   second copy of code that already has one, drifting from the first the day it is copied.
 
 **Proposed: wait for 0025 rather than copy.** Stage 1 does not need the canvas, and the order
-below puts Stage 2 after 0025 lands. A webview has WebGL2 on every platform VS Code runs on;
+below puts Stage 2 after 0025 lands. It has landed: the pin carries it, so Stage 2 is the next
+stage to build. A webview has WebGL2 on every platform VS Code runs on;
 WebGPU in the webview depends on Electron's flags and is measured, not assumed, the same way
 §1.3 of `docs/design.md` measures memory.
 

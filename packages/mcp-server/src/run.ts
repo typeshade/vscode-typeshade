@@ -66,10 +66,9 @@ export interface RunRequest {
  *  and the shader files it imports are one program, compiled into one module (compiler Rule
  *  3.9), and every statement's span names the file it was written in. */
 export interface RunSource {
-  /** The name the module was compiled under. `breakpoints` are lines of this file, and a line
-   *  it logged from is printed without a file name. */
+  /** The name the module was compiled under. `breakpoints` are lines of this file. */
   readonly file: string;
-  /** How to name any other file of the program, one that the file imports. */
+  /** How to name a file of the program in a logged line: this one, or one that it imports. */
   readonly display: (file: string) => string;
 }
 
@@ -197,25 +196,30 @@ export function runOnCpu(
   throw new ToolError(report.join('\n\n'));
 }
 
-/** The lines a run logged, one per call, as the host console would print them: the labels as
- *  written and each value through the formatter, after the line and the method. A line of a
- *  file the run's file imports names that file. */
+/** The lines a run logged, one per call, in the form the host console prints them (compiler
+ *  surface §66): the tier, `CPU` for a run, then the file and line, the invocation when the event
+ *  has one, and the labels as written with each value through the formatter. A host's console
+ *  shows a method other than `log` by its style, which text has not got, so its name comes
+ *  before the arguments; a `console.table`'s rows follow its line. The file is named as the
+ *  workspace names it, the path an agent opens. */
 function describeLog(
   logged: readonly ConsoleEvent[],
   format: (value: CpuValue, type?: ShaderType) => string,
   source: RunSource | undefined,
 ): string {
   const lines = logged.slice(0, LOG_LIMIT).map((e) => {
-    const elsewhere =
-      e.span !== undefined && source !== undefined && e.span.file !== source.file
-        ? ` of ${source.display(e.span.file)}`
-        : '';
-    const where = e.span ? `line ${e.span.line + 1}${elsewhere}, ` : '';
+    const where = ['CPU'];
+    if (e.span !== undefined) {
+      const file = source?.display(e.span.file) ?? e.span.file.split(/[\\/]/).pop()!;
+      where.push(`${file}:${e.span.line + 1}`);
+    }
+    if (e.invocation !== undefined) where.push(`[${e.invocation.join(', ')}]`);
+    const head = where.join('  ');
     if (e.method === 'table' && e.args.length === 1 && typeof e.args[0] !== 'string') {
-      return `${where}console.table:\n${tableRows(e.args[0]!, format).join('\n')}`;
+      return `${head}  table:\n${tableRows(e.args[0]!, format).join('\n')}`;
     }
     const text = e.args.map((a) => (typeof a === 'string' ? a : format(a))).join(' ');
-    return `${where}console.${e.method}: ${text}`;
+    return `${head}  ${e.method === 'log' ? '' : `${e.method}: `}${text}`;
   });
   const heading = `Logged ${logged.length === 1 ? '1 line' : `${logged.length} lines`}:`;
   const more = logged.length > LOG_LIMIT ? `\n(${logged.length - LOG_LIMIT} more not shown)` : '';

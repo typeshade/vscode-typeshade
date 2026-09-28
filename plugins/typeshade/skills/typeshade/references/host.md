@@ -1,11 +1,15 @@
 # TypeShade on the host side
 
-A host uses a shader module one of two ways:
+A host uses a shader module one of three ways:
 
 - **It imports the module** through the `typeshade/vite` plugin and calls its exports. A helper
   runs on the CPU. A kernel function's loops run on the GPU when the compiler proves them
   independent. A `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry draws
-  into a canvas. The runtime creates the device and the pipelines.
+  into a canvas. The calls request a WebGPU device and make the pipelines themselves, or use the
+  program runtime's device once `configure({ runtime: rt })` names one.
+- **It loads the compiled program into the program runtime**, `typeshade/runtime`, and draws and
+  dispatches it with its own frames: the runtime handles the device, the pipelines, the bindings
+  by name and the console, and the application ships no compiler.
 - **It compiles the file** (in a build step or at start-up) and hands the emitted WGSL or GLSL to
   its own WebGPU or WebGL2 code. Nothing of TypeShade runs then.
 
@@ -96,8 +100,52 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   from the module's directory up, and `vite dev` rebuilds the module when one of them changes.
   The view holds the module's own exports and what it re-exports. A host file that imports a
   package's `.shade.ts` itself is not supported yet.
-- In `vite dev`, a `console.*` call in an entry prints in the browser console from the GPU. A
-  production build records nothing.
+- A `console.*` call prints in the browser console after where it ran: the tier, the file and
+  line, and the invocation, as in `GPU  particles.shade.ts:14  [3, 0, 0]  x 4.5`. The plugin's
+  `console` option says when the GPU records the calls: `'dev'`, the default, in `vite dev` only,
+  `'always'` in a production build too, and `'never'` in neither. `typeshade({ ir: true })` also
+  puts each module's IR in its default export, for the load-time emitter below.
+
+## The program runtime
+
+A module's default export is its compiled program, the manifest (`Pack`), and
+`packModule(compile(source).module)` returns the same object. `typeshade/runtime` loads it and
+runs it on WebGPU, and imports nothing of the compiler, so an application ships about 10 KB of it.
+
+```ts
+import { createRuntime } from 'typeshade/runtime'
+import particles from './particles.shade.ts' // the manifest
+
+const rt = await createRuntime({ programs: [particles] }) // or { device }, the host's own
+const step = await rt.load(particles).compute('step')
+const frame = rt.frame()
+frame.dispatch(step, { params: { dt: 0.016 }, particles: gpuBuffer }, 64)
+await frame.submit() // the console lines print here
+```
+
+- **The device** is the host's, `createRuntime({ device })`, which the runtime never destroys, or
+  one it requests with the features `programs` need. `runtime()` is the default runtime, on the
+  device the imported module's calls use.
+- **A program** is `rt.load(manifest)`, refused for another schema or a feature the device lacks.
+  `program.compute(entry)` and `program.render(state)` resolve to cached pipelines laid out from
+  the manifest; `state` holds the colour targets, depth, topology, culling and multisampling.
+- **Bindings go by name**, `{ name: value }`: a plain host value, packed by the binding's layout;
+  a `Resident`; a `Texture` or `Sampler` from `rt.texture()` and `rt.sampler()`; or the host's
+  own `GPUBuffer`, `GPUTexture` or `GPUSampler`. An unknown name, a missing binding and a value of
+  the wrong shape are a `TypeError` naming the entry, its line and the binding.
+- **A frame** is one encoder: `frame.dispatch()`, `frame.pass(targets, record)`, then `submit()`.
+  A host with encoders of its own records with `pipeline.dispatch(encoder, …)` and
+  `pipeline.draw(pass, …)` and submits with `rt.submit(encoder)`.
+- **One device for both layers.** `configure({ runtime: rt })` puts the imported module's calls on
+  `rt`'s device, so a `Resident` or a `Texture` made on either is used on the other.
+- **The console.** A program loaded with its recorded variant, `rt.load(m, { console: true })`
+  (the default when the manifest carries one), prints each event after the submit that ran it, or
+  hands it to `createRuntime({ console: sink })`.
+- **The load-time emitter.** `createRuntime({ emit: repack })`, with `repack` from
+  `typeshade/emit`, records the console of a program whose build did not, from the IR the
+  manifest carries when built with `ir: true`. Only the package version that wrote the IR reads
+  it.
+- The runtime is WebGPU only: WebGL2 and the CPU stay the imported module's tiers.
 
 ## compile() and reflect()
 
