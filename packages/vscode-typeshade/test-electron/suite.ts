@@ -55,6 +55,8 @@ test('registers every command it contributes', async () => {
     'typeshade.showReflection',
     'typeshade.runEntry',
     'typeshade.copyOutput',
+    'typeshade.openInPlayground',
+    'typeshade.openPlaygroundLink',
   ]) {
     assert.ok(registered.has(command), `${command} is not registered`);
   }

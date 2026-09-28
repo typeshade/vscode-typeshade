@@ -1,6 +1,6 @@
 # The Playground and the editor: one workspace in two places
 
-Status: **proposal** for review. It answers the owner's request to carry the site's Playground
+Status: **accepted**, and Stage 1 is being built (§7). It answers the owner's request to carry the site's Playground
 into VS Code: work on a shader in the browser, continue it in the editor with the extension, and
 bring it back, and to have a VS Code in the browser as well. The pinned compiler is
 `typeshade/typeshade` at `88ba8ad`; the site is `typeshade/typeshade.github.io` at `1ef8fd6`,
@@ -164,11 +164,21 @@ none needs a compiler change proposal. If the owner prefers the graph inside the
 
 ## 6. Decisions for the owner
 
-1. **`typeshade.json` as the workspace file (§2.1).** _Suggested: yes._
-2. **Publishing the extension (§5, 1c).** Open in VS Code needs an installed extension, and a
-   reader can install only a published one. The publisher and both tokens exist
-   (`docs/design.md` §7); the workflow does not. _Suggested: write PR 5 now, and release 0.1.0
-   when 1b has merged._
-3. **Stage 2 waits for 0025 (§3).** _Suggested: yes, rather than copy the site's runtime._
-4. **Stage 3 starts with the probe (§4), and no VS Code build is hosted on the site.**
-   _Suggested: yes._
+Decided on 2026-09-28, in the orchestrating session: the owner took every suggestion.
+
+1. **`typeshade.json` is the workspace file (§2.1).**
+2. **The extension is published (§5, 1c)**: PR 5 of `docs/design.md` §7 is written now, and
+   0.1.0 is released once 1b has merged.
+3. **Stage 2 waits for 0025 (§3)**, and the site's runtime is not copied.
+4. **Stage 3 starts with the probe (§4)**, and no VS Code build is hosted on the site.
+
+## 7. What is built
+
+- **1a**, the site's download and its link format written down: typeshade.github.io#123.
+- **1b**, this repository: `packages/vscode-typeshade/src/workspace-link.ts` reads and writes
+  the link and the folder, and its tests hold it to a link the site's own encoder wrote;
+  `bridge.ts` adds Open in Playground, Open Playground Link and the `vscode://` handler. Open in
+  Playground takes the main file and the passes from `typeshade.json` when the folder has one,
+  else the active file, and the files beside them are the ones they import, followed through
+  their relative imports. The pin does not move for it: the extension reads and writes the
+  graph and draws nothing, so 0026 owes it nothing until Stage 2.

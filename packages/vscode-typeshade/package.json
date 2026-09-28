@@ -22,7 +22,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:typescript"
+    "onLanguage:typescript",
+    "onUri"
   ],
   "contributes": {
     "typescriptServerPlugins": [
@@ -51,6 +52,14 @@
       {
         "command": "typeshade.copyOutput",
         "title": "TypeShade: Copy Output"
+      },
+      {
+        "command": "typeshade.openInPlayground",
+        "title": "TypeShade: Open in Playground"
+      },
+      {
+        "command": "typeshade.openPlaygroundLink",
+        "title": "TypeShade: Open Playground Link"
       }
     ],
     "menus": {
@@ -73,6 +82,10 @@
         },
         {
           "command": "typeshade.copyOutput",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.openInPlayground",
           "when": "typeshade.isShader"
         }
       ]

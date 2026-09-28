@@ -33,31 +33,37 @@ describe('the extension manifest', () => {
     ]);
   });
 
-  it('activates on TypeScript and on nothing else', () => {
+  it('activates on TypeScript and on its own uri, and on nothing else', () => {
     // No `workspaceContains:**/*.shade.ts`: it would fire the extension in projects that have
-    // shaders but no open shader, for no benefit. Commands activate implicitly from 1.74.
-    expect(manifest.activationEvents).toEqual(['onLanguage:typescript']);
+    // shaders but no open shader, for no benefit. Commands activate implicitly from 1.74; the
+    // uri handler the site's Open in VS Code reaches does not (docs/playground-bridge.md §2.2).
+    expect(manifest.activationEvents).toEqual(['onLanguage:typescript', 'onUri']);
     expect(manifest.engines.vscode).toBe('^1.90.0');
   });
 
-  it("declares §4's five commands, with §4's titles", () => {
+  it("declares §4's seven commands, with §4's titles", () => {
     expect(manifest.contributes.commands).toEqual([
       { command: 'typeshade.showWgsl', title: 'TypeShade: Show WGSL' },
       { command: 'typeshade.showGlsl', title: 'TypeShade: Show GLSL' },
       { command: 'typeshade.showReflection', title: 'TypeShade: Show Reflection' },
       { command: 'typeshade.runEntry', title: 'TypeShade: Run Entry on CPU' },
       { command: 'typeshade.copyOutput', title: 'TypeShade: Copy Output' },
+      { command: 'typeshade.openInPlayground', title: 'TypeShade: Open in Playground' },
+      { command: 'typeshade.openPlaygroundLink', title: 'TypeShade: Open Playground Link' },
     ]);
   });
 
-  it('hides every command in the palette unless the file is a shader', () => {
+  it('hides every command but one in the palette unless the file is a shader', () => {
     // §4: "Every command is enabled only when the active editor's file carries the directive."
     // A command missing from this list is one that shows up in every TypeScript project.
     const gated = new Map(
       manifest.contributes.menus.commandPalette.map((entry) => [entry.command, entry.when]),
     );
+    // The one exception opens a link into a new folder, so it is for a window with no shader in
+    // it yet, and it has no entry: a command without one is in the palette everywhere.
     for (const { command } of manifest.contributes.commands) {
-      expect(gated.get(command)).toBe('typeshade.isShader');
+      if (command === 'typeshade.openPlaygroundLink') expect(gated.has(command)).toBe(false);
+      else expect(gated.get(command)).toBe('typeshade.isShader');
     }
   });
 

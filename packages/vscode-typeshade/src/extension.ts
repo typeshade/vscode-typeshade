@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'node:fs';
 import * as vscode from 'vscode';
+import { registerBridge } from './bridge.js';
 import { compileModule, isTypeshadeSource, type CpuValue } from './compiler.js';
 import { describe, parseInvocation } from './invocation.js';
 import { PreviewModel, shaderReader, type Entry, type PreviewTab } from './model.js';
@@ -120,6 +121,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('typeshade.runEntry', () => runEntry(model)),
   );
+
+  // The Playground bridge: a workspace between the site and a folder (docs/playground-bridge.md).
+  registerBridge(context);
 
   void configurePlugin();
   refresh();
