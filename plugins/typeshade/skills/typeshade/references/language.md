@@ -132,7 +132,7 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
 ### Conversions
 
 - Scalars: `f32(x)`, `i32(x)`, `u32(x)`, `bool(x)`, `f64(x)`. A float to an integer truncates
-  toward zero; GLSL leaves an out-of-range value undefined, so clamp first. `u32(i)` and
+  toward zero and saturates at the integer's range, the same on every target. `u32(i)` and
   `i32(u)` reinterpret the bits.
 - Vectors: through the constructor, `vec3(v3u)`, `vec3u(v)`, `vec2i(p)`, `vec2(gid.xy)`. The sizes
   must match. `f32(v)` on a vector is `TS8003`.
