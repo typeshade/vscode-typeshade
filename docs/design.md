@@ -660,9 +660,11 @@ second flag matters: without it the plugin loads only under VS Code's bundled Ty
 repository that pins its own `typescript` (which every repository with a `.shade.ts` file in it
 does) would silently get nothing.
 
-**Activation events.** `onLanguage:typescript` only. A `"use typeshade"` file is a TypeScript
-file, so that is the event that fires for it, and contributed commands activate implicitly from
-VS Code 1.74 onward. The manifest's floor is higher than that anyway,
+**Activation events.** `onLanguage:typescript`, and `onUri`. A `"use typeshade"` file is a
+TypeScript file, so that is the event that fires for it, and contributed commands activate
+implicitly from VS Code 1.74 onward. A uri handler does not, and the site's Open in VS Code
+reaches the extension through one (`docs/playground-bridge.md` §2.2), in a window that may have
+no TypeScript file open yet. The manifest's floor is higher than that anyway,
 `engines.vscode: ^1.90.0`, chosen so the extension can rely on implicit activation, on the
 stable `DebugAdapterInlineImplementation` API §5 uses, and on a TypeScript extension recent
 enough to pass an extension directory as a plugin probe location without caveats. Lowering it
@@ -711,16 +713,19 @@ processes** on top of what each already holds. About 15.5 MB of each copy is the
 
 **Commands.**
 
-| Command                    | Title                       | What it does                                                                                                                  |
-| -------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `typeshade.showWgsl`       | TypeShade: Show WGSL        | Opens the panel on the WGSL tab for the active file                                                                           |
-| `typeshade.showGlsl`       | TypeShade: Show GLSL        | Opens the panel on the GLSL vertex tab                                                                                        |
-| `typeshade.showReflection` | TypeShade: Show Reflection  | Opens the panel on the reflection tab (`reflect(module)`, exported from the compiler's root barrel)                           |
-| `typeshade.runEntry`       | TypeShade: Run Entry on CPU | Picks an entry from the file's document symbols, asks for the invocation, runs it on the CPU oracle, shows the returned value |
-| `typeshade.copyOutput`     | TypeShade: Copy Output      | Copies the active tab's text                                                                                                  |
+| Command                        | Title                           | What it does                                                                                                                  |
+| ------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `typeshade.showWgsl`           | TypeShade: Show WGSL            | Opens the panel on the WGSL tab for the active file                                                                           |
+| `typeshade.showGlsl`           | TypeShade: Show GLSL            | Opens the panel on the GLSL vertex tab                                                                                        |
+| `typeshade.showReflection`     | TypeShade: Show Reflection      | Opens the panel on the reflection tab (`reflect(module)`, exported from the compiler's root barrel)                           |
+| `typeshade.runEntry`           | TypeShade: Run Entry on CPU     | Picks an entry from the file's document symbols, asks for the invocation, runs it on the CPU oracle, shows the returned value |
+| `typeshade.copyOutput`         | TypeShade: Copy Output          | Copies the active tab's text                                                                                                  |
+| `typeshade.openInPlayground`   | TypeShade: Open in Playground   | Opens the active shader's workspace in the site's Playground, as a link (`docs/playground-bridge.md` §2.3)                    |
+| `typeshade.openPlaygroundLink` | TypeShade: Open Playground Link | Writes the workspace a Playground link carries to a folder and opens it (§2.2)                                                |
 
-Every command is enabled only when the active editor's file carries the directive, expressed as
-a `when` clause over a context key the extension sets from its own service.
+Every command but Open Playground Link is enabled only when the active editor's file carries
+the directive, expressed as a `when` clause over a context key the extension sets from its own
+service. Open Playground Link opens a new folder, so it is for a window with no shader in it yet.
 
 **Status bar.** One item, shown only for a directive file, reading `TypeShade` plus the entry
 count, with the compiled-output panel as its command. It is also where a plugin that failed to
