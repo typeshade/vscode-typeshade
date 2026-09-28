@@ -71,3 +71,16 @@ id first, then the pull request that did the work.
   serves an open editor's text or the file on disk when it carries the directive;
   docs/design.md §1.7, §4, §5's `launch` and `setBreakpoints` rows, §6 and §8 item 3, and
   docs/agents.md §2, §3.3, §4 and §8 item 3, handled in #31.
+- 0016: a host file calls a `@compute` entry and draws a full-screen `@fragment` entry through
+  the host view: the skill's host section (SKILL.md) gains the draw beside the helper call and
+  the entry call, and references/host.md says how the bindings object is typed, what a
+  `Resident` keeps on the device and in what order the calls run, where an entry runs and what
+  `configure` orders, and what a draw draws into and on which tier; `HOST_IMPORT_PROJECT` gains a
+  compute module, a fragment module, the views the pin writes for them and `gpu.ts`, which the
+  tsserver test type-checks with the pinned compiler linked as `node_modules/typeshade`, a missing
+  binding and a missing uniform field being TypeScript's own TS2769 and TS2741; docs/design.md's
+  host-side paragraph says what the fixture pins, handled in #32.
+- 0023: the compiler's command is `tshc`: `HOST_IMPORT_PROJECT`'s terrain view opens with the line
+  the pin writes (`tshc sync` rewrites it); the skill's host section and references/host.md say
+  `tshc sync`; docs/design.md's host view paragraph and docs/agents.md §3.1 say `tshc sync` and
+  `tshc check`, and so do the MCP server's comments in format.ts and tools.ts, handled in #32.

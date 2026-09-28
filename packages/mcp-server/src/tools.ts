@@ -326,7 +326,7 @@ export class TypeshadeTools {
   }
 
   /** The problems in one open shader, as the compiler's own check finds them
-   *  (`checkOpenDocument`, the one `typeshade check` runs): the editor's diagnostics, then
+   *  (`checkOpenDocument`, the one `tshc check` runs): the editor's diagnostics, then
    *  whatever the emitters refuse, which the editor's front-end analysis never runs into. One
    *  check, so this tool, the command and the editor cannot give two answers about one file. */
   private problemsOf(f: OpenedFile): Problem[] {

@@ -9,6 +9,7 @@ import {
 } from './fixtures.js';
 import {
   Harness,
+  linkCompiler,
   removeFixture,
   startServer,
   writeFixture,
@@ -504,12 +505,13 @@ describe('the fixture with a real error', () => {
   });
 });
 
-describe('a host file that imports a shader through its host view (compiler 0009)', () => {
+describe('a host file that imports a shader through its host view (compiler 0009 and 0016)', () => {
   let dir: string;
   let server: Harness;
 
   beforeAll(() => {
     dir = writeFixture(HOST_IMPORT_PROJECT);
+    linkCompiler(dir);
     server = startServer({ dir });
   });
 
@@ -530,6 +532,25 @@ describe('a host file that imports a shader through its host view (compiler 0009
     );
     const wrong = await server.diagnostics('app.ts');
     expect(wrong.semantic.map((d) => d.code)).toEqual([2345]);
+    expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
+  });
+
+  it('types a compute entry call and a draw against their views (compiler 0016)', async () => {
+    server.open('gpu.ts');
+    expect(all(await server.diagnostics('gpu.ts'))).toEqual([]);
+
+    // The bindings object is typed exactly, so a binding the call leaves out is TypeScript's own
+    // error at the host's line, and so is a field a draw's uniform leaves out. The clean pass
+    // above also shows `Resident` resolving through `typeshade/runtime`: unresolved, the first
+    // overload would take a plain array and return void, and `read` would be a type error.
+    server.reopen(
+      'gpu.ts',
+      HOST_IMPORT_PROJECT['gpu.ts']
+        .replace('{ k: 2.5, xs, ys }', '{ k: 2.5, xs }')
+        .replace('{ time: 0, scale: 0.02 }', '{ time: 0 }'),
+    );
+    const wrong = await server.diagnostics('gpu.ts');
+    expect(wrong.semantic.map((d) => d.code)).toEqual([2769, 2741]);
     expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
   });
 

@@ -291,15 +291,18 @@ Import the module, with `typeshade()` from `typeshade/vite` in the Vite config:
 ```ts
 import { height } from './terrain.shade.ts'
 import { scale } from './kernels.shade.ts'
+import { fs } from './plasma.shade.ts'
 
 const h = height([0.5, 0.5], k) // a helper runs on the CPU, synchronously, at f32
 await scale({ k: 2.5, xs, ys }, 4) // a @compute entry dispatches on WebGPU; ys is filled in place
+fs(canvas, { frame: { time, scale: 0.02 } }) // a full-screen @fragment entry draws one frame
 ```
 
-A vector is a tuple of numbers, a struct an object of its fields. `tsc` reads a generated host
-view, `terrain.shade.typeshade.ts`, through `"moduleSuffixes": [".typeshade", ""]` and an
-`exclude` of the shader sources; `typeshade sync` writes the views. Or compile the file and wire
-the output yourself:
+A vector is a tuple of numbers, a struct an object of its fields, and an entry's bindings object
+has one property for each binding the entry reaches. `tsc` reads a generated host view,
+`terrain.shade.typeshade.ts`, through `"moduleSuffixes": [".typeshade", ""]` and an `exclude` of
+the shader sources; `tshc sync` writes the views. Or compile the file and wire the output
+yourself:
 
 ```ts
 import { compile, reflect } from 'typeshade'
