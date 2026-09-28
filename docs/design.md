@@ -981,16 +981,29 @@ written down so a complaint has something to point at.
 the repository root has Apache 2.0. The package step copies the root `LICENSE` and `NOTICE` in beside
 the manifest before packaging.
 
-**The publish workflow is PR 5**, and it is gated three ways: it runs only on a published GitHub
-release, only when the release tag matches the extension's `version`, and only with the
-`VSCE_PAT` secret present. It runs the full gate first, then `vsce package`, then
-`vsce publish --packagePath`, and it uploads the `.vsix` to the release as an asset so a
-publish can be reproduced from the exact artifact that was published. No publish on a push to
-`main`, ever. Beside it, one `workflow_dispatch` job packages and never uploads, so the
-packaging step can be exercised without a release and without touching either registry.
+**The publish workflow is `.github/workflows/publish-extension.yml`**, in the shape
+`publish-mcp.yml` set: a push of the tag `extension-v<version>` on a commit on `main` is the
+publish, and the run checks both before it builds. It calls `ci.yml` first, the electron job
+included, then packs with `scripts/package-extension.mjs` and runs the electron suite again
+against the directory the `.vsix` was packed from (`TYPESHADE_EXTENSION_PATH`), so what the suite
+tests is what the registries receive. Only then does a second job, which installs nothing but the
+two publishing tools, upload those bytes and attach the `.vsix` to the tag's release, so a publish
+can be reproduced from the exact artifact that went out. A `workflow_dispatch` run packs and tests
+and never uploads, so the packaging can be exercised without a tag. CI's electron job runs the
+packaged suite on every pull request too, so a packaging regression is red before a release.
+
+**The package is staged, not packed in place.** `scripts/package-extension.mjs` copies what ships
+into `out/extension`: the manifest without its scripts and dev dependencies, the extension's
+bundle, the plugin's bundle as a real `node_modules/@typeshade/tsserver-plugin` directory with a
+minimal `package.json`, the extension's README and CHANGELOG, and the repository's LICENSE and
+NOTICE. The plugin is the staged manifest's one dependency, which is what makes vsce's `npm list`
+pack that directory of `node_modules` and nothing else. Measured on 2026-09-28: 10 files,
+3.86 MB, and the electron suite passes against it in VS Code 1.139.1, the plugin replacing
+TypeScript's answers included.
 
 **Both registries, in one run.** The same job publishes to the Visual Studio Marketplace with
-`npx @vscode/vsce publish` and then to Open VSX with `npx ovsx publish`, over the one `.vsix`
+`npx @vscode/vsce publish` and then to Open VSX with `npx ovsx publish`, creating the `typeshade`
+namespace there first when it does not exist yet, over the one `.vsix`
 it already built, so the two registries cannot end up carrying different bytes for one version.
 Each token reaches its tool through the environment, `VSCE_PAT` and `OVSX_PAT` read from
 `secrets`, never as a command-line argument, so neither can land in a log line. Open VSX second

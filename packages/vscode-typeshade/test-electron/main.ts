@@ -15,16 +15,22 @@ import { fileURLToPath } from 'node:url';
 // for `dist/dist/test-electron/suite.js` inside the extension host, four frames deep in
 // VS Code's own loader.
 const here = dirname(fileURLToPath(import.meta.url));
-const extensionDevelopmentPath = resolve(here, '../..');
+const packageRoot = resolve(here, '../..');
+// `TYPESHADE_EXTENSION_PATH` runs the suite against a packaged extension instead: the directory
+// `scripts/package-extension.mjs` packs the .vsix from, which is what the .vsix unpacks to. The
+// suite and its fixture stay this package's.
+const extensionDevelopmentPath = process.env.TYPESHADE_EXTENSION_PATH
+  ? resolve(process.env.TYPESHADE_EXTENSION_PATH)
+  : packageRoot;
 
 async function main(): Promise<void> {
   await runTests({
     extensionDevelopmentPath,
     // The built suite, not its source: the host loads it with `require`, and it has to be one
     // CommonJS file with `vscode` left external, which is what `scripts/build.mjs` produces.
-    extensionTestsPath: resolve(extensionDevelopmentPath, 'dist/test-electron/suite.js'),
+    extensionTestsPath: resolve(packageRoot, 'dist/test-electron/suite.js'),
     launchArgs: [
-      resolve(extensionDevelopmentPath, 'test-electron/fixture'),
+      resolve(packageRoot, 'test-electron/fixture'),
       // A user's own extensions would change what diagnostics arrive, which is the one thing
       // this suite asserts; `--disable-gpu` is what the VS Code team documents for a headless
       // runner, and without it the launch fails on a machine with no GPU.
