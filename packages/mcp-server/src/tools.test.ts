@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { FOREIGN_NAMES, compile, foreignNameRemedy } from './compiler.js';
 import { ToolError } from './errors.js';
 import {
@@ -106,8 +106,12 @@ describe('check', () => {
 
     project.write('lib.shade.ts', LIB.replace('double', 'twice'));
     const report = tools.check({ file: 'main.shade.ts' });
-    expect(report).toContain('[typescript] main.shade.ts:3:10');
-    expect(report).toContain("has no exported member 'double'");
+    // One mistake, one report (compiler Rule 12.4): the compiler's TS8072 on the import, which
+    // TypeScript's TS2305 for the same name is merged into, and nothing on the call that used it.
+    expect(report).toContain('main.shade.ts: 1 error');
+    expect(report).toContain('error TS8072 [typeshade] main.shade.ts:3:10');
+    expect(report).toContain('"./lib.shade.js" has no export "double"');
+    expect(report).not.toContain('TS2305');
   });
 
   it("reports what an emitter refuses, which the editor's own analysis never meets", () => {
@@ -177,6 +181,46 @@ describe('compile', () => {
     expect(out).toContain('error TS8004 [typeshade] broken.shade.ts:5:13');
     expect(out).toContain('Nothing was emitted');
     expect(out).not.toContain('```wgsl');
+    expect(tools.compile({ source: BROKEN })).toContain('error TS8004 [typeshade] <source>:5:13');
+  });
+
+  it('compiles a shader and the shader files it imports as one module', () => {
+    const { tools } = setup({ 'main.shade.ts': MAIN, 'lib.shade.ts': LIB });
+    const out = tools.compile({ file: 'main.shade.ts' });
+    expect(out).toMatch(/^WGSL:\n```wgsl\n/);
+    expect(out).toContain('fn double(x: f32) -> f32');
+    expect(out).toContain('fn same(x: f32) -> f32');
+    // Source text is named as if it sat at the first root, so its import reads the workspace.
+    expect(tools.compile({ source: MAIN })).toContain('fn double(x: f32) -> f32');
+  });
+
+  it('reports an import it cannot follow as TS8072, and a mistake in an imported file there', () => {
+    const { project, tools } = setup({ 'main.shade.ts': MAIN });
+    const missing = tools.compile({ file: 'main.shade.ts' });
+    expect(missing).toContain('error TS8072 [typeshade] main.shade.ts:3:24');
+    expect(missing).toContain('Cannot find the shader module "./lib.shade.js"');
+    expect(missing).toContain('Nothing was emitted');
+
+    // A diagnostic located in the imported file is printed at that file, with its own line.
+    project.write('lib.shade.ts', LIB.replace('x * 2.', 'x * nope'));
+    const broken = tools.compile({ file: 'main.shade.ts' });
+    expect(broken).toContain('lib.shade.ts: 1 error');
+    expect(broken).toContain('error TS8022 [typeshade] lib.shade.ts:4:14');
+    expect(broken).toContain('    4 |   return x * nope');
+    expect(broken).not.toContain('main.shade.ts');
+  });
+
+  it('reads no import from outside the workspace', () => {
+    // The compiler asks for an import through the workspace's own reader (`docs/agents.md`
+    // §3.3), so a specifier an agent wrote cannot read a file outside the roots.
+    const outside = testProject({ 'lib.shade.ts': LIB });
+    projects.push(outside);
+    const { project, tools } = setup({});
+    const escape = relative(project.root, join(outside.root, 'lib.shade.js')).replace(/\\/g, '/');
+    project.write('main.shade.ts', MAIN.replace('./lib.shade.js', escape));
+    const out = tools.compile({ file: 'main.shade.ts' });
+    expect(out).toContain('error TS8072 [typeshade] main.shade.ts:3:24');
+    expect(out).toContain('Cannot find the shader module');
   });
 });
 
@@ -215,9 +259,10 @@ describe('navigation', () => {
       'nested/main.shade.ts': MAIN.replace('./lib.shade.js', '../lib.shade.js'),
     });
     const out = tools.references({ file: 'lib.shade.ts', line: 3, symbol: 'double' });
-    expect(out).toContain('2 references:');
+    expect(out).toContain('3 references:');
     expect(out).toContain('lib.shade.ts:3:17');
     expect(out).toContain('nested/main.shade.ts:3:10');
+    expect(out).toContain('nested/main.shade.ts:6:10');
   });
 
   it('outlines a shader with the binding slot of every resource', () => {
@@ -360,6 +405,29 @@ describe('run', () => {
     ).toContain('argument x: expected f32 as a number, got [1,2]');
     expect(refusal(() => tools.run({ file: 'clean.shade.ts', function: 'nope' }))).toContain(
       'fs() -> Color  [fragment entry]',
+    );
+  });
+
+  it('runs a function that calls into a file it imports, stopping only at lines of its own', () => {
+    const { tools } = setup({ 'main.shade.ts': MAIN, 'lib.shade.ts': LIB });
+    const run = (breakpoints?: number[]) =>
+      tools.run({ file: 'main.shade.ts', function: 'same', args: [3], breakpoints });
+    expect(run()).toBe('same returned 3\nprecision: f32');
+    // A breakpoint is a line of the file named. Line 4 is blank in main.shade.ts and the return
+    // of `double` in lib.shade.ts, so the run passes through the imported file without stopping.
+    expect(run([4])).toContain('No breakpoint was reached');
+    expect(run([6])).toContain('Stopped once at line 6:\nline 6, in same: x = 3');
+  });
+
+  it('names the file of a line logged in a file the shader imports', () => {
+    const { tools } = setup({
+      'main.shade.ts': MAIN,
+      'lib.shade.ts': LIB.replace('  return x * 2.', '  console.log("x =", x)\n  return x * 2.'),
+    });
+    expect(tools.run({ file: 'main.shade.ts', function: 'same', args: [3] })).toBe(
+      'same returned 3\nprecision: f32\n\n' +
+        'Logged 1 line:\n' +
+        'line 4 of lib.shade.ts, console.log: x = 3',
     );
   });
 

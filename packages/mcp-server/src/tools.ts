@@ -17,6 +17,8 @@ import {
   compile,
   reflect,
   stageOf,
+  type CompileResult,
+  type TsCompilerDiagnostic,
   type TypeshadeLocation,
 } from './compiler.js';
 import { DiskDocuments, type OpenedFile } from './documents.js';
@@ -52,6 +54,16 @@ export type OutputKind = 'wgsl' | 'glsl' | 'reflection' | 'determinism';
 
 /** The most shader files one `check` of a directory reports on. */
 const CHECK_FILE_LIMIT = 200;
+
+/** A file or source text, read, with the name it is compiled under. */
+interface Entry {
+  /** How the answer names it: a path relative to its root, or `<source>`. */
+  readonly display: string;
+  /** The name `compile()` is given, a uri as the service spells one, which its imports resolve
+   *  against. */
+  readonly fileName: string;
+  readonly text: string;
+}
 
 /**
  * The tools, over one workspace.
@@ -124,20 +136,18 @@ export class TypeshadeTools {
   }
 
   /**
-   * The compiler's output for one shader: WGSL, GLSL ES 3.00, the reflection, and the
-   * determinism report, whichever are asked for.
+   * The compiler's output for one shader and the shader files it imports: WGSL, GLSL ES 3.00,
+   * the reflection, and the determinism report, whichever are asked for.
    *
    * @param input - the shader, and which outputs to print (WGSL alone by default).
    * @returns the diagnostics, then each output in a fenced block.
    */
   compile(input: SourceInput & { targets?: readonly OutputKind[] }): string {
     this.documents.beginRequest();
-    const { display, fileName, text } = this.sourceOf(input);
-    const result = compile(text, { fileName });
+    const entry = this.sourceOf(input);
+    const result = this.compileProgram(entry);
     const out: string[] = [];
-    if (result.diagnostics.length > 0) {
-      out.push(formatProblems(display, text, result.diagnostics.map(fromCompilerDiagnostic)));
-    }
+    if (result.diagnostics.length > 0) out.push(this.problemsByFile(entry, result.diagnostics));
     if (result.wgsl === undefined) {
       out.push(
         'Nothing was emitted: the shader did not compile. Fix the errors above; `check` also ' +
@@ -264,15 +274,55 @@ export class TypeshadeTools {
    */
   run(input: SourceInput & RunRequest): string {
     this.documents.beginRequest();
-    const { display, fileName, text } = this.sourceOf(input);
-    const result = compile(text, { fileName });
+    const entry = this.sourceOf(input);
+    const result = this.compileProgram(entry);
     if (result.diagnostics.some((d) => d.category === 'error')) {
       throw new ToolError(
-        `${display} does not compile, so nothing can run.\n\n` +
-          formatProblems(display, text, result.diagnostics.map(fromCompilerDiagnostic)),
+        `${entry.display} does not compile, so nothing can run.\n\n` +
+          this.problemsByFile(entry, result.diagnostics),
       );
     }
-    return runOnCpu(result.module, input);
+    return runOnCpu(result.module, input, {
+      source: {
+        file: entry.fileName,
+        display: (file) => this.workspace.display(file),
+      },
+    });
+  }
+
+  /** Compiles a shader as the entry of its program: the compiler reads each shader file it
+   *  imports, directly or through another, through the workspace (compiler Rule 3.9). The reader
+   *  is the one every other read goes through (`docs/agents.md` §3.3), so an import that leaves
+   *  the roots is one the compiler cannot find. */
+  private compileProgram(entry: Entry): CompileResult {
+    return compile(entry.text, {
+      fileName: entry.fileName,
+      readDocument: (fileName) => this.workspace.read(fileName),
+    });
+  }
+
+  /** `compile()`'s diagnostics, each under the file it is located in, the entry's first: a
+   *  mistake in a file the entry imports carries that file's name and lines. */
+  private problemsByFile(entry: Entry, diagnostics: readonly TsCompilerDiagnostic[]): string {
+    const byFile = new Map<string, TsCompilerDiagnostic[]>([[entry.fileName, []]]);
+    for (const d of diagnostics) {
+      const list = byFile.get(d.fileName) ?? [];
+      list.push(d);
+      byFile.set(d.fileName, list);
+    }
+    const reports: string[] = [];
+    for (const [fileName, list] of byFile) {
+      if (list.length === 0) continue;
+      const own = fileName === entry.fileName;
+      reports.push(
+        formatProblems(
+          own ? entry.display : this.workspace.display(fileName),
+          own ? entry.text : (this.workspace.read(fileName) ?? ''),
+          list.map(fromCompilerDiagnostic),
+        ),
+      );
+    }
+    return reports.join('\n\n');
   }
 
   /** The problems in one open shader, as the compiler's own check finds them
@@ -310,13 +360,19 @@ export class TypeshadeTools {
     return { paths, truncated };
   }
 
-  /** A file or source text, read. */
-  private sourceOf(input: SourceInput): { display: string; fileName: string; text: string } {
+  /** A file or source text, read. Source text is named as if it sat at the first root, as
+   *  `check` names it, so a relative import in it reads the workspace the way it would from a
+   *  file there. */
+  private sourceOf(input: SourceInput): Entry {
     if (input.file !== undefined && input.source !== undefined) {
       throw new ToolError('Pass `file` or `source`, not both.');
     }
     if (input.source !== undefined) {
-      return { display: '<source>', fileName: 'source.shade.ts', text: input.source };
+      return {
+        display: '<source>',
+        fileName: `${toUri(this.workspace.roots[0])}/typeshade-inline.shade.ts`,
+        text: input.source,
+      };
     }
     if (input.file === undefined) {
       throw new ToolError(

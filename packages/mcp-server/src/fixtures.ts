@@ -130,14 +130,15 @@ export function double(x: f32): f32 {
 }
 `;
 
-/** The importing half. It imports `double` without calling it, so the file is clean until the
- *  export it names goes away. */
+/** The importing half: `same` calls `double` on line 6. The two files are one program (compiler
+ *  Rule 3.9), so the file is clean until the export it names goes away. Line 4 is blank here and
+ *  a statement in `LIB`, which is what a breakpoint on it tells apart. */
 export const MAIN = `"use typeshade"
 
 import { double } from './lib.shade.js'
 
 export function same(x: f32): f32 {
-  return x
+  return double(x) * 0.5
 }
 `;
 
