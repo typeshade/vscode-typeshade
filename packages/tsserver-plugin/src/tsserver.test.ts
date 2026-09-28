@@ -408,6 +408,34 @@ describe('the plugin, in a real tsserver', () => {
     expect(all(await server.diagnostics('main.shade.ts'))).toEqual([]);
   });
 
+  it("resolves an import of a package's shader module by its name, through its package.json", async () => {
+    // `shade-lib` publishes its shader module under the `typeshade` condition of `exports` (the
+    // compiler's change 0024). The plugin serves the TypeShade program the package.json as well
+    // as the shader, so the import resolves in both halves and the call through it is clean.
+    server.open('uses-package.shade.ts');
+    expect(all(await server.diagnostics('uses-package.shade.ts'))).toEqual([]);
+    const text = PROJECT['uses-package.shade.ts'];
+    const lines = text.split('\n');
+    const call = lines.findIndex((line) => line.includes('triple(2.)'));
+    const info = await server.request<{ displayString?: string }>('quickinfo', {
+      file: server.file('uses-package.shade.ts'),
+      ...Harness.at(call, lines[call]!.indexOf('triple') + 1),
+    });
+    expect(info?.displayString ?? '').toContain('triple(x: f32): f32');
+
+    // A subpath the package's `exports` does not name is the compiler's TS8072, once, in its
+    // words, which TypeScript's TS2307 for the same module merges into.
+    server.reopen('uses-package.shade.ts', text.replace("'shade-lib'", "'shade-lib/warp'"));
+    const refused = await server.diagnostics('uses-package.shade.ts');
+    expect(summarize(all(refused))).toEqual(['8072/typeshade@3']);
+    expect(refused.semantic[0]?.text).toContain(
+      '"shade-lib" does not export "./warp": its package.json "exports" names no module for it.',
+    );
+
+    server.reopen('uses-package.shade.ts', text);
+    expect(all(await server.diagnostics('uses-package.shade.ts'))).toEqual([]);
+  });
+
   it('gives TypeScript its file back when the directive is deleted', async () => {
     server.open('clean.shade.ts');
     expect(all(await server.diagnostics('clean.shade.ts'))).toEqual([]);

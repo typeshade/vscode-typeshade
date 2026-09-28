@@ -226,12 +226,16 @@ is fine under a branch.
 **10. A shader file imports what another exports.** A TypeScript import with a relative path,
 `import { fbm, Light } from "./noise.shade.ts"`, takes what another `"use typeshade"` file
 exports: a function, a struct, an enum, a constant, a binding, anything declared at its top
-level. The file you compile and the files it imports are one program, emitted as one module,
-and an imported file's own entry points stay out of it. An import the compiler does not follow
-(a wrong path, a plain `.ts` file, a name the file does not export, a default import, a package)
-is `TS8072`. `compile()` reads the imported files through the `readDocument` you pass it
-([references/host.md](references/host.md)); [references/language.md](references/language.md)
-has a two-file example.
+level. A shader library installed with npm is imported by its name, `import { fbm } from
+"shade-noise"`: the compiler finds it in `node_modules` and reads the file its `package.json`
+publishes under the `typeshade` condition of `exports`. The file you compile and the files it
+imports are one program, emitted as one module, and an imported file's own entry points stay out
+of it. An import the compiler does not follow (a wrong path, a plain `.ts` file, a package that
+is not installed or does not export the path, a name the file does not export, a default import)
+is `TS8072`. `compile()` reads the imported files, and each package's `package.json`, through
+the `readDocument` you pass it ([references/host.md](references/host.md));
+[references/language.md](references/language.md) has a two-file example and a package's
+`exports`.
 
 ## Types and resources at a glance
 
@@ -283,20 +287,20 @@ names) are in [references/language.md](references/language.md).
 `TS8xxx` codes are TypeShade's; plain TypeScript codes (`TS2304`) come from TypeScript's checker,
 which still runs, with its false positives on shader code filtered out. The ones met most often:
 
-| Code   | Usual cause                                                                 | Fix                                                    |
-| ------ | --------------------------------------------------------------------------- | ------------------------------------------------------ |
-| TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                     | a shader type, annotated                               |
-| TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes   | cast explicitly; annotate integer locals               |
-| TS8004 | a call to a name not declared or imported (`lerp`, another file's helper)   | `docs` for the TypeShade name; import the helper       |
-| TS8006 | a loop bound the body writes, or `!=` against a runtime bound               | read the bound into a `const`; compare with `<`        |
-| TS8015 | an emitter refused the module (a warning drops the GLSL only)               | read the message: often a uniform that is not a struct |
-| TS8018 | a write to a parameter or to a multi-component swizzle                      | copy into a `let`; write one component                 |
-| TS8021 | an entry that returns a value with no return annotation                     | annotate it                                            |
-| TS8022 | an unknown name, field or swizzle; a name read before its declaration       | the name the message suggests; declare before use      |
-| TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                        | splat: `max(v, vec3(0.))`                              |
-| TS8052 | `textureSample` or a derivative under a per-fragment branch                 | sample before branching                                |
-| TS8072 | an import not followed: a wrong path, a plain `.ts` file, no such export    | a relative path to a shader file; `export` the name    |
-| TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource | read the message: it names the construct               |
+| Code   | Usual cause                                                                                                                 | Fix                                                                    |
+| ------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                                                                     | a shader type, annotated                                               |
+| TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes                                                   | cast explicitly; annotate integer locals                               |
+| TS8004 | a call to a name not declared or imported (`lerp`, another file's helper)                                                   | `docs` for the TypeShade name; import the helper                       |
+| TS8006 | a loop bound the body writes, or `!=` against a runtime bound                                                               | read the bound into a `const`; compare with `<`                        |
+| TS8015 | an emitter refused the module (a warning drops the GLSL only)                                                               | read the message: often a uniform that is not a struct                 |
+| TS8018 | a write to a parameter or to a multi-component swizzle                                                                      | copy into a `let`; write one component                                 |
+| TS8021 | an entry that returns a value with no return annotation                                                                     | annotate it                                                            |
+| TS8022 | an unknown name, field or swizzle; a name read before its declaration                                                       | the name the message suggests; declare before use                      |
+| TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                                                                        | splat: `max(v, vec3(0.))`                                              |
+| TS8052 | `textureSample` or a derivative under a per-fragment branch                                                                 | sample before branching                                                |
+| TS8072 | an import not followed: a wrong path, a plain `.ts` file, a package not installed or not exporting the path, no such export | a path to a shader file, or one the package exports; `export` the name |
+| TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource                                                 | read the message: it names the construct                               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
 

@@ -211,3 +211,48 @@ describe('a shader that imports another', () => {
     expect(preview.output(URI, 'wgsl')?.diagnostics.map((d) => d.code)).toEqual(['TS8072']);
   });
 });
+
+describe("a shader that imports a package's by the package's name (the compiler's change 0024)", () => {
+  const ROOT = 'file:///p/node_modules/shade-lib/';
+  /** `shade-lib` installed beside the shader, publishing {@link LIBRARY} under the `typeshade`
+   *  condition and JavaScript for hosts under `default`. */
+  const PACKAGE = new Map([
+    [
+      `${ROOT}package.json`,
+      JSON.stringify({
+        name: 'shade-lib',
+        version: '1.0.0',
+        exports: { '.': { typeshade: './src/index.shade.ts', default: './dist/index.js' } },
+      }),
+    ],
+    [`${ROOT}src/index.shade.ts`, LIBRARY],
+    [`${ROOT}dist/index.js`, 'export const double = (x) => x * 2\n'],
+  ]);
+
+  it("compiles with the package's shader module, found through its package.json", () => {
+    const read = shaderReader((uri) => PACKAGE.get(uri));
+    // The package.json is served as it is, the shader module for its directive, and the
+    // package's JavaScript not at all.
+    expect(read(`${ROOT}package.json`)).toBe(PACKAGE.get(`${ROOT}package.json`));
+    expect(read(`${ROOT}src/index.shade.ts`)).toBe(LIBRARY);
+    expect(read(`${ROOT}dist/index.js`)).toBeUndefined();
+
+    const preview = new PreviewModel({ readDocument: read });
+    preview.setDocument(URI, IMPORTER.replace('./lib.shade.js', 'shade-lib'), 1);
+    const wgsl = preview.output(URI, 'wgsl');
+    expect(wgsl?.diagnostics).toEqual([]);
+    expect(wgsl?.text).toContain('fn double(x: f32) -> f32');
+    expect(preview.entries(URI).map((entry) => entry.name)).toEqual(['fs']);
+    const module = preview.module(URI);
+    expect(compileModule(module!, { precision: 'f32' }).fns.fs?.()).toBe(4);
+  });
+
+  it('reports a package no node_modules holds as TS8072, with where it looked', () => {
+    const preview = new PreviewModel({ readDocument: shaderReader(() => undefined) });
+    preview.setDocument(URI, IMPORTER.replace('./lib.shade.js', 'shade-lib'), 1);
+    const diagnostics = preview.output(URI, 'wgsl')?.diagnostics ?? [];
+    expect(diagnostics.map((d) => `${d.code} ${d.message}`)).toEqual([
+      'TS8072 Cannot find the package "shade-lib" (looked in node_modules from "file:///p" up).',
+    ]);
+  });
+});

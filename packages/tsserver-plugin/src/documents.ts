@@ -88,12 +88,17 @@ export class DocumentSync {
    *
    * Only a file that carries the directive is served (`docs/design.md` §1.7): a plain
    * TypeScript module is written for the standard library, and the TypeShade program has none,
-   * so pulling it in would report errors inside a file nobody asked to be a shader.
+   * so pulling it in would report errors inside a file nobody asked to be a shader. A package's
+   * `package.json` is served too: the compiler reads it to find a package an import names (its
+   * change 0024). It is read through the host's own reader, as TypeScript reads one for module
+   * resolution, so no script of the project is made for it, and it never becomes a document of
+   * the TypeShade program.
    *
-   * @param uri - the resolved file the import points at.
+   * @param uri - the resolved file the import points at, or a `package.json` the rule looks for.
    * @returns the file's text, or undefined to leave the import unresolved.
    */
   readDocument = (uri: string): string | undefined => {
+    if (uri === 'package.json' || uri.endsWith('/package.json')) return this.host.readFile?.(uri);
     if (this.open.has(uri)) return this.textOf(uri);
     const text = this.textOf(uri);
     if (text === undefined) return undefined;

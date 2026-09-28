@@ -324,6 +324,19 @@ file says more (`is not a shader module`), but the service's two halves read one
 plugin cannot show the file to one half and keep it from the other. That is §8 item 3, and
 `packages/tsserver-plugin/src/tsserver.test.ts` pins the one diagnostic.
 
+Since the compiler's change 0024 a shader imports a package's shader module by the package's
+name, `import { fbm } from "shade-noise"`, and the compiler finds the package through the
+`package.json` files it asks `readDocument` for, from the importing file's directory up. The
+reader serves a `package.json` as it is, read through tsserver's own `readFile`, as TypeScript
+reads one for its own module resolution, so no script of the project is made for it and it never
+becomes a document of the TypeShade program. The shader module the package publishes under the
+`typeshade` condition of `exports` is served as any shader is, and a package's JavaScript is not:
+an import that resolves only to `dist/index.js` is `TS8072`, `Cannot find the shader module
+"shade-noise"` with the path it looked for, where `compile()` handed the file says it does not
+begin with the directive. The extension's `shaderReader` and the MCP server, which feeds the same
+`DocumentSync`, read the same way; the tsserver test, `documents.test.ts`, `model.test.ts` and the
+MCP server's `tools.test.ts` import a fixture package.
+
 ### 1.8 The editor goes green while `tsc` stays red
 
 This is the most visible cost of the decision, and it will be the first bug report.
