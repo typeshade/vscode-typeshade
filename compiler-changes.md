@@ -103,4 +103,5 @@ id first, then the pull request that did the work.
   a `tools.test.ts` case that import a fixture package; docs/design.md §1.7, handled in #34.
 - 0027: WebGL2 gives WGSL's answer for integer division, remainder and shift, and for a float's
   conversion: references/language.md's conversion line drops "GLSL leaves an out-of-range value
-  undefined, so clamp first" and says a float converts the same way on every target.
+  undefined, so clamp first" and says a float converts the same way on every target, handled
+  in #39.
