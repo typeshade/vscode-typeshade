@@ -106,3 +106,10 @@ jobs:
       # documents for the runner, and the reason this is a separate job: it downloads a 327 MB
       # build, and a Marketplace publish must not wait on it (`docs/design.md` §6).
       - run: xvfb-run -a npm run test:electron
+      # The same suite against the packaged extension: the directory the .vsix is packed from, so
+      # the plugin loads from the package's own node_modules as it will for a user
+      # (scripts/package-extension.mjs, docs/design.md §7).
+      - run: node scripts/package-extension.mjs
+      - run: xvfb-run -a node packages/vscode-typeshade/dist/test-electron/main.js
+        env:
+          TYPESHADE_EXTENSION_PATH: out/extension

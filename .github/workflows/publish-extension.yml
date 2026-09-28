@@ -1,0 +1,160 @@
+name: publish-extension
+
+# Publishes the VS Code extension to the Visual Studio Marketplace and to Open VSX
+# (`docs/design.md` §7), in the shape `publish-mcp.yml` set for this repository. One event
+# uploads: a push of a tag that is `extension-v` and the extension's version, on a commit on
+# `main`. `git push origin extension-v0.1.0` does it, and so does a GitHub release created on the
+# web with a new tag, since creating the release pushes the tag.
+#
+# WHY THE GATE RUNS AGAIN, when CI already ran it on the commit: both registries refuse to take a
+# version twice, so one bad upload burns the number. `verify` CALLS ci.yml (`workflow_call`), the
+# electron job included, so the checks a release runs are the CI jobs themselves.
+#
+# WHAT IS TESTED IS WHAT IS PUBLISHED. `pack` builds the .vsix with scripts/package-extension.mjs
+# and runs the electron suite against the directory it was packed from, which is what the .vsix
+# unpacks to: the plugin loads from the package's own node_modules, as it will for a user, and
+# not from this workspace's symlink. `publish` uploads those exact bytes to both registries and
+# installs nothing but the two publishing tools.
+#
+# A MANUAL RUN NEVER UPLOADS. `workflow_dispatch` runs `verify` and `pack`, and leaves the .vsix
+# as an artifact, so the packaging can be exercised without a tag.
+#
+# THE TOKENS reach each tool through the environment, never as an argument, so neither can land in
+# a log line: VSCE_PAT (Azure DevOps, Marketplace Manage) and OVSX_PAT (open-vsx.org). The
+# Marketplace goes first, because it is the one whose failure should stop the run (§7).
+
+on:
+  push:
+    tags: ['extension-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  pack:
+    name: pack, and test the packaged extension in a real VS Code
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so the check below can see whether `main` holds the tagged commit.
+          fetch-depth: 0
+          # The bundles carry the pinned compiler (design.md §2).
+          submodules: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: The tagged commit must be on main
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$(git rev-parse --short HEAD), which ${GITHUB_REF_NAME} names, is not on" \
+                 "main. Nothing was published; tag a commit on main. See docs/design.md §7."
+            exit 1
+          fi
+
+      - name: The tag must be extension-v and the extension's version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./packages/vscode-typeshade/package.json').version")
+          echo "tag=$TAG  packages/vscode-typeshade/package.json=$VERSION"
+          if [ "$TAG" != "extension-v$VERSION" ]; then
+            echo "::error::tag '$TAG' does not match the extension's version '$VERSION'." \
+                 "Expected the tag 'extension-v$VERSION'. Nothing was published; delete the tag," \
+                 "fix the version or the tag, and push it again. See docs/design.md §7."
+            exit 1
+          fi
+
+      - run: npm run build
+      - run: node scripts/package-extension.mjs
+
+      - name: The packaged extension must pass the electron suite
+        env:
+          TYPESHADE_EXTENSION_PATH: out/extension
+        run: xvfb-run -a node packages/vscode-typeshade/dist/test-electron/main.js
+
+      - name: Record what is in the package
+        run: |
+          set -euo pipefail
+          {
+            echo '### Package'
+            echo
+            echo '```'
+            ls -l out/*.vsix
+            unzip -l out/*.vsix
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: out/*.vsix
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: publish the tested package
+    needs: pack
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # To attach the published .vsix to the tag's release, so a publish can be reproduced from
+      # the exact bytes that went out.
+      contents: write
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+          path: vsix
+
+      - name: Publish to the Visual Studio Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx -y @vscode/vsce@4.0.0 publish --packagePath vsix/*.vsix
+
+      # Open VSX takes an extension only into a namespace that exists, and the publisher id is
+      # the namespace. The first release creates it with the same token; a later one finds it.
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -euo pipefail
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' https://open-vsx.org/api/typeshade)" = 404 ]; then
+            npx -y ovsx@1.2.0 create-namespace typeshade
+          fi
+          npx -y ovsx@1.2.0 publish vsix/*.vsix
+
+      - name: Attach the package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" vsix/*.vsix --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" vsix/*.vsix --repo "$GITHUB_REPOSITORY" \
+              --title "VS Code extension ${TAG#extension-v}" \
+              --notes "Published to the Visual Studio Marketplace and Open VSX. What changed is in packages/vscode-typeshade/CHANGELOG.md."
+          fi

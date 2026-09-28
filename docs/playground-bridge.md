@@ -182,3 +182,6 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
   else the active file, and the files beside them are the ones they import, followed through
   their relative imports. The pin does not move for it: the extension reads and writes the
   graph and draws nothing, so 0026 owes it nothing until Stage 2.
+- **1c**, the publish workflow (`docs/design.md` §7): `.github/workflows/publish-extension.yml`
+  and `scripts/package-extension.mjs`. The extension's version is 0.1.0, and pushing the tag
+  `extension-v0.1.0` on `main` publishes it to both registries.
