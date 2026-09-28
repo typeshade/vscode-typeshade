@@ -756,7 +756,8 @@ one-way channel is for.
   runtime. The compiler ships a runtime now (`typeshade/vite` draws a full-screen `@fragment`
   entry into a canvas, proposal 0016), but it runs in the host application's page, and a
   webview preview would still need its own device and its own copy of the bindings. That is a
-  feature to propose on its own, not part of this surface.
+  feature to propose on its own, not part of this surface: `docs/playground-bridge.md` §3 is that
+  proposal, over the compiler's runtime (change 0025).
 
 ## 5. The debugger
 
