@@ -367,7 +367,9 @@ describe('run', () => {
     );
   });
 
-  it('prints each line the run logged under its result, with the line it came from', () => {
+  it("prints each line the run logged under its result, in the host console's form", () => {
+    // The tier, the file and line, the invocation, then the arguments (compiler surface §66); a
+    // method other than log is named, since text has no warning style.
     const { tools } = setup({ 'logging.shade.ts': LOGGING });
     const run = (x: number) =>
       tools.run({
@@ -378,12 +380,13 @@ describe('run', () => {
     expect(run(3)).toBe(
       'main returned nothing.\nprecision: f32\n\n' +
         'Logged 2 lines:\n' +
-        'line 5, console.log: i = 3 4.5\n' +
-        'line 7, console.warn: big [4.5, 2]',
+        'CPU  logging.shade.ts:5  [3, 0, 0]  i = 3 4.5\n' +
+        'CPU  logging.shade.ts:7  [3, 0, 0]  warn: big [4.5, 2]',
     );
     // A run whose branch skips the warning logs one line, and says so in the singular.
     expect(run(1)).toBe(
-      'main returned nothing.\nprecision: f32\n\nLogged 1 line:\nline 5, console.log: i = 1 1.5',
+      'main returned nothing.\nprecision: f32\n\n' +
+        'Logged 1 line:\nCPU  logging.shade.ts:5  [1, 0, 0]  i = 1 1.5',
     );
   });
 
@@ -392,10 +395,10 @@ describe('run', () => {
     expect(tools.run({ file: 'table.shade.ts', function: 'main' })).toBe(
       'main returned nothing.\nprecision: f32\n\n' +
         'Logged 2 lines:\n' +
-        'line 10, console.table:\n' +
+        'CPU  table.shade.ts:10  table:\n' +
         '  0: { pos: [1, 2], speed: 3 }\n' +
         '  1: { pos: [4, 5], speed: 6 }\n' +
-        'line 11, console.table:\n' +
+        'CPU  table.shade.ts:11  table:\n' +
         '  0: [1, 2]\n' +
         '  1: [3, 4]',
     );
@@ -457,9 +460,7 @@ describe('run', () => {
       'lib.shade.ts': LIB.replace('  return x * 2.', '  console.log("x =", x)\n  return x * 2.'),
     });
     expect(tools.run({ file: 'main.shade.ts', function: 'same', args: [3] })).toBe(
-      'same returned 3\nprecision: f32\n\n' +
-        'Logged 1 line:\n' +
-        'line 4 of lib.shade.ts, console.log: x = 3',
+      'same returned 3\nprecision: f32\n\n' + 'Logged 1 line:\n' + 'CPU  lib.shade.ts:4  x = 3',
     );
   });
 

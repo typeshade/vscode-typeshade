@@ -758,11 +758,13 @@ one-way channel is for.
   passes the formatting methods through.
 - **A WGSL or GLSL language server for the output panel.** The panel is read-only.
 - **Rendering a shader.** A preview that draws pixels needs a GPU, a pipeline and a host
-  runtime. The compiler ships a runtime now (`typeshade/vite` draws a full-screen `@fragment`
-  entry into a canvas, proposal 0016), but it runs in the host application's page, and a
-  webview preview would still need its own device and its own copy of the bindings. That is a
-  feature to propose on its own, not part of this surface: `docs/playground-bridge.md` §3 is that
-  proposal, over the compiler's runtime (change 0025).
+  runtime. The call layer (`typeshade/vite` draws a full-screen `@fragment` entry into a canvas,
+  proposal 0016) runs in the host application's page. The compiler's program runtime,
+  `typeshade/runtime` (change 0025), now gives a webview both things it lacked. It requests a
+  device of its own, with the features the program needs. It binds by the names the source
+  declares, packing plain values by the manifest's layouts, so a preview keeps no copy of the
+  bindings. Building the preview is still a feature to propose on its own, not part of this
+  surface: `docs/playground-bridge.md` §3 is that proposal, over that runtime.
 
 ## 5. The debugger
 

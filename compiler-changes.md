@@ -105,3 +105,11 @@ id first, then the pull request that did the work.
   conversion: references/language.md's conversion line drops "GLSL leaves an out-of-range value
   undefined, so clamp first" and says a float converts the same way on every target, handled
   in #39.
+- 0025: the program runtime and its load-time emitter: references/host.md gains the program
+  runtime (`typeshade/runtime`) beside the import and `compile()`, says the calls request a device
+  or use the runtime's under `configure({ runtime })`, and gains the printed console line and the
+  plugin's `console` and `ir` options, and SKILL.md points to it; the MCP server's `run` tool
+  prints each logged line in the host console's form, the tier, the file and line and the
+  invocation, which `tools.test.ts` pins; docs/design.md §4 records that the runtime gives a
+  preview its own device and binds by name, and docs/playground-bridge.md §3 that 0025 is at the
+  pin, handled in #40.

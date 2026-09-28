@@ -336,4 +336,5 @@ const layout = reflect(result.module) // bind groups, uniform offsets, entry poi
 ```
 
 Pack uniform buffers at the offsets `reflect` reports, never by hand: a `vec3` aligns to 16
-bytes. The import, WebGPU, WebGL2 and the editor setup are in [references/host.md](references/host.md).
+bytes. The import, the program runtime, WebGPU, WebGL2 and the editor setup are in
+[references/host.md](references/host.md).
