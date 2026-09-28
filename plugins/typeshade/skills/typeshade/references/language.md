@@ -10,14 +10,68 @@ compiler's normative surface, `docs/use-typeshade-surface.md` in `typeshade/type
   and `const enum`; `namespace`; module constants (`const K: f32 = 2.`); overrides
   (`const q: override<f32> = 1.`); resources (`declare const`); module variables
   (a top-level `let`); `"enable <extension>"` directives; `import` and `export`.
-- Refused at the top level: an expression or an `if` (`TS8014`), `var` (`TS8014` and `TS8013`),
-  `declare function` (`TS8020`).
-- `export` is conventional on entries and helpers and not required.
-- `import` between shader files parses and binds nothing in `compile()`: a call to an imported
-  function is `TS8004`. Keep a shader in one file and copy helpers.
+- Refused at the top level: an expression, an `if` or a `var` (`TS8014`), `declare function`
+  (`TS8020`).
+- `export` is conventional on entries and helpers, and is what another shader file imports.
 - `"enable subgroups"` (also `f16`, `clip_distances`, `dual_source_blending`,
   `primitive_index`) goes after the file directive (§50); a builtin that needs an extension
   enables it by itself.
+
+## Importing another shader file
+
+A file imports what another `"use typeshade"` file exports (§68): a function, generic or not; a
+class, interface or type alias; an enum; a module constant; an override; a binding; a module
+variable; a namespace.
+
+- The forms are TypeScript's: `import { a, b as c } from "./x.shade.ts"`, `import type`,
+  `import * as x from "./x.shade.ts"` read one name at a time (`x.fbm(p)`), and the re-exports
+  `export { a } from`, `export { a as b } from` and `export * from`.
+- The path is relative (`./`, `../`) to the importing file. `./x.shade.js` and `./x.shade.mjs`
+  name `x.shade.ts`, and `.ts` is appended to any other path, so `./x.shade` names it too.
+- The file compiled and the files it imports, directly or through another, are one program, and
+  the program is one module. It holds the compiled file's declarations and, of each imported
+  file, what they reach; an imported file's own entry points, and the bindings only they read,
+  are left out. An imported file's bindings are numbered after the compiled file's own, so an
+  import never moves a slot.
+- Each file keeps its own scope: a private `hash` in two files is two functions. The one emitted
+  first keeps the name, the compiled file's before any other, and the other is emitted as
+  `stem_hash`, `stem` being its file's name. An entry point and a binding are never renamed, so
+  two of one name are `TS8023`.
+- An import the compiler does not follow is `TS8072`, on the import: a path that names no file,
+  a file without the directive, a name the file does not export (or declares without `export`),
+  a default import or export, an import that names nothing, `import(...)` or `require`, a
+  module namespace used as a value, and a package (`"shade-noise"`), which is not supported
+  yet. `compile()` reads an import only through a `readDocument` you pass it
+  ([host.md](host.md)), so a compile without one reports each import as `TS8072`.
+
+```ts
+// lighting.shade.ts
+"use typeshade"
+
+export class Light {
+  dir: vec3
+  power: f32
+}
+
+function lambert(n: vec3, l: Light): f32 {
+  return max(dot(n, -l.dir), 0.) * l.power
+}
+
+export function shade(n: vec3, l: Light): vec3 {
+  return vec3(0.05) + vec3(lambert(n, l))
+}
+
+// mesh.shade.ts
+"use typeshade"
+import { Light, shade } from "./lighting.shade.ts"
+
+declare const sun: uniform<Light>
+
+@fragment
+export function fs(@location(0) normal: vec3): vec4 {
+  return vec4(shade(normalize(normal), sun), 1.)
+}
+```
 
 ## Types
 
@@ -119,9 +173,10 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 - `declare const bins: storage<array<atomic<u32>>, "read_write">`: atomics (`atomic<u32>` or `atomic<i32>`), in
   read-write storage only, used through `atomicAdd(bins[i], 1)` and the other atomic builtins.
 - **Slots.** Every `declare` resource is `@group(0)`, numbered `@binding(0)`, `@binding(1)` ...
-  in declaration order, textures and samplers included; overrides and module variables take no
-  slot. There is no syntax to choose a slot. Read them from the reflection. The compiler's own
-  bindings come after yours: `_fp64` when emulated doubles need it, and `_console` under
+  in declaration order, textures and samplers included, the compiled file's own before those of
+  the files it imports; overrides and module variables take no slot. There is no syntax to
+  choose a slot. Read them from the reflection. The compiler's own bindings come after yours:
+  `_fp64` when emulated doubles need it, and `_console` under
   `compile(src, { console: 'gpu' })`.
 - **Runtime-sized arrays.** `array<T>` only as a storage binding or the last field of a storage
   struct. Its `.length` (or `arrayLength(xs)`) is a runtime `u32`; on anything not in storage
@@ -298,7 +353,7 @@ On GLSL a texture and the sampler it is used with fuse into one `sampler2D`.
 | `var`                                                | `let` or `const`                            |
 | `==`, `!=`, `>>>`                                    | `===`, `!==`, `>>` on a `u32`               |
 | `Number`, `Array`, `Date`, `JSON` and other globals  | builtins; only `Math` and `console` exist   |
-| `new Float32Array(...)`                              | `new` works only on the file's own classes  |
+| `new Float32Array(...)`                              | `new` builds only the program's own classes |
 | `async`, `try`, generators                           | plain functions                             |
 | `xs.filter(...)`, `find` and the other array methods | `for (const x of xs)`, a counted loop       |
 | `typeof`, `instanceof`, `'k' in s`                   | types are static                            |

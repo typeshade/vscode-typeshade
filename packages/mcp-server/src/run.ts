@@ -62,12 +62,25 @@ export interface RunRequest {
   readonly gpuStubs?: boolean;
 }
 
+/** The file a module was compiled from, when it may hold the code of other files too: a shader
+ *  and the shader files it imports are one program, compiled into one module (compiler Rule
+ *  3.9), and every statement's span names the file it was written in. */
+export interface RunSource {
+  /** The name the module was compiled under. `breakpoints` are lines of this file, and a line
+   *  it logged from is printed without a file name. */
+  readonly file: string;
+  /** How to name any other file of the program, one that the file imports. */
+  readonly display: (file: string) => string;
+}
+
 /**
  * Runs one function of a compiled module and describes what happened.
  *
  * @param module - the module `compile()` produced, with no error diagnostics.
  * @param request - what to run and with what.
- * @param limits - a smaller step budget, for a test that wants to reach it quickly.
+ * @param options - a smaller step budget, for a test that wants to reach it quickly, and the
+ *   file the module was compiled from, which is the file `breakpoints` names. Without it a
+ *   breakpoint matches its line in any file of the program.
  * @returns the returned value, each breakpoint stop with its locals, and any stand-in warning.
  * @throws ToolError when the request does not fit the module, or the run fails partway (a step
  *   budget exceeded, a GPU-only intrinsic without `gpuStubs`), with the stops reached so far.
@@ -75,7 +88,7 @@ export interface RunRequest {
 export function runOnCpu(
   module: ModuleDecl,
   request: RunRequest,
-  limits: { readonly maxSteps?: number } = {},
+  options: { readonly maxSteps?: number; readonly source?: RunSource } = {},
 ): string {
   const decl = module.funcs.find((f) => f.name === request.function);
   if (decl === undefined) {
@@ -126,6 +139,7 @@ export function runOnCpu(
 
   const precision = request.precision ?? 'f32';
   const format = createValueFormatter(module, precision);
+  const { source } = options;
   const stops: string[] = [];
   // Every `console.*` call the run makes, in order (compiler proposal 0018, surface §66).
   const logged: ConsoleEvent[] = [];
@@ -136,9 +150,14 @@ export function runOnCpu(
       precision,
       gpuStubs: request.gpuStubs === true,
       bindings,
-      breakpoints: (request.breakpoints ?? []).map((line) => ({ line: line - 1 })),
+      // The lines are the named file's. The engine matches a breakpoint with no file on its line
+      // in every file, which would stop in an imported file's statement on the same line.
+      breakpoints: (request.breakpoints ?? []).map((line) => ({
+        line: line - 1,
+        ...(source !== undefined ? { file: source.file } : {}),
+      })),
       stopOnEntry: false,
-      maxSteps: limits.maxSteps ?? STEP_LIMIT,
+      maxSteps: options.maxSteps ?? STEP_LIMIT,
     });
     while (!session.done) {
       const pause = session.pause;
@@ -160,7 +179,7 @@ export function runOnCpu(
           'GPU computes, and so does anything computed from them.',
       );
     }
-    if (logged.length > 0) out.push(describeLog(logged, format));
+    if (logged.length > 0) out.push(describeLog(logged, format, source));
     if (stops.length > 0) out.push(`${stopsHeading(stops.length, request)}\n${stops.join('\n')}`);
     else if ((request.breakpoints ?? []).length > 0) {
       out.push('No breakpoint was reached: those lines hold no statement this run executed.');
@@ -173,19 +192,25 @@ export function runOnCpu(
   // The engine's own message already names the way out where there is one (a GPU-only
   // intrinsic says to start with `gpuStubs: true`, which is this tool's parameter too).
   const report = [`The run of ${decl.name} failed: ${failure}`];
-  if (logged.length > 0) report.push(describeLog(logged, format));
+  if (logged.length > 0) report.push(describeLog(logged, format, source));
   if (stops.length > 0) report.push(`${stopsHeading(stops.length, request)}\n${stops.join('\n')}`);
   throw new ToolError(report.join('\n\n'));
 }
 
 /** The lines a run logged, one per call, as the host console would print them: the labels as
- *  written and each value through the formatter, after the line and the method. */
+ *  written and each value through the formatter, after the line and the method. A line of a
+ *  file the run's file imports names that file. */
 function describeLog(
   logged: readonly ConsoleEvent[],
   format: (value: CpuValue, type?: ShaderType) => string,
+  source: RunSource | undefined,
 ): string {
   const lines = logged.slice(0, LOG_LIMIT).map((e) => {
-    const where = e.span ? `line ${e.span.line + 1}, ` : '';
+    const elsewhere =
+      e.span !== undefined && source !== undefined && e.span.file !== source.file
+        ? ` of ${source.display(e.span.file)}`
+        : '';
+    const where = e.span ? `line ${e.span.line + 1}${elsewhere}, ` : '';
     if (e.method === 'table' && e.args.length === 1 && typeof e.args[0] !== 'string') {
       return `${where}console.table:\n${tableRows(e.args[0]!, format).join('\n')}`;
     }

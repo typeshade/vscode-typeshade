@@ -36,9 +36,39 @@ function skillFiles(): { file: string; text: string }[] {
 /** A shader block and what it is expected to do. */
 interface Block {
   readonly where: string;
-  readonly source: string;
+  /** The block's files by name: one, unless `// name.shade.ts` headers split it into the files
+   *  of one program. */
+  readonly files: Readonly<Record<string, string>>;
+  /** The file compiled, which reads the others through `readDocument`: the last one, since a
+   *  block shows a file after the files it imports. */
+  readonly entry: string;
   /** The one error code the block must produce, when it is an example of a mistake. */
   readonly expect?: string;
+}
+
+/** `// noise.shade.ts`: the header that splits a block into the files of one program, as the
+ *  compiler's own `src/compiler/ts/doc-snippets.test.ts` reads its documentation. */
+const FILE_HEADER = /^\/\/ ([\w.-]+\.ts)$/;
+
+/** A block's files, when `// name.ts` headers split it into two or more; undefined otherwise. */
+function splitFiles(source: string): Record<string, string> | undefined {
+  const files: Record<string, string> = {};
+  let current: string | undefined;
+  for (const line of source.split('\n')) {
+    const header = FILE_HEADER.exec(line);
+    if (header) {
+      current = header[1];
+      files[current] = '';
+    } else if (current !== undefined) {
+      files[current] += `${line}\n`;
+    } else if (line.trim() !== '') {
+      return undefined;
+    }
+  }
+  const names = Object.keys(files);
+  if (names.length < 2) return undefined;
+  for (const name of names) files[name] = `${files[name].trimEnd()}\n`;
+  return files;
 }
 
 /** The fenced `ts` blocks that are shaders, each with the `<!-- expect: TS8xxx -->` marker above
@@ -48,16 +78,25 @@ function shaderBlocks(): Block[] {
   for (const { file, text } of skillFiles()) {
     const fence = /(?:<!-- expect: (TS\d{4}) -->\n\n?)?```ts\n([\s\S]*?)\n```/g;
     for (const match of text.matchAll(fence)) {
-      const source = match[2];
-      // A shader block starts with the directive exactly as an author writes it. One that starts
-      // any other way (`'use typeshade';`, which a TypeScript formatter produces) is a block a
+      const files = splitFiles(match[2]) ?? { 'skill-example.shade.ts': `${match[2]}\n` };
+      const sources = Object.values(files);
+      // A shader starts with the directive exactly as an author writes it. One that starts any
+      // other way (`'use typeshade';`, which a TypeScript formatter produces) is a block a
       // formatter has rewritten, and it would otherwise be skipped here in silence.
-      if (/^['"]use typeshade['"];?$/m.test(source.split('\n')[0])) {
-        expect(source.split('\n')[0], `${file}: a rewritten directive`).toBe('"use typeshade"');
+      for (const source of sources) {
+        if (/^['"]use typeshade['"];?$/.test(source.split('\n')[0])) {
+          expect(source.split('\n')[0], `${file}: a rewritten directive`).toBe('"use typeshade"');
+        }
       }
-      if (!source.startsWith('"use typeshade"')) continue;
+      if (!sources.every((source) => source.startsWith('"use typeshade"'))) continue;
       const line = text.slice(0, match.index).split('\n').length;
-      blocks.push({ where: `${file}:${line}`, source: `${source}\n`, expect: match[1] });
+      const names = Object.keys(files);
+      blocks.push({
+        where: `${file}:${line}`,
+        files,
+        entry: names[names.length - 1],
+        expect: match[1],
+      });
     }
   }
   return blocks;
@@ -66,14 +105,18 @@ function shaderBlocks(): Block[] {
 describe('the skill', () => {
   const blocks = shaderBlocks();
 
-  it('has shader examples to check', () => {
+  it('has shader examples to check, one of them a program of two files', () => {
     expect(blocks.length).toBeGreaterThanOrEqual(15);
+    expect(blocks.some((block) => Object.keys(block.files).length > 1)).toBe(true);
   });
 
   it.each(blocks.map((b) => [b.where, b] as const))('%s compiles as the skill says', (_, block) => {
-    const { diagnostics } = compile(block.source, { fileName: 'skill-example.shade.ts' });
+    const { diagnostics } = compile(block.files[block.entry], {
+      fileName: block.entry,
+      readDocument: (fileName) => block.files[fileName],
+    });
     const shown = diagnostics.map(
-      (d) => `${d.line}:${d.character} ${d.category} ${d.code} ${d.message}`,
+      (d) => `${d.fileName}:${d.line}:${d.character} ${d.category} ${d.code} ${d.message}`,
     );
     if (block.expect === undefined) {
       // Not even a warning: a warning such as a GLSL-reserved name drops the GLSL output, and an

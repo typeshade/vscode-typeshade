@@ -14,6 +14,7 @@
 import {
   compileTsSource,
   createTypeshadeLanguageService,
+  isTypeshadeSource,
   reflect,
   type EntryInfo,
   type FuncDecl,
@@ -67,11 +68,42 @@ interface Held {
   readonly version: number;
 }
 
+/** A document's module as last built: what it was built from, and what came out. */
+interface Built {
+  /** The document's version then. */
+  readonly version: number;
+  /** Every file the compile read for an import, with the text it read (`undefined` for one it
+   *  could not read). An edit to any of them changes the module as surely as an edit to the
+   *  document does. */
+  readonly reads: ReadonlyMap<string, string | undefined>;
+  readonly module: ModuleDecl | undefined;
+}
+
+/**
+ * A `readDocument` that serves a file only when it is a shader: the text `read` finds for a uri
+ * when that text carries the `"use typeshade"` directive, and nothing otherwise. The rule is the
+ * tsserver plugin's (`docs/design.md` §1.7): a plain TypeScript module is written for the
+ * standard library, which the TypeShade program does not have, so an import of one is left
+ * unresolved, and the compiler reports it (TS8072).
+ *
+ * @param read - the text a uri names: an open editor's, else the file's on disk.
+ * @returns the reader to hand {@link PreviewModel} as its host's `readDocument`.
+ */
+export function shaderReader(
+  read: (uri: string) => string | undefined,
+): (uri: string) => string | undefined {
+  return (uri) => {
+    const text = read(uri);
+    return text !== undefined && isTypeshadeSource(text, uri) ? text : undefined;
+  };
+}
+
 /**
  * The extension host's own view of the open shaders.
  *
- * One instance per extension activation. Documents are pushed in by whoever watches the editor;
- * nothing here reads a file.
+ * One instance per extension activation. Documents are pushed in by whoever watches the editor,
+ * and a file a document imports comes from the host's `readDocument`; nothing here touches a
+ * file itself.
  */
 export class PreviewModel {
   private readonly service: TypeshadeLanguageService;
@@ -80,12 +112,15 @@ export class PreviewModel {
    *  the previous text greyed out instead of nothing. */
   private readonly lastGood = new Map<string, string>();
   /** `reflect` is not a language service method, so its input has to be rebuilt from source.
-   *  Cached per document version, because the panel asks on every keystroke behind the debounce
-   *  and the status bar asks on every editor change. */
-  private readonly modules = new Map<string, { version: number; module: ModuleDecl | undefined }>();
+   *  Cached per document version and per text of every file it imports, because the panel asks
+   *  on every keystroke behind the debounce and the status bar asks on every editor change. */
+  private readonly modules = new Map<string, Built>();
+  /** The host's reader, for an imported file the model holds no document for. */
+  private readonly readDocument: (uri: string) => string | undefined;
 
   constructor(host?: TypeshadeLanguageServiceHost) {
     this.service = createTypeshadeLanguageService(host);
+    this.readDocument = host?.readDocument ?? (() => undefined);
   }
 
   /**
@@ -185,18 +220,35 @@ export class PreviewModel {
     return { tab, text: previous ?? '', stale: previous !== undefined, diagnostics };
   }
 
-  /** The document's `ModuleDecl`, built once per version.
+  /** The document's `ModuleDecl`, built once per version of it and of the files it imports.
    *
    *  `emit: false` matches what the service does for its own analysis, so this pass reports the
    *  same diagnostics rather than a second opinion; the module is dropped when any of them is an
    *  error, because a module assembled from a file that did not compile is not one `reflect` or
-   *  the oracle should be handed. */
+   *  the oracle should be handed. The document is the entry of its program (the compiler's Rule
+   *  3.9): the compile reads each shader file it imports the way the service does, so the module
+   *  holds what the document reaches in them, and an entry list, a reflection and a run of a
+   *  shader that imports a helper are the importer's. */
   private moduleOf(uri: string): ModuleDecl | undefined {
     const document = this.held.get(uri);
     if (document === undefined) return undefined;
     const cached = this.modules.get(uri);
-    if (cached?.version === document.version) return cached.module;
-    const result = compileTsSource(document.text, { emit: false, fileName: uri });
+    if (
+      cached?.version === document.version &&
+      [...cached.reads].every(([file, text]) => this.importedText(file) === text)
+    ) {
+      return cached.module;
+    }
+    const reads = new Map<string, string | undefined>();
+    const result = compileTsSource(document.text, {
+      emit: false,
+      fileName: uri,
+      readDocument: (file) => {
+        const text = this.importedText(file);
+        reads.set(file, text);
+        return text;
+      },
+    });
     const failed = result.diagnostics.some((d) => d.category === 'error');
     const module = failed
       ? undefined
@@ -206,8 +258,14 @@ export class PreviewModel {
           bindings: [...result.bindings],
           funcs: [...result.funcs],
         };
-    this.modules.set(uri, { version: document.version, module });
+    this.modules.set(uri, { version: document.version, reads, module });
     return module;
+  }
+
+  /** An imported file's text as the service reads it: a document the model holds, else what the
+   *  host's reader returns. */
+  private importedText(uri: string): string | undefined {
+    return this.held.get(uri)?.text ?? this.readDocument(uri);
   }
 }
 

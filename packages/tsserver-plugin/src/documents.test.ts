@@ -72,19 +72,22 @@ describe('document sync', () => {
     const { project, shade, sync } = setup({ '/p/main.shade.ts': MAIN, '/p/lib.shade.ts': LIB });
     sync.sync('/p/main.shade.ts', true);
     // Asking is what pulls the import in: the service resolves `./lib.shade.js` while it
-    // analyses the importer, and `readDocument` is how it gets the text.
-    expect(codesFor(shade, '/p/main.shade.ts')).not.toContain(2305);
+    // analyses the importer, and `readDocument` is how it gets the text. The two files are one
+    // program (the compiler's Rule 3.9), so the call to `double` resolves and nothing is wrong.
+    expect(codesFor(shade, '/p/main.shade.ts')).toEqual([]);
     sync.sync('/p/main.shade.ts', true);
     expect(sync.openFileNames()).toContain('/p/lib.shade.ts');
 
-    // Rename the export, and ask only about the importer. Nothing names `lib.shade.ts`.
+    // Rename the export, and ask only about the importer. Nothing names `lib.shade.ts`. The
+    // import is the compiler's TS8072, which keeps TypeScript's TS2305 for the same name out
+    // (Rule 12.4).
     project.edit('/p/lib.shade.ts', LIB.replace('double', 'twice'));
     sync.sync('/p/main.shade.ts', true);
-    expect(codesFor(shade, '/p/main.shade.ts')).toContain(2305);
+    expect(codesFor(shade, '/p/main.shade.ts')).toEqual(['TS8072']);
 
     project.edit('/p/lib.shade.ts', LIB);
     sync.sync('/p/main.shade.ts', true);
-    expect(codesFor(shade, '/p/main.shade.ts')).not.toContain(2305);
+    expect(codesFor(shade, '/p/main.shade.ts')).toEqual([]);
   });
 
   it('serves a file again after its directive comes back', () => {
@@ -100,8 +103,11 @@ describe('document sync', () => {
   });
 });
 
-/** The numeric diagnostic codes on a document, for the assertions that read an answer rather
- *  than the sync's own bookkeeping. */
-function codesFor(shade: ReturnType<typeof createTypeshadeLanguageService>, uri: string): number[] {
-  return shade.getDiagnostics(uri).map((d) => (typeof d.code === 'number' ? d.code : 0));
+/** The diagnostic codes on a document, TypeScript's as numbers and the compiler's as `TS8xxx`
+ *  strings, for the assertions that read an answer rather than the sync's own bookkeeping. */
+function codesFor(
+  shade: ReturnType<typeof createTypeshadeLanguageService>,
+  uri: string,
+): (number | string)[] {
+  return shade.getDiagnostics(uri).map((d) => d.code);
 }

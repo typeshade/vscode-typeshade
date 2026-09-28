@@ -20,7 +20,14 @@
     "target": "ES2022",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    // `DOM` is here for the compiler's sources, not for ours. The `paths` below type-check the
+    // vendored compiler's `src/` as part of every package, under these options, and the compiler
+    // writes that code for its own `lib`, which has the DOM: its runtime prints a console event
+    // with `console[e.method](...e.args)` (`src/core/host-entry.ts`), which the DOM's `Console`
+    // takes and `@types/node`'s does not (TS2556), and the root barrel reaches that file since
+    // the compiler's `resident` export. Nothing here runs in a browser; the entry goes with the
+    // `paths` on the day the compiler is an npm dependency and arrives as declarations.
+    "lib": ["ES2022", "DOM"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

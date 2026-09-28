@@ -124,10 +124,10 @@ export function createServer(options: ServerOptions): McpServer {
     {
       title: 'Compile a TypeShade file',
       description:
-        'Compile one shader and show what the compiler emits: WGSL (the default), the GLSL ES ' +
-        '3.00 vertex and fragment programs, the reflection (bind groups, uniform layouts with ' +
-        'byte offsets, entry points), or the determinism report (operations whose results may ' +
-        'differ between GPUs).',
+        'Compile one shader, with the shader files it imports, and show what the compiler ' +
+        'emits: WGSL (the default), the GLSL ES 3.00 vertex and fragment programs, the ' +
+        'reflection (bind groups, uniform layouts with byte offsets, entry points), or the ' +
+        'determinism report (operations whose results may differ between GPUs).',
       inputSchema: z.object({
         ...source,
         targets: z
@@ -243,7 +243,9 @@ export function createServer(options: ServerOptions): McpServer {
         breakpoints: z
           .array(z.number().int().min(1))
           .optional()
-          .describe('1-based lines at which to stop and report the locals.'),
+          .describe(
+            '1-based lines of the file or source given, at which to stop and report the locals.',
+          ),
         gpuStubs: z
           .boolean()
           .optional()

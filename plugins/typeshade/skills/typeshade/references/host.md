@@ -54,6 +54,9 @@ await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is fi
   - a typed array for a runtime-sized storage array
 - The module must be named `*.shade.ts`. A compile error fails the build with its `TS80xx`
   diagnostics.
+- A module that imports another shader module ([language.md](language.md)) is compiled with it:
+  the plugin reads each file the module imports from disk, and `vite dev` rebuilds the module
+  when one of them changes. The view holds the module's own exports and what it re-exports.
 - In `vite dev`, a `console.*` call in an entry prints in the browser console from the GPU. A
   production build records nothing.
 
@@ -61,10 +64,14 @@ await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is fi
 
 ```ts
 import { compile, reflect } from 'typeshade'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
-const source = readFileSync('src/tint.shade.ts', 'utf8')
-const result = compile(source, { fileName: 'src/tint.shade.ts' })
+// A file's text, or undefined: how the compiler reads the shader files tint.shade.ts imports.
+const read = (path: string) => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+const result = compile(read('src/tint.shade.ts')!, {
+  fileName: 'src/tint.shade.ts',
+  readDocument: read,
+})
 
 const errors = result.diagnostics.filter((d) => d.category === 'error')
 if (errors.length > 0) {
@@ -77,6 +84,9 @@ const glsl = result.glsl // { vertex, fragment } or undefined
 const layout = reflect(result.module)
 ```
 
+- `readDocument` reads each import by the path it resolves to against `fileName`. Without it an
+  import is `TS8072`. A diagnostic located in an imported file carries that file's `fileName`,
+  line and column.
 - `wgsl` is `undefined` whenever a diagnostic is an error, and holds every entry point otherwise.
 - `glsl` is `{ vertex, fragment }` in GLSL ES 3.00, or `undefined` for a compute-only module or
   one that uses something GLSL has no form for (a `TS8015` warning says what).
@@ -123,9 +133,10 @@ the compiler from npm or as a git submodule (whose sources are TypeScript):
 ```bash
 npx tsx -e "
 import { compile } from 'typeshade'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 const file = process.argv[1]
-const r = compile(readFileSync(file, 'utf8'), { fileName: file })
+const read = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : undefined)
+const r = compile(read(file), { fileName: file, readDocument: read })
 for (const d of r.diagnostics) console.log(d.fileName + ':' + d.line + ':' + d.character, d.category, d.code, d.message)
 process.exit(r.diagnostics.some((d) => d.category === 'error') ? 1 : 0)
 " src/tint.shade.ts

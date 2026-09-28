@@ -294,23 +294,30 @@ files in the TypeShade program, which is the collision of §0 point 2. The shade
 ### 1.7 A `.shade.ts` file that imports a plain `.ts` file
 
 **Decision: the plugin serves the TypeShade program only files that carry the directive. A
-relative import of a non-directive file resolves to nothing, and TypeScript reports it from the
-shader file as an unresolved module.**
+relative import of a non-directive file resolves to nothing, and the shader file reports it as
+the compiler's `TS8072`.**
 
 The reason is §0 point 2 again: a plain TypeScript module is written for the standard library,
 and the TypeShade program has none. Pulling it in would put its own text under `lib: []` and
 produce errors inside a file the user never asked to be a shader. The compiler's own multi-file
-story is a story about shaders only: `compileTsSources` now has one form
-(`src/compiler/ts/module.ts`), taking a list of `{ fileName, source }`, and since #74 it merges
-every file's structs, bindings and overrides into one module, while naming a struct in an
-import is still open (`docs/language-service-api.md` §11). A plain module has no place in it,
-so the editor is not the place to invent one.
+story is a story about shaders only. Since proposal 0022 (the compiler's Rule 3.9, surface §68) a
+`"use typeshade"` file imports what another one exports, and every path follows the import:
+`compile()` and `compileTsSource` read it through a `readDocument` hook, and the service analyses
+a document as the entry of its program, reading each import from the text its TypeScript half
+holds, an open document's first and the host's `readDocument` otherwise
+(`src/language-service/service.ts`). The entry and the shader files it imports are one program
+and one module, and a mistake located in an imported file is shown on that file. A plain module
+has no place in that program, so the editor is not the place to invent one.
 
 Concretely, the plugin's `readDocument` host hook (`TypeshadeLanguageServiceHost.readDocument`,
 `src/language-service/host.ts`) reads the file through tsserver's host, parses its first
-statements for the directive, and returns the text only when the directive is there. The
-resulting message ("Cannot find module './util.js'") is honest but unhelpful, and improving it
-needs a diagnostic the compiler owns rather than one the adapter invents, which is §8 item 3.
+statements for the directive, and returns the text only when the directive is there. What the
+shader file then reports is the compiler's own diagnostic, once: `TS8072` on the import, which
+TypeScript's `TS2307` for the same module merges into (the compiler's Rule 12.4), reading
+`Cannot find the shader module "./util.js"` and the path it looked for. `compile()` handed the
+file says more (`is not a shader module`), but the service's two halves read one program, so the
+plugin cannot show the file to one half and keep it from the other. That is §8 item 3, and
+`packages/tsserver-plugin/src/tsserver.test.ts` pins the one diagnostic.
 
 ### 1.8 The editor goes green while `tsc` stays red
 
@@ -669,6 +676,12 @@ pure functions of the text they hold, so two of them cannot disagree, only dupli
 alternative, an unsupported command, would put the panel's correctness on an API that can be
 removed in a VS Code patch release.
 
+A shader that imports another is compiled with it (compiler proposal 0022), so the extension's
+service reads the file an import names by the plugin's rule (§1.7): an open editor's text first,
+else the file on disk, and only when it carries the directive. The reflection tab, the entry list
+and Run Entry compile the document with the same reader, so a shader that imports its helpers
+reflects and runs with them.
+
 What it costs is mostly fixed rather than mostly per-document, measured with the same harness
 as §1.3 (`SHADE_LIMIT=1`): requiring the bundled service 243.3 to 294.3 ms and 45 MB, then
 building a one-document program and compiling it 109 to 164.3 ms and 7.3 MB, for **52.3 MB
@@ -759,8 +772,8 @@ re-implementing any, which is the layering rule this section opened with.
 | DAP request                             | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `initialize`                            | Declares `supportsConfigurationDoneRequest`, `supportsEvaluateForHovers`, `supportsSetVariable: false`, and, importantly, reads the client's `linesStartAt1` and `columnsStartAt1`                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `launch`                                | Reads the program text, compiles it with the compiler's `compile()`, then hands the module and the launch configuration to `startDebugSessionFromConfig`. A `DebugConfigError` becomes one `output` event per sentence and a failed launch response, because a configuration is wrong in several ways at once                                                                                                                                                                                                                                                                      |
-| `setBreakpoints`                        | Converts the client's lines to zero-based and calls `setBreakpoints`; a breakpoint is `verified` when the module has a statement whose span starts on that line, which is the engine's own resolution rule                                                                                                                                                                                                                                                                                                                                                                         |
+| `launch`                                | Reads the program text, compiles it with the compiler's `compile()` and a `readDocument` that reads each shader file it imports (compiler proposal 0022), then hands the module and the launch configuration to `startDebugSessionFromConfig`. A `DebugConfigError` becomes one `output` event per sentence and a failed launch response, because a configuration is wrong in several ways at once                                                                                                                                                                                 |
+| `setBreakpoints`                        | Converts the client's lines to zero-based and calls `setBreakpoints`, each breakpoint carrying the request's source path as its `file`, since the module holds the statements of every file the program imports; a breakpoint is `verified` when the module has a statement whose span starts on that line, which is the engine's own resolution rule                                                                                                                                                                                                                              |
 | `configurationDone`                     | Either stays on the entry statement (`stopOnEntry`) or calls `continue`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `threads`                               | One thread, id 1, named after the entry and its stage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `stackTrace`                            | `pause.frames`, mapped one for one, spans converted back to the client's base. `DebugStackFrame.span` is `SourceSpan \| undefined`, and it is undefined for a statement the compiler synthesised (a `while` loop's counter), so a frame with no span reports the function's own `fnSpan` and, failing that, line 0 with a name saying the statement is compiler-generated: a frame that cannot be placed is still a frame                                                                                                                                                          |
@@ -859,7 +872,7 @@ the inferred-project path most people meet first (§4). The assertions:
 | On a clean directive file, zero diagnostics                                                                | The six examples measured 58 false errors without the plugin                                                                                                |
 | On a clean directive file, an unhelped server reports the false-positive classes and this one reports none | Replacement, not merging, stated as the contrast it is                                                                                                      |
 | On a directive file with a type error, the expected `TS8xxx` code with `source: 'typeshade'`               | The mapping of §3, end to end                                                                                                                               |
-| An import between two shaders resolves, with no TS2307                                                     | §1.7's `readDocument` rule, and the one place a cross-file answer can be checked                                                                            |
+| An import between two shaders resolves, call and all; an import of a plain module is one TS8072            | §1.7's `readDocument` rule and the compiler's one program (proposal 0022), and the one place a cross-file answer can be checked                             |
 | `quickinfo` on `vec4(...)` is not `any`                                                                    | The probe measured `any` today, which is the user-visible symptom                                                                                           |
 | `completionInfo` after `@` offers the attribute list, and inside `@builtin("` the builtin ids              | The context completions are the service's own and must survive the mapping                                                                                  |
 | A whole session's events on non-directive files are identical with and without the plugin                  | §1.5, and the only test that can prove a pass-through has no mapping layer in it                                                                            |
@@ -1029,10 +1042,12 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
    now, and revisit with a measurement of what the editor actually looks like, not with a second
    token provider._ Two providers on one document is a coin flip about which one paints.
 3. **A `"use typeshade"` file that imports a plain `.ts` file reports "Cannot find module"
-   (§1.7).** _Suggested: ask the compiler for a diagnostic that says what is actually wrong, and
-   until it exists, leave the honest-but-unhelpful message rather than inventing a code in the
-   adapter._ Filing that issue is PR 2's business, when the message has been seen in a real
-   editor rather than predicted here.
+   (§1.7).** _Answered by the compiler's `TS8072` (proposal 0022)_: every import the compiler
+   does not follow is one diagnostic of its own, which the service keeps in place of TypeScript's
+   `TS2307`, so the editor names the mistake once, in the compiler's words, and the adapter
+   invents nothing. The words are "Cannot find the shader module" rather than the "is not a
+   shader module" `compile()` says when it is handed the file, because the plugin keeps a plain
+   module out of the one program both halves of the service read (§1.7).
 4. **A standalone LSP server for editors with no tsserver plugin support (§1.2).** _Suggested:
    not now, and not never._ It is a second adapter over the same service; the plugin covers the
    editors that matter first. `docs/agents.md` §0.2 measured the nearer route for agents: the
@@ -1112,4 +1127,4 @@ until after PR 5.
 
 Nothing before that step is blocked on an answer.
 
-Last updated: 2026-09-24
+Last updated: 2026-09-28

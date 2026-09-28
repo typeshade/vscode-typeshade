@@ -374,28 +374,37 @@ describe('the plugin, in a real tsserver', () => {
   it('resolves an import between two shaders, and sees an edit to the imported one', async () => {
     server.open('main.shade.ts');
     server.open('lib.shade.ts');
-    const before = await server.diagnostics('main.shade.ts');
-    // The module resolves: no TS2307. What remains is the compiler's own multi-file gap, since
-    // the front end does not yet collect declarations across files
-    // (`docs/language-service-api.md` §11), so the cross-file call reads as unknown.
-    expect(all(before).map((d) => d.code)).not.toContain(2307);
-    expect(before.semantic.some((d) => d.source === 'typeshade' && d.code === 8004)).toBe(true);
+    // The importer and the file it imports are one program (the compiler's Rule 3.9, proposal
+    // 0022), so the module resolves, with no TS2307, and so does the call across the two files:
+    // the importer reports nothing at all.
+    expect(all(await server.diagnostics('main.shade.ts'))).toEqual([]);
 
     // Renaming the export must reach the importer's answer without anything asking about the
     // imported file: the service caches a file it pulled in through `readDocument` and never
     // re-reads it, so the sync has to re-send every document whose version moved.
     server.reopen('lib.shade.ts', PROJECT['lib.shade.ts'].replace('double', 'twice'));
     const after = await server.diagnostics('main.shade.ts');
-    // TS2305, not TS2724: `twice` is too far from `double` for the spelling suggestion the
-    // latter carries, and the message is the one that names what the importer can no longer
-    // find.
-    expect(after.semantic.map((d) => d.code)).toContain(2305);
-    expect(after.semantic.find((d) => d.code === 2305)?.text).toContain('double');
+    // One mistake, one diagnostic (the compiler's Rule 12.4): the compiler's TS8072 on the
+    // import, which TypeScript's TS2305 for the same name merges into, and nothing on the call
+    // that uses the name.
+    expect(summarize(all(after))).toEqual(['8072/typeshade@3']);
+    expect(after.semantic[0]?.text).toContain('has no export "double"');
 
     server.reopen('lib.shade.ts', PROJECT['lib.shade.ts']);
-    expect((await server.diagnostics('main.shade.ts')).semantic.map((d) => d.code)).not.toContain(
-      2305,
-    );
+    expect(all(await server.diagnostics('main.shade.ts'))).toEqual([]);
+  });
+
+  it('leaves an import of a plain module unresolved, and reports it once, as the compiler', async () => {
+    // `host.ts` is ordinary TypeScript, so the plugin does not serve it to the TypeShade program
+    // (`docs/design.md` §1.7). The import is the compiler's TS8072, which TypeScript's TS2307 for
+    // the same module merges into, and the call through it adds nothing.
+    server.reopen('main.shade.ts', PROJECT['main.shade.ts'].replace('./lib.shade.js', './host.js'));
+    const plain = await server.diagnostics('main.shade.ts');
+    expect(summarize(all(plain))).toEqual(['8072/typeshade@3']);
+    expect(plain.semantic[0]?.text).toContain('Cannot find the shader module "./host.js"');
+
+    server.reopen('main.shade.ts', PROJECT['main.shade.ts']);
+    expect(all(await server.diagnostics('main.shade.ts'))).toEqual([]);
   });
 
   it('gives TypeScript its file back when the directive is deleted', async () => {

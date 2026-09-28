@@ -6,11 +6,11 @@ description: Write, fix and review TypeShade shaders, which are TypeScript files
 # TypeShade
 
 TypeShade is a shader language written as TypeScript. A file whose first line is
-`"use typeshade"` is one shader module: the compiler lowers it to WGSL for WebGPU and, where a
-form exists, to GLSL ES 3.00 for WebGL2. A host uses it one of two ways: it compiles the file and
-builds its own pipelines from the emitted text, or, through the `typeshade/vite` plugin, it
-imports the `.shade.ts` and calls its exports, a helper on the CPU and a `@compute` or
-full-screen `@fragment` entry on the GPU.
+`"use typeshade"` is a shader module: the compiler lowers it, with the shader modules it imports,
+to WGSL for WebGPU and, where a form exists, to GLSL ES 3.00 for WebGL2. A host uses it one of two
+ways: it compiles the file and builds its own pipelines from the emitted text, or, through the
+`typeshade/vite` plugin, it imports the `.shade.ts` and calls its exports, a helper on the CPU and
+a `@compute` or full-screen `@fragment` entry on the GPU.
 
 The file looks like TypeScript and is not checked like TypeScript. **The TypeShade compiler
 decides what is valid.** Plain `tsc` or a plain TypeScript language server reports errors on
@@ -191,10 +191,10 @@ an arrow constant may read and write the locals around it, and a function may ta
 (`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
 **7. Resources are declared, and numbered for you.** Every `declare` resource is `@group(0)`,
-bound in declaration order; `compile` with the reflection target prints the slots. The
-compiler adds its own after yours: `_fp64` for emulated doubles, and `_console` under
-`console: 'gpu'`. Make a
-uniform's type a struct, or the GLSL output is dropped with a `TS8015` warning.
+bound in declaration order, the compiled file's own before those of the files it imports;
+`compile` with the reflection target prints the slots. The compiler adds its own after yours:
+`_fp64` for emulated doubles, and `_console` under `console: 'gpu'`. Make a uniform's type a
+struct, or the GLSL output is dropped with a `TS8015` warning.
 
 **8. Stage input and output are explicit.** Builtins are parameters (`@builtin("position") p:
 vec4`); there are no implicit globals. An IO struct is a `class` whose every field has
@@ -207,8 +207,15 @@ Keep one `@vertex` and one `@fragment` per file when WebGL2 matters.
 (`TS8052`): sample before the branch, or use `textureSampleLevel`. `discard` is a statement and
 is fine under a branch.
 
-**10. One file is one module.** The compiler's public `compile()` takes one file, and a call to
-a function imported from another shader is `TS8004`. Keep each shader self-contained.
+**10. A shader file imports what another exports.** A TypeScript import with a relative path,
+`import { fbm, Light } from "./noise.shade.ts"`, takes what another `"use typeshade"` file
+exports: a function, a struct, an enum, a constant, a binding, anything declared at its top
+level. The file you compile and the files it imports are one program, emitted as one module,
+and an imported file's own entry points stay out of it. An import the compiler does not follow
+(a wrong path, a plain `.ts` file, a name the file does not export, a default import, a package)
+is `TS8072`. `compile()` reads the imported files through the `readDocument` you pass it
+([references/host.md](references/host.md)); [references/language.md](references/language.md)
+has a two-file example.
 
 ## Types and resources at a glance
 
@@ -264,7 +271,7 @@ which still runs, with its false positives on shader code filtered out. The ones
 | ------ | --------------------------------------------------------------------------- | ------------------------------------------------------ |
 | TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                     | a shader type, annotated                               |
 | TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes   | cast explicitly; annotate integer locals               |
-| TS8004 | a call to a name TypeShade does not have (`lerp`, an imported helper)       | `docs` for the TypeShade name                          |
+| TS8004 | a call to a name not declared or imported (`lerp`, another file's helper)   | `docs` for the TypeShade name; import the helper       |
 | TS8006 | a loop bound the body writes, or `!=` against a runtime bound               | read the bound into a `const`; compare with `<`        |
 | TS8015 | an emitter refused the module (a warning drops the GLSL only)               | read the message: often a uniform that is not a struct |
 | TS8018 | a write to a parameter or to a multi-component swizzle                      | copy into a `let`; write one component                 |
@@ -272,6 +279,7 @@ which still runs, with its false positives on shader code filtered out. The ones
 | TS8022 | an unknown name, field or swizzle; a name read before its declaration       | the name the message suggests; declare before use      |
 | TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                        | splat: `max(v, vec3(0.))`                              |
 | TS8052 | `textureSample` or a derivative under a per-fragment branch                 | sample before branching                                |
+| TS8072 | an import not followed: a wrong path, a plain `.ts` file, no such export    | a relative path to a shader file; `export` the name    |
 | TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource | read the message: it names the construct               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
@@ -296,7 +304,8 @@ the output yourself:
 ```ts
 import { compile, reflect } from 'typeshade'
 
-const result = compile(source, { fileName: 'tint.shade.ts' })
+// readDocument(path) returns a file's text, or undefined: how the compiler reads what tint imports.
+const result = compile(source, { fileName: 'src/tint.shade.ts', readDocument })
 // result.wgsl is undefined when any diagnostic is an error.
 // result.glsl is { vertex, fragment }, or undefined for compute or WGSL-only modules.
 const layout = reflect(result.module) // bind groups, uniform offsets, entry points

@@ -96,7 +96,7 @@ the compiler ships.
 | Tool         | Answer                                                                                                      | Source                                                            |
 | ------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `check`      | Diagnostics for a file, several, every shader under a directory, or source text                             | `getDiagnostics`, then `compile()`'s `BACKEND` diagnostics (§3.1) |
-| `compile`    | WGSL, GLSL ES 3.00 (both stages), reflection, determinism report                                            | `compile()`, `reflect()`                                          |
+| `compile`    | WGSL, GLSL ES 3.00 (both stages), reflection, determinism report, of a shader and what it imports           | `compile()` with a `readDocument`, `reflect()`                    |
 | `hover`      | The compiler's type and the documentation                                                                   | `getHover`                                                        |
 | `definition` | Where a name is declared, or that it is part of the language                                                | `getDefinition`, then the vocabulary                              |
 | `references` | Every use across the workspace's shaders                                                                    | `getReferences`, over every shader under the roots                |
@@ -156,11 +156,12 @@ program (`docs/design.md` §1.3) and a long-lived service parses it once.
 The arguments are text a model wrote, possibly after reading text someone else wrote. So every
 path resolves against the first root, is canonicalized with symbolic links followed, and is
 refused unless it lands inside a root; the reader the service calls for an import applies the
-same rule. The roots are the directories given with `--root`; else the workspace folders the
-client reports through MCP roots, asked for once the handshake completes and again when the
-client says they changed; else the directory the client started the server in. Roots come before
-the working directory because not every client starts a stdio server in the project, and a
-client that answers `roots/list` has said where the project is.
+same rule, and so does the one `compile` and `run` hand the compiler. The roots are the
+directories given with `--root`; else the workspace folders the client reports through MCP
+roots, asked for once the handshake completes and again when the client says they changed; else
+the directory the client started the server in. Roots come before the working directory because
+not every client starts a stdio server in the project, and a client that answers `roots/list`
+has said where the project is.
 
 ### 3.4 Running a function: the debugger's engine, with a step budget
 
@@ -242,8 +243,10 @@ working without the server.
 **Every `"use typeshade"` block in the skill compiles.** `skill.test.ts` extracts each one and
 compiles it against the pinned compiler, the way the compiler's own
 `src/compiler/ts/doc-snippets.test.ts` holds its documentation; a block meant to fail names its
-expected code and must produce exactly that. So the pull request that moves the pin fails when
-the language moves under the skill, which is the moment to rewrite it.
+expected code and must produce exactly that. A block that `// name.shade.ts` headers split into
+files is one program, compiled from its last file with the others read through `readDocument`,
+which is how that test reads a multi-file example too. So the pull request that moves the pin
+fails when the language moves under the skill, which is the moment to rewrite it.
 
 The same suite holds the skill's two tables to their sources: the GLSL and HLSL names in
 `SKILL.md` must translate exactly as the server's `docs` tool translates them, and
@@ -444,7 +447,13 @@ rather than a list of what is waiting.
    `compile()` alike: both analyse one file, and the compiler's multi-file form,
    `compileTsSources`, is not on its public surface (`src/__api__/surface.md` does not list it).
    **Decided 2026-09-23: report what they report.** The server is an adapter, and the fix belongs
-   to the compiler.
+   to the compiler. **The compiler made that fix in proposal 0022**: a shader file imports what
+   another exports, the service analyses a document as the entry of its program, and `compile()`
+   reads each import through a `readDocument` hook. `check` answers for the program with no
+   change here; `compile` and `run` pass a `readDocument` over the workspace, under §3.3's rule,
+   print a mistake in an imported file at that file, and take a `run`'s breakpoints as lines of
+   the file named. A name the imported file stops exporting is the compiler's `TS8072`, which
+   TypeScript's `TS2305` merges into.
 4. ~~**A hook that checks every edited shader without being asked?**~~ A plugin can run a command
    after each `Edit` or `Write`. **Decided 2026-09-23: not yet.** Only after the package is on
    npm, and only if the skill's instruction to call `check` turns out not to be followed. A hook
@@ -453,4 +462,4 @@ rather than a list of what is waiting.
    `@typeshade/tsserver-plugin` is published, as a separate plugin, so a user of the official
    `typescript-lsp` plugin can choose.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-28

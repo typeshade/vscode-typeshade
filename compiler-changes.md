@@ -26,6 +26,11 @@ id first, then the pull request that did the work.
   `docs` answering in `foreignNameRemedy`'s words) and its `check` (the compiler's
   `checkOpenDocument` now), `docs/agents.md` §3.1 and §3.5, and the three tests that counted
   TypeScript's TS2304 beside TS8004, handled in #24.
+- 0008: a diagnostic says what the program is: references/diagnostics.md drops the TS8012 row,
+  its TS8013 row stops listing `new`, which the TS8035 row takes (`new vec3f(...)`, a function,
+  an enum, an interface, an abstract class), and its TS8014 and TS8022 rows name a top-level `var`
+  and a JavaScript global; references/language.md's top-level `var` line says `TS8014` alone,
+  handled in #31.
 - 0009: a host file imports a `.shade.ts` through `typeshade/vite` and a generated host view:
   the skill's compiler-only claims (SKILL.md intro, description and host section,
   references/host.md) rewritten around the import; docs/design.md §1.4 (the name is the rule for
@@ -50,3 +55,19 @@ id first, then the pull request that did the work.
   references/language.md name `table` and its one argument; the MCP server's `run` tool prints a
   `table` event as indented rows (`tools.test.ts` pins an array of structs and a matrix);
   docs/design.md §5's DAP `output` row says how a `table` event reads, handled in #28.
+- 0022: a `"use typeshade"` file imports what another exports, and every path follows the
+  import: the tsserver test's call across two shaders reports nothing, the TS2305-after-rename
+  assertions (tsserver.test.ts, documents.test.ts, the MCP server's tools.test.ts) expect the
+  compiler's TS8072, and a new tsserver case pins the one TS8072 on an import of a plain module;
+  SKILL.md's rule 10 (imports, `TS8072`, `readDocument`), its intro, binding rule, TS8004 and
+  TS8072 rows and `compile()` snippet; references/language.md's import section and its two-file
+  example, which skill.test.ts compiles as one program, its slots line and its `new` row;
+  references/diagnostics.md's TS8004 and TS8072 rows; references/host.md's `compile()` recipes,
+  which pass a `readDocument`, and the Vite plugin following imports; the MCP server's `compile`
+  and `run`, which read imports through the workspace, print a diagnostic at the file it is
+  located in and take `run`'s breakpoints as lines of the file named, with the fixture that
+  imported `double` now calling it; the extension's reflection, entry list and Run Entry, which
+  compile with a `readDocument` and rebuild when an imported file changes, and its reader, which
+  serves an open editor's text or the file on disk when it carries the directive;
+  docs/design.md §1.7, §4, §5's `launch` and `setBreakpoints` rows, §6 and §8 item 3, and
+  docs/agents.md §2, §3.3, §4 and §8 item 3, handled in #31.

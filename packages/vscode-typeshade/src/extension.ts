@@ -5,10 +5,11 @@
 // adds only what tsserver cannot carry. This file is the wiring; everything it wires up that can
 // be tested without an extension host lives in a module that does not import `vscode`.
 
+import { readFileSync } from 'node:fs';
 import * as vscode from 'vscode';
 import { compileModule, isTypeshadeSource, type CpuValue } from './compiler.js';
 import { describe, parseInvocation } from './invocation.js';
-import { PreviewModel, type Entry, type PreviewTab } from './model.js';
+import { PreviewModel, shaderReader, type Entry, type PreviewTab } from './model.js';
 import { PreviewPanel, type PreviewSettings } from './panel.js';
 
 /** The plugin's package name, which is both what `contributes.typescriptServerPlugins` names and
@@ -26,12 +27,11 @@ const IS_SHADER = 'typeshade.isShader';
  */
 export function activate(context: vscode.ExtensionContext): void {
   const model = new PreviewModel({
-    // An import between shaders resolves against the documents the editor already has open,
-    // which is every file the panel can be showing. A file that is not open is left unresolved
-    // rather than read from disk: the extension host's service exists to render what the user is
-    // looking at, and reading the workspace would make it a second project system.
-    readDocument: (uri) =>
-      vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri)?.getText(),
+    // A shader that imports another is compiled with it (the compiler's Rule 3.9), so the file an
+    // import names is read the way the plugin reads it (`docs/design.md` §1.7): an open editor's
+    // text first, unsaved edits included, else the file on disk, and only when it carries the
+    // directive. Only the files an import names are read, never the workspace at large.
+    readDocument: shaderReader((uri) => openText(uri) ?? diskText(uri)),
   });
   const panel = new PreviewPanel(model, settings);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -128,6 +128,25 @@ export function activate(context: vscode.ExtensionContext): void {
 /** Called by the extension host on shutdown. Every disposable is owned by the context's
  *  subscriptions, so there is nothing to tear down by hand. */
 export function deactivate(): void {}
+
+/** The text of an editor the user has open on `uri`, unsaved edits included. */
+function openText(uri: string): string | undefined {
+  return vscode.workspace.textDocuments
+    .find((document) => document.uri.toString() === uri)
+    ?.getText();
+}
+
+/** The text of a `file:` uri on disk, or undefined when there is no such file. Synchronous,
+ *  because `readDocument` is: the compiler asks for an import in the middle of a compile. */
+function diskText(uri: string): string | undefined {
+  const file = vscode.Uri.parse(uri);
+  if (file.scheme !== 'file') return undefined;
+  try {
+    return readFileSync(file.fsPath, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
 
 /** The panel's settings, read fresh on every use so a change takes effect without a reload. */
 function settings(): PreviewSettings {
