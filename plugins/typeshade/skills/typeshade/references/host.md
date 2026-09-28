@@ -92,8 +92,10 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
 - The module must be named `*.shade.ts`. A compile error fails the build with its `TS80xx`
   diagnostics.
 - A module that imports another shader module ([language.md](language.md)) is compiled with it:
-  the plugin reads each file the module imports from disk, and `vite dev` rebuilds the module
-  when one of them changes. The view holds the module's own exports and what it re-exports.
+  the plugin reads each file the module imports from disk, a package's found in `node_modules`
+  from the module's directory up, and `vite dev` rebuilds the module when one of them changes.
+  The view holds the module's own exports and what it re-exports. A host file that imports a
+  package's `.shade.ts` itself is not supported yet.
 - In `vite dev`, a `console.*` call in an entry prints in the browser console from the GPU. A
   production build records nothing.
 
@@ -121,9 +123,10 @@ const glsl = result.glsl // { vertex, fragment } or undefined
 const layout = reflect(result.module)
 ```
 
-- `readDocument` reads each import by the path it resolves to against `fileName`. Without it an
-  import is `TS8072`. A diagnostic located in an imported file carries that file's `fileName`,
-  line and column.
+- `readDocument` reads each import by the path it resolves to against `fileName`, and each
+  `package.json` the compiler looks for to find a package an import names. Without it an import
+  is `TS8072`. A diagnostic located in an imported file carries that file's `fileName`, line and
+  column.
 - `wgsl` is `undefined` whenever a diagnostic is an error, and holds every entry point otherwise.
 - `glsl` is `{ vertex, fragment }` in GLSL ES 3.00, or `undefined` for a compute-only module or
   one that uses something GLSL has no form for (a `TS8015` warning says what).

@@ -28,6 +28,13 @@ variable; a namespace.
   `export { a } from`, `export { a as b } from` and `export * from`.
 - The path is relative (`./`, `../`) to the importing file. `./x.shade.js` and `./x.shade.mjs`
   name `x.shade.ts`, and `.ts` is appended to any other path, so `./x.shade` names it too.
+- A package is imported by its name, `"shade-noise"`, or a subpath, `"shade-noise/hash"`. The
+  package is the first `node_modules/shade-noise/package.json` from the importing file's
+  directory up, and the file read is the one its `exports` publishes under the `typeshade`
+  condition, else `import`, else `default` (the package's own example is below). A package with
+  no `exports` is imported by the path of its file, `"shade-noise/noise.shade.ts"`; its name
+  alone names nothing. A program holds one copy of a package version, however many packages
+  depend on it.
 - The file compiled and the files it imports, directly or through another, are one program, and
   the program is one module. It holds the compiled file's declarations and, of each imported
   file, what they reach; an imported file's own entry points, and the bindings only they read,
@@ -35,14 +42,16 @@ variable; a namespace.
   import never moves a slot.
 - Each file keeps its own scope: a private `hash` in two files is two functions. The one emitted
   first keeps the name, the compiled file's before any other, and the other is emitted as
-  `stem_hash`, `stem` being its file's name. An entry point and a binding are never renamed, so
-  two of one name are `TS8023`.
+  `stem_hash`, `stem` being its file's name, with the package's name before it for a package's
+  file (`shade_noise_noise_hash`). An entry point and a binding are never renamed, so two of one
+  name are `TS8023`.
 - An import the compiler does not follow is `TS8072`, on the import: a path that names no file,
   a file without the directive, a name the file does not export (or declares without `export`),
   a default import or export, an import that names nothing, `import(...)` or `require`, a
-  module namespace used as a value, and a package (`"shade-noise"`), which is not supported
-  yet. `compile()` reads an import only through a `readDocument` you pass it
-  ([host.md](host.md)), so a compile without one reports each import as `TS8072`.
+  module namespace used as a value, a package no `node_modules` holds, a subpath its `exports`
+  does not name, a package's name alone when it has no `exports`, and a `#` specifier.
+  `compile()` reads an import, and a package's `package.json`, only through a `readDocument` you
+  pass it ([host.md](host.md)), so a compile without one reports each import as `TS8072`.
 
 ```ts
 // lighting.shade.ts
@@ -72,6 +81,24 @@ export function fs(@location(0) normal: vec3): vec4 {
   return vec4(shade(normalize(normal), sun), 1.)
 }
 ```
+
+A package publishes its shader modules under the `typeshade` condition, beside the JavaScript it
+publishes for host code. Write `typeshade` first, so plain `tsc` with `customConditions:
+["typeshade"]` reads the same file:
+
+```json
+{
+  "name": "shade-noise",
+  "version": "1.2.0",
+  "exports": {
+    ".": { "typeshade": "./src/index.shade.ts", "default": "./dist/index.js" },
+    "./*": { "typeshade": "./src/*.shade.ts" }
+  }
+}
+```
+
+`import { fbm } from "shade-noise"` reads `src/index.shade.ts`, and `import { hash } from
+"shade-noise/hash"` reads `src/hash.shade.ts`.
 
 ## Types
 

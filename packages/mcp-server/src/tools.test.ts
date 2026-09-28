@@ -210,6 +210,38 @@ describe('compile', () => {
     expect(broken).not.toContain('main.shade.ts');
   });
 
+  it("compiles and checks a shader with the package it imports by name (the compiler's 0024)", () => {
+    // `shade-lib` sits in the workspace's node_modules, as npm installs it, and publishes its
+    // shader module under the `typeshade` condition of `exports`. `compile` reads the package.json
+    // and the module through the workspace's reader, and `check`, through the language service,
+    // reads the same files.
+    const manifest = JSON.stringify({
+      name: 'shade-lib',
+      version: '1.0.0',
+      exports: { '.': { typeshade: './lib.shade.ts', default: './index.js' } },
+    });
+    const { tools } = setup({
+      'node_modules/shade-lib/package.json': manifest,
+      'node_modules/shade-lib/lib.shade.ts': LIB,
+      'main.shade.ts': MAIN.replace('./lib.shade.js', 'shade-lib'),
+    });
+    const out = tools.compile({ file: 'main.shade.ts' });
+    expect(out).toContain('fn double(x: f32) -> f32');
+    expect(out).toContain('fn same(x: f32) -> f32');
+    expect(tools.check({ file: 'main.shade.ts' })).toBe('No problems: main.shade.ts');
+
+    // A subpath the package does not export is the compiler's TS8072, in both tools.
+    const { tools: refusing } = setup({
+      'node_modules/shade-lib/package.json': manifest,
+      'node_modules/shade-lib/lib.shade.ts': LIB,
+      'main.shade.ts': MAIN.replace('./lib.shade.js', 'shade-lib/warp'),
+    });
+    const sentence =
+      '"shade-lib" does not export "./warp": its package.json "exports" names no module for it.';
+    expect(refusing.compile({ file: 'main.shade.ts' })).toContain(sentence);
+    expect(refusing.check({ file: 'main.shade.ts' })).toContain(sentence);
+  });
+
   it('reads no import from outside the workspace', () => {
     // The compiler asks for an import through the workspace's own reader (`docs/agents.md`
     // §3.3), so a specifier an agent wrote cannot read a file outside the roots.

@@ -72,6 +72,38 @@ export function fs(): f32 {
 }
 `;
 
+/** `shade-lib`'s `package.json`, as npm installs it: its shader module under the `typeshade`
+ *  condition of `exports`, beside the JavaScript it publishes for hosts (the compiler's change
+ *  0024, surface §68). */
+export const PACKAGE_JSON = JSON.stringify(
+  {
+    name: 'shade-lib',
+    version: '1.0.0',
+    exports: { '.': { typeshade: './src/index.shade.ts', default: './dist/index.js' } },
+  },
+  null,
+  2,
+);
+
+/** The shader module `shade-lib` publishes. */
+export const PACKAGE_SHADER = `"use typeshade"
+
+export function triple(x: f32): f32 {
+  return x * 3.
+}
+`;
+
+/** A shader that imports `triple` from `shade-lib` by the package's name. */
+export const USES_PACKAGE = `"use typeshade"
+
+import { triple } from 'shade-lib'
+
+@fragment
+export function fs(): f32 {
+  return triple(2.)
+}
+`;
+
 /** A shader whose struct field carries a `@builtin(...)`, for the one completion no TypeScript
  *  program could produce. The cursor goes inside that string, and a STRUCT FIELD is the right
  *  place for it rather than an entry point's parameter: the service filters the ids to the
@@ -188,6 +220,10 @@ export const PROJECT: Readonly<Record<string, string>> = {
   'host.ts': HOST,
   'host-imports-shader.ts': HOST_IMPORTS_SHADER,
   'big.shade.ts': longShader(520),
+  'uses-package.shade.ts': USES_PACKAGE,
+  'node_modules/shade-lib/package.json': PACKAGE_JSON,
+  'node_modules/shade-lib/src/index.shade.ts': PACKAGE_SHADER,
+  'node_modules/shade-lib/dist/index.js': 'export const triple = (x) => x * 3\n',
 };
 
 /** A host project that imports shader modules the way the compiler's host import sets it up

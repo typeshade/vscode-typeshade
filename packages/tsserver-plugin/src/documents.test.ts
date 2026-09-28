@@ -60,6 +60,23 @@ describe('document sync', () => {
     expect(sync.readDocument('/p/missing.shade.ts')).toBeUndefined();
   });
 
+  it("serves a package's package.json through the host's reader, and never opens it", () => {
+    // The compiler finds a package an import names by its `package.json` (its change 0024). The
+    // sync hands it over as it is, and it stays out of the TypeShade program's documents.
+    const manifest = '{ "name": "shade-lib", "exports": { "typeshade": "./lib.shade.ts" } }';
+    const { shade, sync } = setup({
+      '/p/node_modules/shade-lib/package.json': manifest,
+      '/p/node_modules/shade-lib/lib.shade.ts': LIB,
+      '/p/main.shade.ts': MAIN.replace('./lib.shade.js', 'shade-lib'),
+    });
+    expect(sync.readDocument('/p/node_modules/shade-lib/package.json')).toBe(manifest);
+    sync.sync('/p/main.shade.ts', true);
+    expect(codesFor(shade, '/p/main.shade.ts')).toEqual([]);
+    sync.sync('/p/main.shade.ts', true);
+    expect(sync.openFileNames()).toContain('/p/node_modules/shade-lib/lib.shade.ts');
+    expect(sync.openFileNames()).not.toContain('/p/node_modules/shade-lib/package.json');
+  });
+
   it('carries an edit to an imported shader into the importer, without being asked about it', () => {
     // The service's host caches a file pulled in through `readDocument` and never re-reads it,
     // so an edit to an imported shader would otherwise be invisible to the importer.

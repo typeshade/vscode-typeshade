@@ -93,3 +93,11 @@ id first, then the pull request that did the work.
   gains a module of kernel functions, the view the pin writes for it and `kernel.ts`, which the
   tsserver test type-checks with a `Float32Array` (a promise) and with a `Resident` (`void`), and
   the fixture's other views take the default export every view now carries, handled in #33.
+- 0024: a shader file imports a package's shader module by the package's name: the readers
+  that served only a file beginning with the directive serve a `package.json` too (the
+  extension's `shaderReader`, and `DocumentSync.readDocument`, which the tsserver plugin and the
+  MCP server share, reading it through the host's `readFile`); SKILL.md's rule 10 and its TS8072
+  row; references/language.md's import section with a package's `exports`, its stem line and its
+  TS8072 list; references/diagnostics.md's TS8072 row; references/host.md's plugin and
+  `readDocument` lines; a tsserver case, a `documents.test.ts` case, two `model.test.ts` cases and
+  a `tools.test.ts` case that import a fixture package; docs/design.md §1.7, handled in #34.

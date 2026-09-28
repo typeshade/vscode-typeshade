@@ -80,11 +80,13 @@ interface Built {
 }
 
 /**
- * A `readDocument` that serves a file only when it is a shader: the text `read` finds for a uri
- * when that text carries the `"use typeshade"` directive, and nothing otherwise. The rule is the
- * tsserver plugin's (`docs/design.md` §1.7): a plain TypeScript module is written for the
- * standard library, which the TypeShade program does not have, so an import of one is left
- * unresolved, and the compiler reports it (TS8072).
+ * A `readDocument` that serves a file only when it is a shader, or a package's `package.json`:
+ * the text `read` finds for a uri when that text carries the `"use typeshade"` directive, or when
+ * the uri names a `package.json`, and nothing otherwise. The rule is the tsserver plugin's
+ * (`docs/design.md` §1.7): a plain TypeScript module is written for the standard library, which
+ * the TypeShade program does not have, so an import of one is left unresolved, and the compiler
+ * reports it (TS8072). A `package.json` is how the compiler finds a package a shader imports by
+ * its name (its change 0024), so it is served as it is.
  *
  * @param read - the text a uri names: an open editor's, else the file's on disk.
  * @returns the reader to hand {@link PreviewModel} as its host's `readDocument`.
@@ -94,8 +96,14 @@ export function shaderReader(
 ): (uri: string) => string | undefined {
   return (uri) => {
     const text = read(uri);
-    return text !== undefined && isTypeshadeSource(text, uri) ? text : undefined;
+    if (text === undefined) return undefined;
+    return isPackageJson(uri) || isTypeshadeSource(text, uri) ? text : undefined;
   };
+}
+
+/** Whether `uri` names a `package.json`, which the compiler reads to find a package. */
+function isPackageJson(uri: string): boolean {
+  return uri === 'package.json' || uri.endsWith('/package.json');
 }
 
 /**
