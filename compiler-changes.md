@@ -84,3 +84,12 @@ id first, then the pull request that did the work.
   the pin writes (`tshc sync` rewrites it); the skill's host section and references/host.md say
   `tshc sync`; docs/design.md's host view paragraph and docs/agents.md §3.1 say `tshc sync` and
   `tshc check`, and so do the MCP server's comments in format.ts and tools.ts, handled in #32.
+- 0013: a top-level loop of an exported function that takes an array runs as a GPU kernel when the
+  compiler proves its iterations independent: the skill's compute section (SKILL.md) gains the
+  kernel function beside the `@compute` entry, with an example the skill test compiles, and its
+  host section the call; references/host.md says what a kernel function is, how the call is
+  typed and awaited, what a `Resident` of its array does, and which tier runs it;
+  references/diagnostics.md's `TS8070` row already said what the pin says; `HOST_IMPORT_PROJECT`
+  gains a module of kernel functions, the view the pin writes for it and `kernel.ts`, which the
+  tsserver test type-checks with a `Float32Array` (a promise) and with a `Resident` (`void`), and
+  the fixture's other views take the default export every view now carries, handled in #33.

@@ -505,7 +505,7 @@ describe('the fixture with a real error', () => {
   });
 });
 
-describe('a host file that imports a shader through its host view (compiler 0009 and 0016)', () => {
+describe('a host file that imports a shader through its host view (compiler 0009, 0013 and 0016)', () => {
   let dir: string;
   let server: Harness;
 
@@ -551,6 +551,25 @@ describe('a host file that imports a shader through its host view (compiler 0009
     );
     const wrong = await server.diagnostics('gpu.ts');
     expect(wrong.semantic.map((d) => d.code)).toEqual([2769, 2741]);
+    expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
+  });
+
+  it('types a kernel function call with a Float32Array and with a Resident (compiler 0013)', async () => {
+    server.open('kernel.ts');
+    expect(all(await server.diagnostics('kernel.ts'))).toEqual([]);
+
+    // A call whose written arrays are all resident only queues, so the view types it `void`,
+    // and one given a Float32Array reads the array back, so it is a promise: awaiting the one
+    // and dropping the other are TypeScript's own errors at the host's line. So is a plain
+    // array where the loop's `array<f32>` takes a Float32Array.
+    server.reopen(
+      'kernel.ts',
+      HOST_IMPORT_PROJECT['kernel.ts']
+        .replace('render(k, 64, dev)', 'render(k, 64, img)')
+        .replace('total(dev)', 'total([1, 2, 3])'),
+    );
+    const wrong = await server.diagnostics('kernel.ts');
+    expect(wrong.semantic.map((d) => d.code)).toEqual([2322, 2345]);
     expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
   });
 

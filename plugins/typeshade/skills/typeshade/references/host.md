@@ -3,8 +3,9 @@
 A host uses a shader module one of two ways:
 
 - **It imports the module** through the `typeshade/vite` plugin and calls its exports. A helper
-  runs on the CPU. A `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry
-  draws into a canvas. The runtime creates the device and the pipelines.
+  runs on the CPU. A kernel function's loops run on the GPU when the compiler proves them
+  independent. A `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry draws
+  into a canvas. The runtime creates the device and the pipelines.
 - **It compiles the file** (in a build step or at start-up) and hands the emitted WGSL or GLSL to
   its own WebGPU or WebGL2 code. Nothing of TypeShade runs then.
 
@@ -32,12 +33,14 @@ checkout.
 
 ```ts
 import { resident } from 'typeshade'
-import { height } from './terrain.shade.ts'
+import { height, render } from './terrain.shade.ts'
 import { scale, blockSum } from './kernels.shade.ts'
 import { fs } from './plasma.shade.ts'
 
 const k = [1, 0.5, 2, 0.25] as const
 const h = height([0.5, 0.5], k) // a number
+const img = new Float32Array(512 * 512)
+await render(k, 512, img) // each loop the compiler proves ran on the GPU; img is filled in place
 await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is filled in place
 
 const onGpu = resident(new Float32Array(256))
@@ -51,17 +54,27 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
 
 - **A helper** a host can call is exported, not generic, takes no function, and reaches no
   binding, workgroup variable or GPU-only builtin. It runs on the CPU at f32, synchronously.
+- **A kernel function** is an exported function that takes an array with no size, `array<f32>`
+  or an array of vectors or structs. When the compiler proves, for each `for` at the top of its
+  body, that no iteration touches what another does, each loop runs on the GPU, one invocation
+  per iteration. When it cannot prove one, the whole function runs on the CPU, with a `TS8070`
+  warning on that loop that names the line and the fix. The call is asynchronous,
+  `await render(k, 512, img)`, and returns `Promise<void>`, or `Promise<R>` for a result. Each
+  array is a `Float32Array`, `Int32Array` or `Uint32Array` (the scalar's typed array for
+  vectors, an array of objects for structs), and each one the function writes is read back into
+  yours in place. It runs on the first tier that can run it: WebGPU, then WebGL2 (only when every
+  loop writes one array of numbers at `i`), then the CPU. `configure({ prefer })` orders them.
 - **A `@compute` entry** is `entry(bindings, workgroups)`. `bindings` has one property for each
   binding the entry reaches, typed exactly, so a missing or misspelled binding is a type error.
   `workgroups` is `n` or `[x, y, z]`, dispatched as written. The promise resolves once every
   storage binding it writes has been read back into the caller's value. It runs on WebGPU, and
   on the CPU where there is none (Node). An entry that reaches a barrier or reads a texture needs
   WebGPU, and `configure({ prefer })` orders the two tiers.
-- **A `Resident`**, `resident(array)` from `typeshade`, stands for a storage array with no size and
-  stays on the device: nothing is read back until `await r.read()`. When every binding an entry
-  writes is a `Resident`, the call only queues and returns nothing. Entry calls and kernel calls
-  run in the order they were made, and so does a draw that reads a `Resident`, so one call's
-  output can be the next one's input.
+- **A `Resident`**, `resident(array)` from `typeshade`, stands for a storage array with no size, or
+  a kernel function's array, and stays on the device: nothing is read back until `await r.read()`.
+  When every binding or array a call writes is a `Resident`, the call only queues and returns
+  nothing. Entry calls and kernel calls run in the order they were made, and so does a draw that
+  reads a `Resident`, so one call's output can be the next one's input.
 - **A full-screen `@fragment` entry** is `entry(canvas, bindings)`, into an `HTMLCanvasElement`
   or an `OffscreenCanvas`. It draws one frame that fills the canvas, on WebGPU, then WebGL2, then
   the CPU, and the first draw into a canvas decides its tier. The promise resolves when the frame

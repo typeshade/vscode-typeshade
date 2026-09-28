@@ -102,6 +102,22 @@ export function saxpy(@builtin("global_invocation_id") gid: vec3u): void {
 }
 ```
 
+A loop over an array needs no entry at all. An exported function that takes an array with no
+size is a kernel function. When the compiler proves, for each `for` at the top of its body, that
+no iteration touches what another does, each loop runs on the GPU, one invocation per iteration.
+When it cannot prove one, the whole function runs on the CPU, with a `TS8070` warning that names
+the line and the fix. The array is the caller's, written in place:
+
+```ts
+"use typeshade"
+
+export function multiply(k: f32, xs: array<f32>, ys: array<f32>) {
+  for (let i: u32 = 0; i < xs.length; i++) {
+    ys[i] = xs[i] * k
+  }
+}
+```
+
 More complete examples (a fullscreen pass, textures and overrides, a workgroup reduction) are in
 [references/examples.md](references/examples.md).
 
@@ -289,17 +305,18 @@ Every code, with its causes, is in [references/diagnostics.md](references/diagno
 Import the module, with `typeshade()` from `typeshade/vite` in the Vite config:
 
 ```ts
-import { height } from './terrain.shade.ts'
+import { height, render } from './terrain.shade.ts'
 import { scale } from './kernels.shade.ts'
 import { fs } from './plasma.shade.ts'
 
 const h = height([0.5, 0.5], k) // a helper runs on the CPU, synchronously, at f32
+await render(k, 512, img) // a kernel function: each loop it proves runs on the GPU; img is filled in place
 await scale({ k: 2.5, xs, ys }, 4) // a @compute entry dispatches on WebGPU; ys is filled in place
 fs(canvas, { frame: { time, scale: 0.02 } }) // a full-screen @fragment entry draws one frame
 ```
 
-A vector is a tuple of numbers, a struct an object of its fields, and an entry's bindings object
-has one property for each binding the entry reaches. `tsc` reads a generated host view,
+A vector is a tuple of numbers, a struct an object of its fields, a kernel function's array a
+typed array, and an entry's bindings object has one property for each binding the entry reaches. `tsc` reads a generated host view,
 `terrain.shade.typeshade.ts`, through `"moduleSuffixes": [".typeshade", ""]` and an `exclude` of
 the shader sources; `tshc sync` writes the views. Or compile the file and wire the output
 yourself:
