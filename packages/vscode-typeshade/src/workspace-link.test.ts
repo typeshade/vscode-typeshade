@@ -63,6 +63,24 @@ describe('the Playground link', () => {
     expect(() => readLink(link)).toThrow(/passes\/blur\.shade\.ts/);
   });
 
+  it('refuses a link whose files would be written outside the workspace folder', () => {
+    const linkWith = (files: Record<string, string>): string =>
+      `code=${encodeSource(MAIN)}&files=${encodeSource(JSON.stringify(files))}`;
+    for (const path of [
+      '../../evil.txt',
+      '../lib/noise.shade.ts',
+      'a/../../b.shade.ts',
+      '/abs/y.shade.ts',
+      '.vscode/tasks.json',
+      'typeshade.json',
+      'tsconfig.json',
+      'hello.shade.ts',
+    ])
+      expect(() => readLink(linkWith({ [path]: 'x' })), path).toThrow(/the link carries/);
+    // the neighbours it must still take
+    expect(() => readLink(linkWith({ 'passes/trail.shade.ts': TRAIL }))).not.toThrow();
+  });
+
   it('refuses a file above the main file, which the Playground cannot hold', () => {
     expect(() =>
       writeLink({ ...workspace, files: { '../lib/noise.shade.ts': TRAIL }, passes: [] }),

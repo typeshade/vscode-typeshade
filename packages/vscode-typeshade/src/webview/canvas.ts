@@ -86,6 +86,9 @@ interface Drawing {
 }
 
 let drawing: Drawing | undefined;
+/** The runtime being made, so that two loads that overlap while the device is created share it
+ *  rather than each configuring the one canvas context with a device of its own. */
+let creating: Promise<Drawing> | undefined;
 let unsupported = false;
 /** Bumped by every message, so a load that finishes after a newer one arrived is dropped. */
 let generation = 0;
@@ -153,9 +156,15 @@ async function createDrawing(programs: readonly CanvasProgram[]): Promise<Drawin
   );
   // Clamped and linear: a pass that reads the frame before must not wrap round the edge.
   const sampler = rt.sampler({ filter: 'linear', address: 'clamp' });
-  const lost = (rt.device as unknown as { lost?: Promise<{ message?: string }> }).lost;
+  const lost = (rt.device as unknown as { lost?: Promise<{ reason?: string; message?: string }> })
+    .lost;
   void lost?.then((info) => {
+    // `destroy()` resolves `lost` with 'destroyed', and a runtime we already replaced is no news.
+    if (info.reason === 'destroyed' || drawing?.rt !== rt) return;
+    // A real loss (a GPU reset, sleep and resume): forget the runtime, so that the next graph
+    // builds a new one instead of loading its pipelines on a dead device.
     running = false;
+    drawing = undefined;
     report(new Error(`The GPU device was lost: ${info.message ?? 'no reason given'}`));
   });
   return { rt, context, format, slots: new Map(), checker, sampler, loaded: [] };
@@ -167,17 +176,44 @@ function hasFeatures(rt: Runtime, programs: readonly CanvasProgram[]): boolean {
   return programs.every((p) => p.manifest.features.every((f) => features.has(f)));
 }
 
+/** The runtime to load into: the one there is, or the one being made, or a new one. */
+function drawingFor(programs: readonly CanvasProgram[]): Promise<Drawing> {
+  if (drawing !== undefined) return Promise.resolve(drawing);
+  creating ??= createDrawing(programs)
+    .then((made) => (drawing = made))
+    .finally(() => {
+      creating = undefined;
+    });
+  return creating;
+}
+
 /** Loads a graph: every program's pipeline, then the textures its passes draw into. The graph on
  *  screen is replaced only when all of it is ready. */
 async function load(message: Extract<CanvasMessage, { type: 'canvas' }>): Promise<void> {
   const mine = ++generation;
-  const programs = [...message.passes, message.main];
-  if (drawing !== undefined && !hasFeatures(drawing.rt, programs)) {
-    running = false;
-    drawing.rt.destroy();
-    drawing = undefined;
+  try {
+    await loadGraph(message, mine);
+  } catch (error) {
+    // A load a newer graph replaced may have lost its runtime to that graph: nothing to report.
+    if (mine === generation) throw error;
   }
-  const d = (drawing ??= await createDrawing(programs));
+}
+
+async function loadGraph(
+  message: Extract<CanvasMessage, { type: 'canvas' }>,
+  mine: number,
+): Promise<void> {
+  const programs = [...message.passes, message.main];
+  let d = await drawingFor(programs);
+  if (mine !== generation) return; // a newer graph arrived: it decides what the runtime keeps
+  // A runtime made for an earlier graph, or one another load shared, may lack a feature this
+  // graph needs: a device's features are fixed when it is created.
+  if (!hasFeatures(d.rt, programs)) {
+    running = false;
+    d.rt.destroy();
+    if (drawing === d) drawing = undefined;
+    d = await drawingFor(programs);
+  }
   const loaded: Loaded[] = [];
   for (const program of programs) {
     const pass = program !== message.main;

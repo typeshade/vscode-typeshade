@@ -192,7 +192,10 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
   so `workspace-link.ts` decides what may cost a request (`planLink`): only a short link
   (`/s/<id>`) whose origin is exactly `https://typeshade.dev` is fetched, and only to read its
   redirect, which `shortLinkTarget` accepts only when it leads back to that origin. Every other
-  link is read from its own fragment and never fetched.
+  link is read from its own fragment and never fetched. `readLink` then holds every path in the
+  link's `files` to the Playground's own rule (a relative `.shade.ts` path, no `..`, no leading
+  slash, not the main file's), because `openLink` writes each one into the folder the user
+  picked: a path that climbs out of it or plants `.vscode/tasks.json` is refused.
 - **2**, the Canvas tab, this repository: `TypeShade: Show Canvas` (`typeshade.showCanvas`) opens
   the panel on a fifth tab that draws the active file's workspace each frame. The pin does not
   move for it: `7c274e2` already carries `typeshade/runtime` (0025) and the pass semantics of

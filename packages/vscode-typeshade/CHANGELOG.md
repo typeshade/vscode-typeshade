@@ -18,4 +18,5 @@ The first release, over the compiler `typeshade` 0.0.1 at `7c274e2`.
 - A link is data from a stranger, since the `vscode://` handler takes it from any web page: only a
   short link on `https://typeshade.dev` is fetched, and only to read where it redirects. Any
   other link is read from its own fragment and never fetched, and a redirect that does not lead
-  back to `https://typeshade.dev` is refused.
+  back to `https://typeshade.dev` is refused. A link's files must be `.shade.ts` paths at or below
+  the workspace folder, so a link cannot write outside the folder the user picked.

@@ -130,6 +130,21 @@ const PASS_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  *  relative `.shade.ts` path of letters, digits, dots, hyphens, underscores and slashes. */
 const FILE_PATH = /^(?!\/)(?!.*\.\.)[A-Za-z0-9._\-/]+\.shade\.ts$/;
 
+/** The paths of a link's files, each held to the Playground's own rule. A link is data from a
+ *  stranger and `openLink` writes every path it carries into a folder the user picked, so a path
+ *  that climbs out of it (`../`), starts at the root, or is no `.shade.ts` file (`.vscode/tasks.json`)
+ *  is refused, as is one that would replace the main file. */
+function checkedFilePaths(files: Readonly<Record<string, string>>): void {
+  for (const path of Object.keys(files)) {
+    if (!FILE_PATH.test(path))
+      throw new Error(
+        `the link carries the file ${path}, which is no .shade.ts path at or below the main file's directory, so nothing was read`,
+      );
+    if (path === PLAYGROUND_MAIN)
+      throw new Error(`the link carries a file at ${path}, the path of its main file`);
+  }
+}
+
 function checkedPasses(passes: readonly Pass[], files: Readonly<Record<string, string>>): Pass[] {
   return passes.map((pass) => {
     if (!PASS_NAME.test(pass.name)) throw new Error(`the pass name ${pass.name} is no identifier`);
@@ -160,6 +175,7 @@ export function readLink(link: string): LinkContents {
       !Object.values(files).every((text) => typeof text === 'string')
     )
       throw new Error('the link carries files that are not a JSON object of texts by path');
+    checkedFilePaths(files as Record<string, string>);
     const passes = (params.get('passes') ?? '')
       .split(',')
       .filter((pair) => pair !== '')

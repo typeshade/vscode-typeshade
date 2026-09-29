@@ -155,7 +155,7 @@ built.push(
 // browser context rather than in node, so it is not `common`'s. An IIFE, because a webview loads
 // it with a plain `<script>` tag and a module script would need a second content security policy
 // entry. It carries `typeshade/runtime` (the program runtime, compiler change 0025) and nothing
-// of the compiler: the extension host compiles and posts the manifests, and `build.test.ts`
+// of the compiler: the extension host compiles and posts the manifests, and `webview.test.ts`
 // holds the bundle to that, since a webview that quietly grew the whole compiler would still work.
 const webview = await build({
   entryPoints: [join(root, 'packages/vscode-typeshade/src/webview/canvas.ts')],
