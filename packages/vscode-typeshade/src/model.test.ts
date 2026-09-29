@@ -177,6 +177,17 @@ describe("the preview's module is the one compile() builds", () => {
         return;
       }
       expect(packModule(preview.module(uri)!)).toEqual(packModule(compiled.module!));
+      // The text tabs print the service's compiled output, which the compiler holds to
+      // compile()'s own text (its compiled-output-parity test); here, that the panel shows it.
+      // `inferred-returns` holds the same lines in another order there, and so it does here.
+      const wgsl = preview.output(uri, 'wgsl')?.text;
+      const lines = (text: string | undefined): string[] =>
+        (text ?? '')
+          .split('\n')
+          .filter((line) => line.trim() !== '')
+          .sort();
+      if (file === 'inferred-returns.shade.ts') expect(lines(wgsl)).toEqual(lines(compiled.wgsl));
+      else expect(wgsl).toBe(compiled.wgsl);
     });
   }
 });

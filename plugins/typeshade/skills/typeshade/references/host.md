@@ -129,11 +129,20 @@ await frame.submit() // the console lines print here
 - **A program** is `rt.load(manifest)`, refused for another schema or a feature the device lacks.
   `program.compute(entry)` and `program.render(state)` resolve to cached pipelines laid out from
   the manifest; `state` holds the colour targets, depth, topology, culling and multisampling.
+- **Overrides by name.** `render({ targets, constants: { quality: 3 } })` and
+  `compute('step', { constants: { iterations: 64 } })` set the program's overrides; one left out
+  keeps its default. An unknown name, or a value its type cannot hold, is a `TypeError`; each set
+  of values is its own cached pipeline.
+- **A texture's layout** follows the calls that read it: one a program only loads is
+  `unfilterable-float`, so an `r32float` texture binds; one a sampler reads takes a filterable
+  format.
 - **Bindings go by name**, `{ name: value }`: a plain host value, packed by the binding's layout;
   a `Resident`; a `Texture` or `Sampler` from `rt.texture()` and `rt.sampler()`; or the host's
   own `GPUBuffer`, `GPUTexture` or `GPUSampler`. An unknown name, a missing binding and a value of
   the wrong shape are a `TypeError` naming the entry, its line and the binding.
-- **A frame** is one encoder: `frame.dispatch()`, `frame.pass(targets, record)`, then `submit()`.
+- **A frame** is one encoder: `frame.dispatch()`, `frame.pass(targets, record)`, then `submit()`,
+  which resolves to `{ console: [{ entry, lines, dropped }, …] }`, a row per dispatch or draw that
+  recorded.
   A host with encoders of its own records with `pipeline.dispatch(encoder, …)` and
   `pipeline.draw(pass, …)` and submits with `rt.submit(encoder)`.
 - **One device for both layers.** `configure({ runtime: rt })` puts the imported module's calls on
@@ -145,6 +154,9 @@ await frame.submit() // the console lines print here
   `typeshade/emit`, records the console of a program whose build did not, from the IR the
   manifest carries when built with `ir: true`. Only the package version that wrote the IR reads
   it.
+- **Reading a texture back.** `texture.read()` gives its bytes, rows tightly packed, for any
+  uncompressed format and `depth32float`; `texture.readFloats()` gives the same channels as numbers
+  (a float format decoded, `unorm` 0 to 1). Either reads what was submitted before the call.
 - The runtime is WebGPU only: WebGL2 and the CPU stay the imported module's tiers.
 
 ## compile() and reflect()
