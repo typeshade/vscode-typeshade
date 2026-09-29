@@ -80,6 +80,10 @@ activation event that means exactly "this is a TypeShade project".
   redirect, decodes it with the same `encodeSource` format, asks for a folder, writes the files
   and `typeshade.json`, and opens it. The button is shown only as a second choice beside Download,
   since a browser cannot tell whether the extension is installed.
+  The site percent-encodes the link twice: VS Code decodes a uri's query once before the handler
+  sees it, and the handler reads `link` with `URLSearchParams`, which decodes it again. Encoded
+  once, a page URL that carries `&code=...&files=...&passes=...` would reach the handler cut at
+  its first `&`. The site's check-playground step 51 holds the button to this.
 
 ### 2.3 Editor to Playground
 
