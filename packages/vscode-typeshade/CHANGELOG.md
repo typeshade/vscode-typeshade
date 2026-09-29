@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The preview panel shows an untitled editor that starts with `"use typeshade"`. Its WGSL and
+  GLSL tabs were empty: the panel runs its own copy of the compiler's service, which left the
+  untitled name out of its program, as the plugin's copy did before 0.2.1.
+- The Reflection tab lists a program's overrides, and Run Entry on CPU runs an entry that reads
+  an override or a module-scope `var` (a `workgroup` or a `private` one). The panel built the
+  module it reflects and runs with four of the compiler's eight fields, and showed a static-only
+  class, a namespace of functions, as an empty struct.
+
 ## 0.2.1
 
 A fix over 0.2.0, with the same compiler (`typeshade` 0.0.1 at `7c274e2`).

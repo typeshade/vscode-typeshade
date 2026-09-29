@@ -146,7 +146,9 @@ which answers §7's open question about the threshold for this file. The extensi
    is not a TypeScript one, so the service answered `[]` for it. The same holds on the desktop,
    where the name is `^/untitled/...`. Fixed after 0.2.0 by holding such a file in the service
    under an alias (`packages/tsserver-plugin/src/program-names.ts`), with a real tsserver test of
-   both names.
+   both names. The desktop preview panel runs its own copy of the service and had the same fault,
+   empty WGSL and GLSL tabs for an untitled editor; fixed after 0.2.1 by holding the file through
+   the same wrapper (`packages/vscode-typeshade/src/model.ts`).
 2. **A shader shows TypeScript's false errors until the plugin loads.** In the semantic server's
    log, the first `semanticDiag` events for both files carry TS2349, TS2304 and TS1206 and come
    before `[typeshade] plugin loaded`; the next ones carry 8003 and 8004, and `[]`. The Problems
