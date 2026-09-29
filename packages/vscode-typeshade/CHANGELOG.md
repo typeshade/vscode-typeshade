@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 The first release that runs in VS Code for the Web, over the same compiler as 0.1.0: `typeshade`
 0.0.1 at `7c274e2`. On the desktop nothing changes.
