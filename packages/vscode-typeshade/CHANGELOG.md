@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
+
+A fix over 0.2.0, with the same compiler (`typeshade` 0.0.1 at `7c274e2`).
 
 ### Fixed
 
