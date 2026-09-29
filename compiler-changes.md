@@ -116,4 +116,4 @@ id first, then the pull request that did the work.
 - 0028: what the program runtime's first hosts need: references/host.md's program runtime
   section names the override values `render()` and `compute()` take, the texture layout the
   calls that read a texture decide, the console's counts `submit()` resolves to, and `read()` and
-  `readFloats()`, handled in #47.
+  `readFloats()`, handled in #48.
