@@ -50,6 +50,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # `npm ci` would otherwise download a Chromium for `@vscode/test-web`, which no step here uses
+  # (the browser is fetched by the `web` job of ci.yml alone).
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
 concurrency:
   group: publish-mcp-${{ github.ref }}
   cancel-in-progress: false

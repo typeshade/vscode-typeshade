@@ -27,11 +27,13 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:electron": "npm run build && node packages/vscode-typeshade/dist/test-electron/main.js",
+    "test:web": "npm run build && node scripts/package-extension.mjs && node scripts/test-web.mjs",
     "check:prose": "node scripts/check-prose.mjs",
     "check": "npm run build && npm run typecheck && npm run lint && npm run format:check && npm run check:prose && npm run test"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@vscode/test-web": "0.0.81",
     "esbuild": "^0.28.2",
     "eslint": "^9.17.0",
     "prettier": "^3.4.2",

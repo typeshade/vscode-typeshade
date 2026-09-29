@@ -1,7 +1,7 @@
 {
   "name": "vscode-typeshade",
   "displayName": "TypeShade",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "TypeShade language support for VS Code: diagnostics, hover, completions and navigation for \"use typeshade\" files, with a WGSL and GLSL preview.",
   "license": "Apache-2.0",
@@ -21,6 +21,7 @@
     "vscode": "^1.90.0"
   },
   "main": "./dist/extension.js",
+  "browser": "./dist/web/extension.js",
   "activationEvents": [
     "onLanguage:typescript",
     "onUri"

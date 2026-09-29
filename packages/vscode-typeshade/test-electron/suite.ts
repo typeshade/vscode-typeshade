@@ -15,22 +15,13 @@ import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as vscode from 'vscode';
 import type { TypeshadeApi } from '../src/extension.js';
+import { createSuite } from '../test-shared/harness.js';
+import { open, registerPluginCases, waitFor } from '../test-shared/plugin-cases.js';
 
 /** The extension's id, as the Marketplace will address it: publisher, then name. */
 const EXTENSION_ID = 'typeshade.vscode-typeshade';
 
-/** One case. */
-interface Case {
-  readonly name: string;
-  readonly body: () => Promise<void>;
-}
-
-const cases: Case[] = [];
-
-/** Registers a case. */
-function test(name: string, body: () => Promise<void>): void {
-  cases.push({ name, body });
-}
+const { test, run } = createSuite();
 
 test('activates, and contributes the plugin to the workspace TypeScript', async () => {
   const extension = vscode.extensions.getExtension(EXTENSION_ID);
@@ -121,106 +112,8 @@ test('leaves a file without the directive alone', async () => {
   assert.equal(vscode.window.tabGroups.all.flatMap((group) => group.tabs).length, before);
 });
 
-test('TypeScript itself is answering, which is what makes the next case mean anything', async () => {
-  // The control. Without it the next case passes on a host where no language server ran at all:
-  // "no diagnostic carries the source `ts`" is true of an empty list. This file has a real
-  // TypeScript error, so TS2322 arriving proves the TypeScript extension is alive and reporting
-  // in this window before anything is claimed about a shader.
-  const document = await open('broken-ts.ts');
-  const diagnostics = await waitFor(() => {
-    const current = vscode.languages.getDiagnostics(document.uri);
-    return current.length > 0 ? current : undefined;
-  }, 60_000);
-  assert.ok(diagnostics, 'TypeScript reported nothing on a file with a real type error');
-  assert.deepEqual(
-    diagnostics.map((d) => d.code),
-    [2322],
-  );
-});
+// The three cases about the plugin itself are shared with the web suite: the same files, the same
+// assertions, in the host that runs the desktop's server and the one that runs the browser's.
+registerPluginCases(test);
 
-test('the server plugin replaces TypeScript answers on a shader', async () => {
-  // The assertion only a real host can make, and the reason this suite exists at all: the
-  // manifest's `typescriptServerPlugins` entry is the only thing that loads the plugin, and
-  // nothing in vitest can prove it worked. Without it this file reports TS1206 on `@fragment`
-  // and TS2304 on `f32` and `vec4`, which is the false-positive case
-  // `docs/measurements/two-program-cost/` measured 58 of across the compiler's six examples.
-  const document = await open('hello.shade.ts');
-  const diagnostics = await waitFor(() => {
-    const current = vscode.languages.getDiagnostics(document.uri);
-    return current.length === 0 ? current : undefined;
-  }, 60_000);
-  assert.ok(
-    diagnostics,
-    `a clean shader still reports ${JSON.stringify(
-      vscode.languages
-        .getDiagnostics(document.uri)
-        .map((d) => `${d.source ?? ''}:${String(d.code)}`),
-    )}`,
-  );
-});
-
-test('a real TypeShade error reaches the Problems view as TypeShade', async () => {
-  // Silence proves the plugin suppressed something; this proves it ANSWERED. A regression that
-  // turned the plugin into a mute would pass the case above and fail this one.
-  const document = await open('broken.shade.ts');
-  const diagnostics = await waitFor(() => {
-    const current = vscode.languages.getDiagnostics(document.uri);
-    return current.some((d) => d.source === 'typeshade') ? current : undefined;
-  }, 60_000);
-  assert.ok(diagnostics, 'no diagnostic from the TypeShade program arrived');
-  const own = diagnostics.filter((d) => d.source === 'typeshade');
-  assert.deepEqual(
-    own.map((d) => d.code),
-    [8004],
-  );
-  assert.ok(own[0].message.includes('Unknown function'));
-  // TS1206 on the decorator and TS2304 on `f32` are gone, which is the replacement itself.
-  assert.deepEqual(
-    diagnostics.filter((d) => d.code === 1206),
-    [],
-  );
-});
-
-/**
- * Runs every case. The VS Code test runner fails the run when this rejects.
- *
- * @returns nothing, or rejects with every failure at once.
- */
-export async function run(): Promise<void> {
-  const failures: string[] = [];
-  for (const one of cases) {
-    try {
-      await one.body();
-      console.log(`  ok  ${one.name}`);
-    } catch (error) {
-      failures.push(`${one.name}: ${error instanceof Error ? error.message : String(error)}`);
-      console.log(`FAIL  ${one.name}`);
-    }
-  }
-  console.log(`${cases.length - failures.length}/${cases.length} passed`);
-  if (failures.length > 0) throw new Error(`\n${failures.join('\n')}`);
-}
-
-/** Opens a fixture file in the test workspace and shows it. */
-async function open(name: string): Promise<vscode.TextDocument> {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  assert.ok(folder, 'the test host opened no workspace folder');
-  const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(folder.uri, name));
-  await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
-  return document;
-}
-
-/** Polls `probe` until it answers with something, or gives up.
- *
- *  Everything a language server does is asynchronous and unannounced: there is no event for
- *  "tsserver has finished loading its plugins", so a suite that asserts on diagnostics has to
- *  wait for them to settle. */
-async function waitFor<T>(probe: () => T | undefined, ms = 10_000): Promise<T | undefined> {
-  const deadline = Date.now() + ms;
-  for (;;) {
-    const found = probe();
-    if (found !== undefined) return found;
-    if (Date.now() > deadline) return undefined;
-    await delay(250);
-  }
-}
+export { run };

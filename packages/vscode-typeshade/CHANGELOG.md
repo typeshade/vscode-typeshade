@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.0
+
+The first release that runs in VS Code for the Web, over the same compiler as 0.1.0: `typeshade`
+0.0.1 at `7c274e2`. On the desktop nothing changes.
+
+### Added
+
+- Web support for the language features. On VS Code for the Web (vscode.dev and other pages) the
+  TypeScript server plugin gives `"use typeshade"` files TypeShade's diagnostics, hover and
+  imports between shader files, and TypeScript's false errors on them go away. Completion,
+  signature help, references, rename and the outline use the same plugin methods and are not
+  covered by a browser test.
+- A web entry for the extension (`browser` in the manifest), a small stub, and a second plugin
+  bundle for the browser.
+
+### Notes
+
+- The web build needs VS Code for the Web 1.110 or newer and a cross-origin isolated page. On an
+  older VS Code the plugin is not loaded, and on a page that is not isolated the TypeScript server
+  reports no semantic errors at all, so neither TypeScript nor TypeShade shows one. The extension
+  says which once, when it activates.
+- On the web every command of the extension shows a message and does nothing else: the preview, the
+  Canvas, Run Entry on CPU, Copy Output, Open in Playground and Open Playground Link need the
+  desktop version. The extension's settings are not read on the web.
+- Tested on VS Code for the Web 1.139.1 and 1.110.0 in Chromium. Other browsers, other VS Code
+  builds and a real installed copy on vscode.dev were not tested at the time of writing.
+- The package grows from about 4.1 MB to 5.4 MB, which is the web plugin bundle (4.6 MB, about
+  1.3 MB compressed). The desktop extension bundle is byte for byte what it was, and the
+  desktop plugin bundle grew by 673 bytes for the split that lets both entries share one factory.
+
 ## 0.1.0
 
 The first release, over the compiler `typeshade` 0.0.1 at `7c274e2`.

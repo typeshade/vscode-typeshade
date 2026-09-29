@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `41872ee`
-(2026-09-28). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `7c274e2`
+(2026-09-29), and was `41872ee` (2026-09-28) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
@@ -13,7 +13,8 @@ repository names and change no mapping, and so does the move on to `c9dc8c0`, wh
 `typeshade check` as a function (`checkOpenDocument`) and the GLSL and HLSL names
 (`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). The moves
 after `c9dc8c0` record what each owed in `compiler-changes.md` and change no mapping either: at
-`41872ee` every service call in §3 type-checks and the tests pass. §1.3, §4 and §7 were re-measured at `7f0b482` with the
+`41872ee` every service call in §3 type-checks and the tests pass, and `npm run check` passes at
+`7c274e2` too. §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
@@ -88,7 +89,8 @@ over it plus the pieces tsserver cannot carry.**
 ### 1.1 The shape
 
 `@typeshade/tsserver-plugin` is a CommonJS module whose module export is the factory tsserver
-calls (`ts.server.PluginModule` and `ts.server.PluginCreateInfo` are declared in
+calls on the desktop (VS Code for the Web gets a second entry, an ES module with the same factory
+as its default export, §3.1) (`ts.server.PluginModule` and `ts.server.PluginCreateInfo` are declared in
 `typescript/lib/typescript.d.ts`, not only in the deprecated `tsserverlibrary.d.ts`). tsserver
 hands it the project's `LanguageService`, the project's `LanguageServiceHost`, and its own
 `typescript` module; the factory returns a service that is the project's own for every file and
@@ -119,6 +121,18 @@ service's own host (`src/language-service/host.ts`).
   invisible to the importer's diagnostics. The plugin therefore syncs every directive-carrying
   file it resolves an import to, by the same version comparison as above, and `readDocument`
   stays as the fallback for a file tsserver has no snapshot for.
+
+**Where the plugin reads a file itself.** Snapshots are not all of it. A `package.json` the
+compiler asks for, and a file tsserver has no snapshot for, are read through the sync host's
+`readFile` (`documents.ts`). On the desktop that is `info.languageServiceHost.readFile`: the
+project's own host goes to `DocumentSync` unchanged (`syncHostOf` in `decorate.ts`). On the web it
+is `info.serverHost.readFile`, because that is the reader measured to answer inside the web
+worker: it returned a mounted file's text on a cross-origin isolated page and `undefined` on one
+that was not (`docs/measurements/web-plugin-load/`). Snapshots, versions, the file list and the
+project version come from the language service host on both platforms, since `serverHost` has no
+counterpart for them. In TypeScript 5.6.3 and 6.0.3 the two readers are the same function
+(`Project.readFile` is `projectService.host.readFile`), which was read from those sources, not
+run under both; it is why the desktop path stays as it was.
 
 Every editor that runs tsserver gets the result: VS Code, Cursor, Windsurf, WebStorm, Neovim's
 `ts_ls`, Sublime's LSP-typescript. The VS Code extension's part in it is four lines of manifest,
@@ -171,10 +185,20 @@ bundle sits, which finds a DIFFERENT copy in a development checkout and nothing 
 packaged extension. §2 has what that cost and how it was found. The plugin therefore does carry
 a second `typescript`, it does pay for it, and the numbers below say so.
 
-The plugin's own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, is
-10.6 MB (11,131,568 bytes) as built at `7f0b482`. The two numbers measure different things and are
-close enough to be mistaken for each other, so both are spelled out wherever either appears.
-Every figure below was measured with the compiler at `7f0b482`. Earlier figures in this
+The plugin's own bundle, the same subpath plus everything in `packages/tsserver-plugin/src`, was
+10.6 MB (11,131,568 bytes) as built at `7f0b482`, when the figures below were measured. Built at
+the pinned `7c274e2` on 2026-09-29 it is 11.7 MB (11,706,860 bytes), and the figures below were
+not repeated for it. The two numbers measure different things and are close enough to be mistaken
+for each other, so both are spelled out wherever either appears.
+
+**The web plugin is a third number, and the smallest.** VS Code for the Web fetches the plugin
+into a worker on every start, so it is built differently from the desktop file
+(`scripts/build.mjs`): a browser ES module, minified, with `typescript` still inlined for the
+reason above. `packages/tsserver-plugin/dist/index.web.js` is 4.4 MiB (4,601,293 bytes) and
+1,294,866 bytes gzipped at level 9, against 11,706,860 bytes for the desktop file. What a CDN
+sends for it, whether compressed or not, is not measured (§7, §8 item 12).
+
+Every figure in the table below was measured with the compiler at `7f0b482`. Earlier figures in this
 section were taken before the correction, with `typescript` external and loaded ahead of the
 baseline, so they measured a bundle that no longer ships and are not repeated.
 
@@ -648,6 +672,98 @@ puts all of it in `documentation` and leaves `displayParts` empty.** That is wha
 compiler's type signature read as a signature and its prose read as prose. §6 pins it with an
 assertion on a hover whose text has both halves.
 
+### 3.1 On VS Code for the Web
+
+**Decision (2026-09-29): the web build is the plugin and nothing else.** The plugin is the part of
+this extension that is not extension code, so it is the part that can run in the tsserver web
+worker with no Node in it. The preview, the Canvas, Run Entry on CPU and the Playground commands
+stay on the desktop, and on the web each of them is a command that says so. The probe that
+established the route is `docs/measurements/web-plugin-load/`, and `docs/playground-bridge.md` §4
+has the part of the story that is about the Playground.
+
+What runs where, with what backs each row:
+
+| Feature                                                             | On the web                                                                     | What backs it                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TypeShade diagnostics, and TypeScript's false errors gone           | yes                                                                            | The web suite (`test-web/suite.ts`) on VS Code 1.139.1 and 1.110.0, cross-origin isolated: TS2322 arrives on a plain file, nothing on a clean shader, and TS8004 with source `typeshade` on a broken one (7 of 7 cases)                                                        |
+| Hover                                                               | yes                                                                            | The same suite: hover on `vec4` answers from the compiler where bare TypeScript says `any`                                                                                                                                                                                     |
+| An import between two shader files                                  | yes                                                                            | The same suite: TS8003 arrives across `./lib.shade.js`, and neither TS8072 nor TS2307 does. Measured in the isolated semantic server, which was the open question after the probe                                                                                              |
+| Definition                                                          | yes, by the desktop bundle's own answers                                       | `build-web.test.ts` runs the web bundle (in a Node child process with `process`, `Buffer`, `setImmediate` and `require` deleted) and the desktop bundle over 8 fixtures, and their diagnostics, hover and definition come back identical. No browser case asserts a definition |
+| Completion, signature help, references, rename, tree, token colours | the same decorated methods; **not measured in a browser**                      | Nothing asserts them on the web                                                                                                                                                                                                                                                |
+| Preview (WGSL, GLSL, Reflection), Canvas, Run Entry, Copy Output    | no: a message says they need the desktop version                               | `extension.web.ts` registers a stub for every command the manifest contributes                                                                                                                                                                                                 |
+| Open in Playground, Open Playground Link, the `vscode://` handler   | no, same message                                                               | `docs/playground-bridge.md` §4, "Why the Playground commands stay on the desktop"                                                                                                                                                                                              |
+| `typeshade.diagnostics.replace` and the other settings              | not read: the web entry sends the plugin no configuration and reads no setting | `extension.web.ts`. On the desktop the plugin has no handler for the configuration `extension.ts` sends either (no `onConfigurationChanged` in `packages/tsserver-plugin/src`), which is a separate issue and not promised on either platform (§8 item 12)                     |
+
+**Two conditions, and what happens without them.** The page must be cross-origin isolated, and the
+VS Code for the Web must be 1.110.0 or newer.
+
+- _Isolation._ Without it the web TypeScript server runs only its syntax half: the plugin loads
+  once, in that server, `getSemanticDiagnostics` is never called, and neither TypeScript nor
+  TypeShade reports a semantic error (measured in the probe with `--coi` off: TS8004 and TS2322
+  both absent, hover still answered). vscode.dev, github.dev without a sign-in and
+  insiders.vscode.dev were reported isolated in the planning notes of this change, as the page's
+  `crossOriginIsolated` and its opener and embedder policy headers. That run is not committed here
+  and was not repeated, so the claim is not reproducible from this repository until §7's manual
+  check is done on the installed extension. A self-hosted VS Code for the Web, an embedder,
+  Firefox and Safari were not measured.
+- _Version._ 1.110.0 is the oldest build measured to load the plugin (web suite, 7 of 7). 1.109.0
+  and 1.90.0 were run in the planning runs and did not request the plugin file, so TypeScript's
+  false errors stay there. Those runs are not committed; the suite skips the plugin cases on
+  1.109.0 because it assumes the plugin does not load, and it does not assert that. 1.95 to 1.108
+  were judged from the sources and never run.
+
+`engines.vscode` stays `^1.90.0` (§8 item 10), so a VS Code for the Web older than 1.110 can install
+the extension. The stub's activation warning is the only safeguard there: it shows once, and says
+which of the two conditions failed. The version case is worded so that it never suggests isolation
+would help, and the version is checked first (`describeEnvironment`, `web-support.ts`). The
+isolation warning names no host as isolated, because that rests on the notes above and is not
+measured here; it names the two headers a self-hosted page needs.
+
+**Why a stub entry at all.** The plugin does not need one to run, and VS Code does not treat an
+extension as a web extension without a `browser` entry, so the contribution would never be read
+(the probe's variant table). So `packages/vscode-typeshade/package.json` has
+`"browser": "./dist/web/extension.js"` beside `main`, and that file is a 4 KB stub
+(`extension.web.ts`, `web-support.ts`). Every command the manifest contributes is registered from
+`context.extension.packageJSON` at run time, not from a second list: a command that is contributed
+and not registered fails with "command not found", and the editor title menu and a key binding
+reach it even where the palette would hide it. Hiding the commands from the palette on the web
+was not done. The stub is CommonJS, because the web extension host runs the file with
+`new Function('module', 'exports', 'require', text)` and refuses ES modules for extensions
+(read from the host's sources in planning; the stub is tested by running it that way, in a `vm`
+realm with none of `process`, `Buffer`, `require` or `module`). `eslint.config.mjs` refuses a
+Node import in the three web files, because `tsc` here has Node's types and would not.
+
+**The plugin package.** The staged plugin package has `main: ./index.js` for the desktop and
+`browser: ./index.web.js` for the web, and the web host reads only `browser` (the probe's
+`esm-nobrowser` variant did not load). `vsce` checks that the extension's `browser` file exists
+and never opens the plugin's `package.json`, so `scripts/package-extension.mjs` does, before it
+calls `vsce`: a `main` or `browser` in either manifest that is not a `./` path to a non-empty
+file in the stage throws, and no `.vsix` is written.
+
+**Two TypeScripts in one worker.** The web bundle carries its own `typescript` (5.6.3, the
+compiler's), for the reason §1.3 gives, and receives the server's in `modules.typescript` (6.0.3 in
+VS Code 1.139.1; the version in 1.110.0 was not recorded). The server's instance is the one every
+tsserver node is read with, and the bundled one is the compiler's alone. That mixed pair passed the
+web suite on 1.139.1 and on 1.110.0. `process.browser` is defined `true` in the web bundle because
+the bundled TypeScript otherwise takes its Node path when a `process.nextTick` and a `require`
+exist, and then calls `os.platform()` through a `require` esbuild stubbed for the browser
+(`build-web.test.ts` runs the bundle once with that pair present and fails without the define).
+
+**A `.js` file, minified, in one piece.** The file is `.js` because a browser ignores a package's
+`type`, and the probe loaded ES module syntax from `dist/plugin.js` with no `type` field; the
+planning notes had confirmed the extension CDN's `application/javascript` for `.js` only. Whether the
+installed package's plugin file is served with that type is not measured until it is published
+(§7). One file rather than several, and minified with no `keepNames`: it is 4.4 MiB instead of
+11.7 MB, function names in a log stack are lost, and the one reader of stack frames in the
+compiler (`loc.ts`) runs only while tracing is on. The web worker fetches the file on every start,
+once per server, so two fetches in an isolated page; how much a real network makes that cost is
+not measured (the local import and evaluation took 350 to 390 ms in the planning runs).
+
+**The plugin is created twice.** Once in the `partialSemantic` syntax server and once in the
+semantic server, each in its own worker (the probe's log). The plugin decorates in both:
+skipping the decoration in the syntax server would save little, and which requests that server
+routes to plugins was not verified.
+
 ## 4. The extension surface
 
 The extension is the shell. Its job is to turn the plugin on, and then to own the three things
@@ -659,6 +775,13 @@ one.
 second flag matters: without it the plugin loads only under VS Code's bundled TypeScript, and a
 repository that pins its own `typescript` (which every repository with a `.shade.ts` file in it
 does) would silently get nothing.
+
+**The web entry.** The manifest also has `"browser": "./dist/web/extension.js"` beside `main`. It
+is what makes VS Code treat the extension as a web extension, and it is a stub whose commands say
+they need the desktop (§3.1). The desktop never reads it: the electron suite passes with the
+field present, from the development path and from the staged package (§6). It changes the
+package's declared `ExtensionKind` from `workspace` to `workspace,web`, which `vsce` infers from
+`main` plus `browser`; what that does to an SSH or WSL remote window was not measured.
 
 **Activation events.** `onLanguage:typescript`, and `onUri`. A `"use typeshade"` file is a
 TypeScript file, so that is the event that fires for it, and contributed commands activate
@@ -973,12 +1096,68 @@ the rest.
 
 The extension's logic lives in modules that do not import `vscode` (the compiled-output model,
 the invocation form's validation, the panel's HTML, the Canvas's plan and message, the launch
-configuration mapping), each
+configuration mapping, and the web entry's decisions in `web-support.ts`), each
 unit-tested with vitest, so the electron suite is left with exactly what only a real host can
 answer: that the extension activates, that its commands register, that the panel opens beside
 the editor, that the Canvas tab's script loads and reports that it drew or why it could not (the
 extension returns that status from `activate`, since nothing else can tell whether a webview
 drew), and that the plugin the manifest contributes actually loaded.
+
+**The web build is tested in three places, and each answers something the others cannot.**
+
+- _In Node, by vitest._ `packages/tsserver-plugin/src/build-web.test.ts` loads the web plugin
+  bundle in a child process with `process`, `Buffer`, `setImmediate` and `require` deleted, over a
+  real `ts.createLanguageService`, once as a normal server and once as a `PartialSemantic` one, and
+  compares it with the desktop bundle over 8 fixtures (§3.1). It also resolves an import whose
+  `package.json` only `serverHost` can read, and leaves the same import unresolved through the
+  desktop bundle as the control. `packages/vscode-typeshade/src/web-build.test.ts` runs the web
+  stub in a `vm` realm that has none of those globals, with a `require` that throws for anything
+  but `vscode`, and checks that the file is under 32 KB and names no `node:` module. The staged
+  package's `browser` fields are checked by `manifest.test.ts` and by
+  `scripts/package-extension.mjs` itself (§7).
+- _In a real browser build of VS Code, by `@vscode/test-web`._ `npm run test:web` builds, stages the
+  package and runs `scripts/test-web.mjs`, which serves a browser build of VS Code named by commit,
+  opens the staged directory as the extension under test in Playwright's headless Chromium, and
+  runs `test-web/suite.ts` inside the web extension host. `@vscode/test-web` is pinned to exactly
+  0.0.81. The suite has seven cases: the extension activates and reports the page it runs in,
+  compared with an independent reading of `crossOriginIsolated` and `vscode.version`; every
+  manifest command is registered and a stub does not open a tab; the three plugin cases the
+  electron suite runs (`test-shared/plugin-cases.ts`, one source for both platforms); hover; and
+  the import between two shaders. The plugin cases are reported as skipped, with the reason, where
+  the page is not isolated or the host is older than 1.110, so a run that never exercised the
+  plugin cannot read as one that did. The runner writes what it asked of the page into
+  `expect.json`, and the first case fails when the page disagrees: otherwise a `--coi` that quietly
+  stopped working would turn every run into the skipped half and pass. A manifest without
+  `browser` makes the web host log "not a web extension" and never start the suite, so the runner
+  fails the run after `TYPESHADE_WEB_TIMEOUT_MS` (600 s by default) and names that cause.
+- _In CI._ The `web` job of `ci.yml`, `extension tests in VS Code for the Web (<label>)`, is
+  three cells, each one VS Code build named by commit: 1.139.1 isolated
+  (`04c0d99f4fb0d8afe6ce4f0c58e31e183ac3e4b1`), 1.110.0 isolated
+  (`0870c2a0c7c0564e7631bfed2675573a94ba4455`, the plugin's floor) and 1.139.1 not isolated.
+  Each installs Chromium, packs the `.vsix`, checks in shell that its manifest declares
+  `workspace,web` and the `__web_extension` tag and that it lists both web files, unpacks it and
+  runs the suite against that directory, so a file the packaging dropped is missing as it would be
+  for a user. The build directory is cached per commit. The two commits are bumped by hand.
+
+**Measured on 2026-09-29 on this machine, before the job had run on a GitHub runner:**
+
+| Run                                                       | Result                                                                                               |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Web suite, VS Code 1.139.1, isolated                      | 7 of 7 passed                                                                                        |
+| Web suite, 1.110.0, isolated                              | 7 of 7 passed                                                                                        |
+| Web suite, 1.139.1, not isolated                          | 2 of 7 passed, 5 skipped                                                                             |
+| Web suite, 1.109.0, isolated                              | 2 of 7 passed, 5 skipped, for "does not load the plugin" (a local run, not a CI cell)                |
+| Web suite, 1.139.1 isolated, against the unzipped `.vsix` | 7 of 7 passed                                                                                        |
+| Electron suite, 1.139.1, development path                 | 8 of 8 passed, with `browser` in the manifest and `dist/web/extension.js` built                      |
+| Electron suite, 1.139.1, the staged package               | 8 of 8 passed                                                                                        |
+| Manifest without `browser`                                | the web host does not load the extension and the suite never starts; the watchdog then exits 1       |
+| The plugin's `package.json` without `browser`             | exit 1, 3 of 7 passed; four cases red: the replacement case, the Problems view, hover and the import |
+
+That last run also showed two cases that passed with the plugin removed, and both were tightened:
+the replacement case now requires the list to stay empty for 5 s, and hover asks at `vec4`, where
+bare TypeScript says `any`. What has not been measured: the `web` job on a GitHub runner (it has to
+run at least three times before it is trusted, since a red cell holds a release, §7), Firefox,
+Safari, vscode.dev itself, and a real CDN's content types.
 
 **The debug adapter is tested at the protocol level**, with `@vscode/debugadapter-testsupport`'s
 `DebugClient` over a pipe: launch a fixture shader, set a breakpoint on a known line, assert the
@@ -989,8 +1168,12 @@ translation only, which is the same split §5 states for its size.
 
 **The gate.** Everything above runs in `npm run check`: typecheck, eslint, prettier, the em dash
 gate, and vitest. CI runs it on node 20 and node 22, with the submodule checked out. The
-electron tests are their own job, because they need `xvfb` and a 327 MB download, and because a
-Marketplace publish must not wait on them being flaky.
+electron tests are their own job, because they need `xvfb` and a 327 MB download. The web tests
+are a third job, which needs Chromium and a build of VS Code per commit (199 MB unpacked for
+1.139.1, 109 MB for 1.110.0). Neither is a
+required check on `main`, and `publish-extension.yml` calls all of `ci.yml`, so both hold a
+release (§7). An earlier version of this paragraph said a publish must not wait on the electron
+job; the workflow calls it.
 
 ## 7. Packaging and release
 
@@ -1012,11 +1195,14 @@ file and copies it, with a minimal `package.json`, into
 `vsce package` runs.
 
 **What the `.vsix` weighs, counted honestly.** It carries the compiler's language service
-twice, and `typescript` twice with it (§2). The plugin bundle is 10.6 MB (11,131,568 bytes) and
-the extension bundle 10.7 MB (11,178,709 bytes) as built at `7f0b482`, so the `.vsix` carries
-about 21 MB of JavaScript before compression and before anything else. At run time that is roughly
-**107 MB of live heap across two processes**: about 54.8 MB in tsserver (§1.3) and about 52.3 MB
-in the extension host (§4). Sharing one bundled module between the two is possible later and
+twice, and `typescript` twice with it (§2). The plugin bundle was 10.6 MB (11,131,568 bytes) and
+the extension bundle 10.7 MB (11,178,709 bytes) as built at `7f0b482`, so the `.vsix` carried
+about 21 MB of JavaScript before compression and before anything else. At run time that was
+roughly **107 MB of live heap across two processes**: about 54.8 MB in tsserver (§1.3) and about
+52.3 MB in the extension host (§4). Built at `7c274e2` on 2026-09-29 the two are 11,706,860 and
+11,837,156 bytes, and the `.vsix` is 13 files, 28,227,897 bytes before compression and 5,398,701
+bytes as packed, of which the two web files (`index.web.js`, `dist/web/extension.js`) are
+1,304,220 bytes compressed. The heap figures were not repeated at `7c274e2`. Sharing one bundled module between the two is possible later and
 nothing in this layout prevents it; the larger saving is §8 item 11, which is about not bundling
 `typescript` at all. Neither is worth doing before the numbers are a complaint, and both are now
 written down so a complaint has something to point at.
@@ -1029,7 +1215,7 @@ the manifest before packaging.
 **The publish workflow is `.github/workflows/publish-extension.yml`**, in the shape
 `publish-mcp.yml` set: a push of the tag `extension-v<version>` on a commit on `main` is the
 publish, and the run checks both before it builds. It calls `ci.yml` first, the electron job
-included, then packs with `scripts/package-extension.mjs` and runs the electron suite again
+and the web job included, then packs with `scripts/package-extension.mjs` and runs the electron suite again
 against the directory the `.vsix` was packed from (`TYPESHADE_EXTENSION_PATH`), so what the suite
 tests is what the registries receive. Only then does a second job, which installs nothing but the
 two publishing tools, upload those bytes and attach the `.vsix` to the tag's release, so a publish
@@ -1048,6 +1234,15 @@ TypeScript's answers included. With the Canvas tab's webview bundle it is 11 fil
 and the suite passes against the staged directory again, so a `.vsix` that forgot the bundle
 would fail the Canvas case rather than ship a tab that never loads.
 
+**The web files are staged too, and checked before `vsce` runs.** The stage also gets
+`dist/web/extension.js` and the plugin's `index.web.js`, and the staged plugin `package.json`
+names both entries: `main: ./index.js`, `browser: ./index.web.js` (§3.1). Measured on
+2026-09-29: 13 files, 5,398,701 bytes (5.15 MiB), the manifest's `ExtensionKind` is
+`workspace,web` and it carries the `__web_extension` tag, both inferred by `vsce` from `main` plus
+`browser`. The self-check runs before `vsce` and throws when either manifest's `main` or `browser`
+is not a `./` path to a non-empty file in the stage, because `vsce` checks only the extension's
+own `browser`. Both the electron and the web suites run against the staged bytes.
+
 **Both registries, in one run.** The same job publishes to the Visual Studio Marketplace with
 `npx @vscode/vsce publish` and then to Open VSX with `npx ovsx publish`, creating the `typeshade`
 namespace there first when it does not exist yet, over the one `.vsix`
@@ -1065,14 +1260,43 @@ accessible organizations, and `OVSX_PAT`, an open-vsx.org access token.
 `homepage` and that same `bugs.url`, so PR 5 needs no manifest change to match what was
 registered.
 
-**Version policy.** The extension's version is its own, and it starts at `0.1.0` on the first
-Marketplace release. The compiler's version is not the extension's: a bug fix in the panel
+**Version policy.** The extension's version is its own, and it started at `0.1.0` on the first
+Marketplace release. `0.1.0` is published on the Marketplace and on Open VSX, as a workspace-only
+extension, and a registry takes a version once, so the first release that carries the web build is
+`0.2.0` (decided 2026-09-29, a normal release and not a pre-release). The compiler's version is not the extension's: a bug fix in the panel
 should not wait for a compiler release, and a compiler release should not force an extension
 one. What the extension does carry is the pin, stated in two places that cannot drift because
 the build writes them: the `CHANGELOG.md` entry for the release, and a `typeshade.version`
 value the extension reports in its status bar tooltip and its output channel, read from the
 vendored package's own `package.json` at build time. Once the compiler reaches 1.0 the
 extension's major follows it, because a compiler major means the language moved.
+
+**Releasing the web build, and taking it back.** The steps for `0.2.0` are the ones for `0.1.0`:
+the change merges through a pull request, and the owner then creates the tag `extension-v0.2.0` on
+`main`, which the publish workflow verifies, packs and uploads to both registries. The `web` job
+of `ci.yml` is not a required check (§3.1), but it is part of `verify`, so a red cell holds the
+release: run it at least three times, and run `publish-extension` with `workflow_dispatch` and
+no tag once, before the tag, and confirm it passes on the `verify` path. No end to end test of the
+installed package is possible before it is published, since an unpublished web build cannot be
+installed on vscode.dev. After the release, once by hand on vscode.dev or insiders.vscode.dev
+(§8 item 12 has who is not decided):
+
+1. Install the extension, open a `"use typeshade"` shader: TypeScript's false errors should be
+   gone, `typeshade:8004` should arrive on a broken one, hover should answer, and the stub message
+   and (on an old or non-isolated page) the warning should read as §3.1 says.
+2. Read the response headers of
+   `https://typeshade.vscode-unpkg.net/typeshade/vscode-typeshade/<version>/extension/node_modules/@typeshade/tsserver-plugin/index.web.js`:
+   `content-type` should be `application/javascript`, and note `content-encoding` (whether 4.4 MiB
+   is compressed is not known: an 11.7 MB file was seen going out uncompressed and a 2.4 MB one
+   under Brotli in the planning runs, and the threshold between them was not measured), and
+   the CORS and CORP headers.
+3. Open a virtual workspace (github.dev) and see whether `capabilities.virtualWorkspaces` is
+   needed; it is not declared and was not measured.
+4. Write the result into `docs/measurements/web-plugin-load/` as a sibling document.
+
+If only the web is wrong, the way back is a new version whose manifest has no `browser` field:
+the extension kind returns to `workspace`, which the desktop does not notice. A registry does not
+take the same version twice, so that rollback needs a new number too.
 
 **The plugin package publishes to npm separately**, as `@typeshade/tsserver-plugin`, so an
 editor that is not VS Code can install it with two lines in a `tsconfig.json`. That is not PR 5:
@@ -1162,7 +1386,9 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     activation events, the stable inline debug adapter API, and a TypeScript extension that
     passes extension directories as probe locations without caveats; lowering it would guard
     three APIs to reach users on 2022 releases. Revisit if a real user reports being stuck
-    below it.
+    below it. **Kept for the web build too (2026-09-29):** a VS Code for the Web older than 1.110
+    can install the extension and gets a warning instead (§3.1); raising the floor to `^1.110.0`
+    would have cut off desktop users on 1.90 to 1.109 for the sake of the web.
 11. **Whether the plugin's bundled `typescript` could be the host's instead (§1.3, §2).** The
     plugin carries its own copy, which is about 15.5 of the 55 MB it adds to a tsserver process and
     most of the 8.9 MB `typescript.js` in each bundle of the `.vsix`. tsserver hands every plugin
@@ -1174,13 +1400,48 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     here runs TypeScript 6.0.3 while the compiler pins 5.6.3. A CI matrix over the TypeScript
     versions the compiler must accept is the thing that would change this answer, and it is cheap
     to build once anyone wants the megabytes.
+12. **What the web build leaves undone.** The web build is the plugin and stubs (§3.1). Each item
+    below was left out on purpose, and none is measured beyond what it says.
+    - _The rest of the extension host on the web (called 3c)._ A browser build of the whole
+      `extension.ts` (browser platform, CommonJS) was run in planning: it activated in the web
+      host, registered the eight commands and drew the Canvas with a software adapter, at 11.85 MB
+      (4.67 MB minified). It needs `node:fs`'s `diskText` removed and imports read up front
+      (a fixed point that collects the URIs the compile missed and fills them through
+      `workspace.fs`, two rounds and 143 ms in the planning run), and the model re-fed under a new
+      version number after each fill. Those runs are not committed, and it is not equivalent to
+      the desktop until it is built and tested.
+    - _`workspace-link.ts` in a browser._ `node:zlib` and `Buffer` would become
+      `CompressionStream('deflate-raw')` and base64url, which the planning run found present in a
+      web host and byte-identical to zlib on Node 22. The encoder would become asynchronous, so both
+      call sites in `bridge.ts` and the whole of `workspace-link.test.ts` change, which raises the
+      desktop risk. A synchronous `fflate` would be a new dependency.
+    - _A short Playground link in a browser._ Needs the site to serve a CORS-readable JSON route
+      first (`docs/playground-bridge.md` §4).
+    - _Unmeasured on the web:_ `showOpenDialog` and `vscode.openFolder`, the `vscode://` handler,
+      whether vscode.dev's webview has a WebGPU adapter for the Canvas, virtual workspaces
+      (`capabilities.virtualWorkspaces` and `untrustedWorkspaces` are not declared), Firefox,
+      Safari, github.dev with a sign-in, a self-hosted VS Code for the Web, an SSH or WSL remote
+      window now that the kind is `workspace,web`, and 1.95 to 1.108.
+    - _Hiding the stubs on the web_ (`menus.commandPalette` with `when: !isWeb`): not done; the
+      title menu and key bindings reach the stubs regardless.
+    - _The plugin sharing the host's `typescript`_ is still no (item 11); a web bundle
+      without its own `typescript` was measured in planning at 1.06 MB minified, and only there.
+    - _Bundle splitting under 2.4 MB_, if a CDN turns out to compress below a threshold: decide
+      after the header check of §7.
+    - _The two pinned `test-web` builds_ (`ci.yml`) are bumped by hand when a new stable is worth
+      testing; the 1.109.0 row is not in CI, since the job has to be stable first. The `web`
+      job is not a required check, and making it one is a ruleset change that is the owner's.
+    - _`typeshade.diagnostics.replace`_ does nothing on either platform, because the plugin has no
+      handler for what `extension.ts` sends it (§3.1). Fix it or delete the setting in a separate
+      issue.
+    - _Who does the manual vscode.dev check_ (§7) is not decided.
 
 ## Decisions for the owner
 
 Three of these were answered on 2026-09-14, through the orchestrating session, and are kept
 here as a record of what was decided rather than a list of what is waiting, as are the two
-PR 3 raised, answered on 2026-09-24. One item, the fourth, is still open and is not needed
-until after PR 5.
+PR 3 raised, answered on 2026-09-24, and the web build's, answered on 2026-09-29 (items 7 to 9).
+One item, the fourth, is still open and is not needed until after PR 5.
 
 1. **The Marketplace publisher and the `VSCE_PAT` secret.** Publisher `typeshade`, display name
    TypeShade, and the secret is set, so PR 5 can be run as well as written (§7).
@@ -1209,6 +1470,17 @@ until after PR 5.
    compiler's `>=5.0.0 <6` peer range, and the electron suite passing there is an observation
    rather than a guarantee.
 
+7. **The web build is the plugin and stubs, not the whole extension** (decided 2026-09-29, through
+   the orchestrating session). §3.1 has what it does and what it leaves to the desktop; §8 item
+   12 has what remains.
+8. **`0.2.0` is the release with the web build**, a normal release and not a pre-release; the
+   owner creates the tag after the merge (§7). `engines.vscode` stays `^1.90.0` with a runtime
+   warning below 1.110 (§8 item 10).
+9. **The other choices took the plan's recommendation:** the web plugin is one minified file, the
+   plugin decorates in the syntax server too, the desktop-only commands are registered stubs, the
+   pinned VS Code builds are bumped by hand, `typeshade.diagnostics.replace` is left for its own
+   issue, and the new `web` job is not a required check (no ruleset change).
+
 Nothing before that step is blocked on an answer.
 
-Last updated: 2026-09-28
+Last updated: 2026-09-29

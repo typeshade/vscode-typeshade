@@ -1,10 +1,12 @@
 // === The build: esbuild, not tsc ===
 //
-// All three artifacts are CommonJS bundles, because tsserver `require`s a plugin, the VS Code
+// Three of the artifacts are CommonJS bundles, because tsserver `require`s a plugin, the VS Code
 // extension host loads the extension's `main` the same way, and an MCP client runs the server's
 // `bin` under node; and all three have to carry the compiler with them: it is a pinned submodule
 // rather than an installed dependency until it publishes (`docs/design.md` §2). `tsc` does the
-// type-checking and emits nothing.
+// type-checking and emits nothing. The web artifacts are described where they are built: the
+// web plugin, an ES module for a browser worker, and the extension's web entry, a small CommonJS
+// stub for the web extension host.
 //
 // The bundles are NOT configured alike, and the difference is load-bearing.
 //
@@ -53,7 +55,15 @@ const alias = {
   'typeshade/runtime': join(root, 'vendor/typeshade/src/runtime.ts'),
 };
 
-/** What every bundle shares.
+/** What every bundle shares: it is bundled, and the compiler's specifiers resolve to the
+ *  submodule. */
+const shared = {
+  bundle: true,
+  alias,
+  logLevel: 'warning',
+};
+
+/** What the three node bundles add to `shared`.
  *
  *  `import.meta.url` needs a definition because the compiler is ESM source going into a
  *  CommonJS bundle, and one module reads it: `core/diagnostics/loc.ts` derives the path prefix
@@ -61,35 +71,37 @@ const alias = {
  *  literal when `import.meta` is absent, so the bundle would work without this; defining it
  *  keeps the derivation correct instead of silently taking the fallback, and it turns off an
  *  esbuild warning on every build that would otherwise train the eye to ignore warnings. */
-const common = {
-  bundle: true,
+const nodeOnly = {
   platform: 'node',
   format: 'cjs',
   target: 'node20',
-  alias,
   define: { 'import.meta.url': '__typeshadeModuleUrl' },
   banner: {
     js: "const __typeshadeModuleUrl = require('node:url').pathToFileURL(__filename).href;",
   },
-  logLevel: 'warning',
 };
+
+/** The node bundles' options, which is what `bundle()` builds from unless it is given others. */
+const common = { ...shared, ...nodeOnly };
 
 /**
  * Builds one package.
  *
  * @param {{ entry: string, outfile: string, external: string[], footer?: string,
- *   define?: Record<string, string> }} options - the entry point, where the bundle goes, what
- *   stays external, any trailing source, and any build-time constants.
+ *   define?: Record<string, string>, base?: import('esbuild').BuildOptions }} options - the entry
+ *   point, where the bundle goes, what stays external, any trailing source, any build-time
+ *   constants, and the options every bundle of this kind shares (`common`, the node bundles',
+ *   unless another set is given).
  * @returns {Promise<{ outfile: string, bytes: number }>} what was written.
  */
-async function bundle({ entry, outfile, external, footer, define }) {
+async function bundle({ entry, outfile, external, footer, define, base = common }) {
   const result = await build({
-    ...common,
+    ...base,
     entryPoints: [join(root, entry)],
     outfile: join(root, outfile),
     external,
     ...(footer === undefined ? {} : { footer: { js: footer } }),
-    define: { ...common.define, ...define },
+    define: { ...base.define, ...define },
     metafile: true,
   });
   const output = result.metafile.outputs[Object.keys(result.metafile.outputs)[0]];
@@ -111,11 +123,94 @@ built.push(
   }),
 );
 
+// The plugin for VS Code for the Web (`docs/playground-bridge.md` §4): a second bundle of the
+// same plugin, and the only one that is an ES module. The web extension host imports the file
+// the plugin package's `browser` field names and calls its default export inside the tsserver
+// web worker, where there is no `require`, no `process` and no `Buffer`. It is not `common`'s:
+// the platform, the format, the target, the `import.meta.url` definition and the banner are all
+// the node bundles', and none of them applies.
+//
+//   `.js`        not `.mjs`: the CDN serving an installed extension was measured to send `.js` as
+//                `application/javascript`, and a browser does not read a package's `type`.
+//   `typescript` inlined, for the desktop plugin's reason: the compiler reads `ts.SyntaxKind`
+//                when it loads, so it needs a copy of its own, and the host's instance stays the
+//                one every tsserver node is read with.
+//   `process.browser`  is `true`. The bundled TypeScript decides it is running under node when
+//                `process.nextTick` exists, `process.browser` is falsy and `require` exists, and
+//                then calls `os.platform()` through a `require` that esbuild stubbed for the
+//                browser. The definition makes it take the browser path whatever the worker
+//                provides. `build-web.test.ts` loads the bundle with `process` deleted.
+//   `minify`     is the difference between 11.7 MB and about 4.6 MB for a worker to fetch on every
+//                start. There is no `keepNames`: function names in a log stack are not worth
+//                the bytes, and the one reader of stack frames (`loc.ts`) runs only while
+//                tracing is on.
+built.push(
+  await bundle({
+    entry: 'packages/tsserver-plugin/src/web.ts',
+    outfile: 'packages/tsserver-plugin/dist/index.web.js',
+    external: [],
+    define: { 'process.browser': 'true' },
+    base: {
+      ...shared,
+      platform: 'browser',
+      format: 'esm',
+      target: 'es2022',
+      minify: true,
+    },
+  }),
+);
+
 built.push(
   await bundle({
     entry: 'packages/vscode-typeshade/src/extension.ts',
     outfile: 'packages/vscode-typeshade/dist/extension.js',
     external: ['vscode'],
+  }),
+);
+
+// The extension's entry in VS Code for the Web (`docs/playground-bridge.md` §4), which the
+// manifest's `browser` field names. It is a stub over `vscode` and carries neither the compiler
+// nor TypeScript, so it is a few kilobytes; `web-build.test.ts` holds it to that.
+//
+//   `cjs`      not `esm`: the web extension host runs the file as
+//              `new Function('module', 'exports', 'require', text)` and refuses an ES module, so
+//              the format is the desktop bundle's even though the platform is not.
+//   `browser`  so a Node built-in that slipped into the entry's imports is an esbuild error here
+//              (`eslint.config.mjs` catches it earlier, in the editor), not a `require` that
+//              fails in a worker.
+//   unminified because the file is tiny, and a stack in the web host's log is worth reading.
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/src/extension.web.ts',
+    outfile: 'packages/vscode-typeshade/dist/web/extension.js',
+    external: ['vscode'],
+    base: { ...shared, platform: 'browser', format: 'cjs', target: 'es2022' },
+  }),
+);
+
+// The web suite (`packages/vscode-typeshade/test-web/suite.ts`), which `@vscode/test-web` runs in
+// the web extension host. Built like the web entry, for a browser, as CommonJS with `vscode`
+// external, and with two more aliases: the plugin cases it shares with the electron suite import
+// `node:assert/strict` and `node:timers/promises`, and the browser has neither, so each resolves to
+// a small stand-in (`test-web/shims/`). A third Node import would be an esbuild error here rather
+// than a `require` that fails in the host. Not in the `.vsix`: `scripts/test-web.mjs` copies it
+// beside the packaged extension for the run.
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/test-web/suite.ts',
+    outfile: 'packages/vscode-typeshade/dist/test-web/suite.js',
+    external: ['vscode'],
+    base: {
+      ...shared,
+      alias: {
+        ...alias,
+        'node:assert/strict': join(root, 'packages/vscode-typeshade/test-web/shims/assert.ts'),
+        'node:timers/promises': join(root, 'packages/vscode-typeshade/test-web/shims/timers.ts'),
+      },
+      platform: 'browser',
+      format: 'cjs',
+      target: 'es2022',
+    },
   }),
 );
 
@@ -158,14 +253,12 @@ built.push(
 // of the compiler: the extension host compiles and posts the manifests, and `webview.test.ts`
 // holds the bundle to that, since a webview that quietly grew the whole compiler would still work.
 const webview = await build({
+  ...shared,
   entryPoints: [join(root, 'packages/vscode-typeshade/src/webview/canvas.ts')],
   outfile: join(root, 'packages/vscode-typeshade/dist/webview/canvas.js'),
-  bundle: true,
   platform: 'browser',
   format: 'iife',
   target: 'es2022',
-  alias,
-  logLevel: 'warning',
   metafile: true,
 });
 built.push({

@@ -20,6 +20,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # `@vscode/test-web` depends on `@playwright/browser-chromium`, whose install script downloads
+  # a browser during every `npm ci`. Only the `web` job needs one, and it fetches it explicitly
+  # (`npx playwright install`, which this variable does not stop), so the required checks and the
+  # release jobs never wait on a Chromium download.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -104,7 +111,8 @@ jobs:
       # `xvfb-run` because VS Code is an Electron application and exits immediately with
       # "Missing X server or $DISPLAY" without one. This is the environment the VS Code team
       # documents for the runner, and the reason this is a separate job: it downloads a 327 MB
-      # build, and a Marketplace publish must not wait on it (`docs/design.md` §6).
+      # build. Not a required check, but `publish-extension.yml` calls this whole workflow, so a
+      # red run here holds a release (`docs/design.md` §6).
       - run: xvfb-run -a npm run test:electron
       # The same suite against the packaged extension: the directory the .vsix is packed from, so
       # the plugin loads from the package's own node_modules as it will for a user
@@ -113,3 +121,84 @@ jobs:
       - run: xvfb-run -a node packages/vscode-typeshade/dist/test-electron/main.js
         env:
           TYPESHADE_EXTENSION_PATH: out/extension
+
+  web:
+    # The packaged extension in a browser build of VS Code, in a headless Chromium
+    # (`scripts/test-web.mjs`, `docs/design.md` §6). Each cell is one VS Code build, always named by
+    # commit: `--quality stable` alone serves whatever is newest that day, and a check that changes
+    # under an unchanged repository is not a check. The commits are the releases named in the
+    # matrix, bumped by hand when a new stable is worth testing.
+    #
+    #   1.139.1, isolated     the current stable, as vscode.dev runs it
+    #   1.110.0, isolated     the first VS Code for the Web that loads a plugin from an extension
+    #                         (`FIRST_WEB_PLUGIN_VERSION`): the floor the extension warns below
+    #   1.139.1, not isolated a page without cross-origin isolation, where TypeScript's semantic
+    #                         server does not run: the suite asserts the warning and the stubs
+    #
+    # Not a required check: `.github/workflows/publish-extension.yml` calls this workflow, so a
+    # red cell already holds a release, and a merge is not held on a Chromium download.
+    name: extension tests in VS Code for the Web (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: 1.139.1, isolated
+            commit: 04c0d99f4fb0d8afe6ce4f0c58e31e183ac3e4b1
+            coi: 'true'
+          - label: 1.110.0, isolated
+            commit: 0870c2a0c7c0564e7631bfed2675573a94ba4455
+            coi: 'true'
+          - label: 1.139.1, not isolated
+            commit: 04c0d99f4fb0d8afe6ce4f0c58e31e183ac3e4b1
+            coi: 'false'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The browser and the system libraries it needs, at the revision the locked Playwright asks
+      # for. `@vscode/test-web` drives it; nothing else here does.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: node scripts/package-extension.mjs
+      # What the manifest tells VS Code and what the package carries, read from the .vsix itself:
+      # `vsce` checks that the extension's `browser` file exists and never opens the plugin's
+      # package.json, and a web host that finds no `browser` field skips the plugin without an
+      # error. Without the extension kind and the tag the Marketplace and vscode.dev would not
+      # offer the extension on the web at all.
+      - name: The package is a web extension and carries both entry points
+        run: |
+          set -eu
+          vsix=$(ls out/*.vsix)
+          manifest=$(unzip -p "$vsix" extension.vsixmanifest)
+          listing=$(unzip -l "$vsix")
+          fail=0
+          grep -q 'Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace,web"' <<<"$manifest" ||
+            { echo "::error::extension.vsixmanifest does not declare ExtensionKind workspace,web"; fail=1; }
+          grep -q '__web_extension' <<<"$manifest" ||
+            { echo "::error::extension.vsixmanifest lacks the __web_extension tag"; fail=1; }
+          for entry in extension/dist/web/extension.js extension/node_modules/@typeshade/tsserver-plugin/index.web.js; do
+            grep -q " $entry\$" <<<"$listing" || { echo "::error::$vsix lacks $entry"; fail=1; }
+          done
+          exit "$fail"
+      # One build per commit; `@vscode/test-web` downloads it (about 55 MB) on a miss. The key is the
+      # commit, which never changes what it names, so an entry is never stale.
+      - uses: actions/cache@v4
+        with:
+          path: .vscode-test-web/${{ matrix.commit }}
+          key: vscode-web-${{ matrix.commit }}
+      # The suite runs against what the .vsix unpacks to, not the directory it was packed from, so
+      # a file the packaging dropped is missing here as it would be for a user.
+      - name: Unpack the package the suite runs against
+        run: unzip -q out/*.vsix -d out/vsix
+      - run: node scripts/test-web.mjs
+        env:
+          TYPESHADE_EXTENSION_PATH: out/vsix/extension
+          TYPESHADE_WEB_COMMIT: ${{ matrix.commit }}
+          TYPESHADE_WEB_COI: ${{ matrix.coi }}

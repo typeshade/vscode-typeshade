@@ -3,7 +3,7 @@
 // makes the plugin silently do nothing in every repository that pins its own TypeScript. These
 // assertions are `docs/design.md` §4's two tables, written out.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +12,10 @@ interface Manifest {
   activationEvents: string[];
   engines: Record<string, string>;
   main: string;
+  browser?: string;
+  type?: string;
+  capabilities?: unknown;
+  extensionKind?: unknown;
   contributes: {
     typescriptServerPlugins: { name: string; enableForWorkspaceTypeScriptVersions?: boolean }[];
     commands: { command: string; title: string }[];
@@ -87,5 +91,32 @@ describe('the extension manifest', () => {
 
   it('points at the bundle the build writes, not at a source file', () => {
     expect(manifest.main).toBe('./dist/extension.js');
+  });
+
+  it('declares the web entry beside `main`, and leaves the rest of the desktop contract alone', () => {
+    // `browser` is what makes vsce tag the extension `workspace,web` and the web host load it. The
+    // desktop host reads `main` and ignores `browser`, which the electron suite on the packaged
+    // stage shows; these are the other fields a web declaration could have disturbed.
+    expect(manifest.browser).toBe('./dist/web/extension.js');
+    expect(manifest.main).toBe('./dist/extension.js');
+    expect(manifest.engines.vscode).toBe('^1.90.0');
+    // The web extension host refuses an ES module, and `type: module` would make node read
+    // `dist/extension.js` as one; the `.mjs` extension is the same refusal spelled another way.
+    expect(manifest.type).not.toBe('module');
+    expect(manifest.browser).not.toMatch(/\.mjs$/);
+    // No declaration on purpose: `extensionKind` is inferred by vsce from `main` and `browser`, and
+    // `capabilities` (virtual and untrusted workspaces) has not been measured on the web.
+    expect(manifest.extensionKind).toBeUndefined();
+    expect(manifest.capabilities).toBeUndefined();
+  });
+
+  it('names a web entry point that has a source, and a bundle the build writes for it', () => {
+    const entry = manifest.browser?.replace(/^\.\/dist\//, '').replace(/\.js$/, '');
+    expect(entry).toBe('web/extension');
+    expect(existsSync(join(HERE, 'extension.web.ts'))).toBe(true);
+    expect(
+      existsSync(join(HERE, '..', manifest.browser ?? '')),
+      'dist/web/extension.js is missing; run npm run build',
+    ).toBe(true);
   });
 });

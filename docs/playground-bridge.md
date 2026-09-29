@@ -1,6 +1,6 @@
 # The Playground and the editor: one workspace in two places
 
-Status: **accepted**, and Stages 1 and 2 are built (§7). It answers the owner's request to carry the site's Playground
+Status: **accepted**, and Stages 1 and 2 are built, and Stage 3's plugin half (§7). It answers the owner's request to carry the site's Playground
 into VS Code: work on a shader in the browser, continue it in the editor with the extension, and
 bring it back, and to have a VS Code in the browser as well. The pinned compiler is
 `typeshade/typeshade` at `7c274e2` (it was `88ba8ad` when Stage 1 was written); the site is
@@ -27,9 +27,10 @@ and the CPU oracle), and the language service runs in a web worker from the comp
 
 **The extension** (this repository, `docs/design.md` §4) is a desktop VS Code extension: the
 tsserver plugin replaces TypeScript's answers on a `"use typeshade"` file, and a webview panel
-shows the WGSL, the GLSL and the reflection. It drew no pixels until Stage 2 (§3, §7), it is not
-a web extension, and it is not published yet: the Marketplace and Open VSX return nothing for
-`typeshade.vscode-typeshade`, and the publish workflow is `docs/design.md` §7's PR 5.
+shows the WGSL, the GLSL and the reflection. It drew no pixels until Stage 2 (§3, §7). Version
+0.1.0 is published on the Visual Studio Marketplace and on Open VSX as `typeshade.vscode-typeshade`,
+as a workspace-only extension: it is not a web extension. Version 0.2.0 is the first with a web
+entry (§4, §7), and what that entry does is the plugin and no more.
 
 ## 1. What a reader should be able to do
 
@@ -41,7 +42,8 @@ a web extension, and it is not published yet: the Marketplace and Open VSX retur
 3. **See it draw in the editor.** The extension's panel draws the shader the way the Playground
    does, passes included, and redraws on edit.
 4. **VS Code in the browser.** The same project opened on vscode.dev or github.dev gets the
-   diagnostics and the panel, with nothing installed but the extension.
+   diagnostics, with nothing installed but the extension. The panel and the round trip do not come
+   with it: 0.2.0 carries the plugin only (§4).
 
 Each is a stage below, in the order that each makes the next cheaper.
 
@@ -164,7 +166,43 @@ first branch above holds, with four things the probe adds to it:
 - The semantic server runs only on a cross-origin isolated page: without `SharedArrayBuffer` the
   plugin loads in the syntax server alone and never sees `getSemanticDiagnostics`, so TypeShade's
   diagnostics would not replace TypeScript's. Whether vscode.dev and github.dev are isolated for
-  the extension host was not measured, and is the first thing 3b checks.
+  the extension host was not measured by the probe. The notes of the planning run for 3b report
+  them isolated, without a committed record, so 3b's release step checks it again on the installed
+  extension (`docs/design.md` §7).
+
+**Built in 3b (0.2.0): the plugin, and a stub entry.** The extension's manifest gains
+`"browser": "./dist/web/extension.js"`, a 4 KB file that registers every command of the manifest as
+a message and warns once when the page cannot run the plugin (a VS Code for the Web older than
+1.110, or a page that is not cross-origin isolated). The plugin gets a second bundle,
+`index.web.js`, an ES module with the plugin's init function as its default export, reading files
+through `info.serverHost`. The staged plugin package names both bundles, `main` for the desktop and
+`browser` for the web. `docs/design.md` §3.1 has what the web gives and what backs each claim, and
+§6 how it is tested: the web suite passes on VS Code 1.139.1 and 1.110.0, with a shader import
+across two files answered in the isolated semantic server, which the probe had left open.
+
+**Why the Playground commands stay on the desktop.** Open in Playground, Open Playground Link and
+the `vscode://` handler are stubs on the web, for three reasons. The first two rest on the code, and
+the third is not measured:
+
+- `workspace-link.ts` reads and writes a link with `node:zlib` (`deflateRawSync`,
+  `inflateRawSync`) and `Buffer`, and a web extension host has neither. A browser has
+  `CompressionStream('deflate-raw')`, which the planning run found in a web host and found
+  byte-identical to zlib on Node 22 (a run not committed here); using it makes the codec
+  asynchronous, which changes both call sites in `bridge.ts` and every test of
+  `workspace-link.test.ts`. That is a change to the desktop path, and 3b does not take that risk
+  for a command the web does not need first.
+- A short link is followed by reading the redirect it answers with: `bridge.ts` fetches with
+  `redirect: 'manual'` and `shortLinkTarget` reads the `Location`. In a browser a manual redirect
+  is an opaque redirect with no readable `Location`, so the same code cannot work there. It needs
+  a route on the site's worker that returns the target as CORS-readable JSON, fragment included;
+  as read in planning, `/s/<id>` answers with a 302 that has no CORS headers. The site is another
+  repository and was not re-checked here.
+- Writing a workspace into a folder needs `showOpenDialog` and `vscode.openFolder`, and the
+  `vscode://` handler is a `UriHandler`. Neither was measured in a web host.
+
+The preview and the Canvas stay on the desktop for the reasons `docs/design.md` §8 item 12 lists:
+the compile reads imports from disk with `node:fs`, and the Canvas needs a WebGPU adapter in the
+webview, which vscode.dev's was not measured to have.
 
 **A VS Code of our own on the site** (a VS Code for the Web build served from typeshade.dev with
 the extension installed) is not proposed. It is tens of megabytes to host and keep current for
@@ -173,15 +211,15 @@ public GitHub repository with the extension.
 
 ## 5. Order and what each stage owes
 
-| Stage | Repository | Work                                                                           | Waits on                 |
-| ----- | ---------- | ------------------------------------------------------------------------------ | ------------------------ |
-| 1a    | site       | Download as a folder; `typeshade.json`; the link format in `DESIGN.md`         | nothing                  |
-| 1b    | this one   | Move the pin to carry 0026; `typeshade.json`; Open in Playground; `UriHandler` | 1a's format              |
-| 1c    | this one   | Publish the extension (`docs/design.md` §7, PR 5)                              | the owner's go-ahead     |
-| 1d    | site       | Open in VS Code beside Download                                                | 1b and 1c                |
-| 2     | this one   | The Canvas tab over the compiler's runtime (built, §7)                         | compiler change 0025     |
-| 3a    | this one   | The web plugin probe (measured, §4: it loads)                                  | nothing                  |
-| 3b    | this one   | The web build, by the probe's answer                                           | 3a, and 2 for the canvas |
+| Stage | Repository | Work                                                                             | Waits on             |
+| ----- | ---------- | -------------------------------------------------------------------------------- | -------------------- |
+| 1a    | site       | Download as a folder; `typeshade.json`; the link format in `DESIGN.md`           | nothing              |
+| 1b    | this one   | Move the pin to carry 0026; `typeshade.json`; Open in Playground; `UriHandler`   | 1a's format          |
+| 1c    | this one   | Publish the extension (`docs/design.md` §7, PR 5)                                | the owner's go-ahead |
+| 1d    | site       | Open in VS Code beside Download                                                  | 1b and 1c            |
+| 2     | this one   | The Canvas tab over the compiler's runtime (built, §7)                           | compiler change 0025 |
+| 3a    | this one   | The web plugin probe (measured, §4: it loads)                                    | nothing              |
+| 3b    | this one   | The web build: the plugin and stub commands (built, §4); not the panel or Canvas | 3a                   |
 
 No stage changes a rule, an export, a surface section or a diagnostic code of the compiler, so
 none needs a compiler change proposal. If the owner prefers the graph inside the main file
@@ -208,8 +246,8 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
   their relative imports. The pin does not move for it: the extension reads and writes the
   graph and draws nothing, so 0026 owes it nothing until Stage 2.
 - **1c**, the publish workflow (`docs/design.md` §7): `.github/workflows/publish-extension.yml`
-  and `scripts/package-extension.mjs`. The extension's version is 0.1.0, and pushing the tag
-  `extension-v0.1.0` on `main` publishes it to both registries.
+  and `scripts/package-extension.mjs`. Pushing the tag `extension-v0.1.0` on `main` published 0.1.0
+  to both registries, as a workspace-only extension.
 - **Link handling.** A pasted link and the `vscode://` handler's `link` come from any web page,
   so `workspace-link.ts` decides what may cost a request (`planLink`): only a short link
   (`/s/<id>`) whose origin is exactly `https://typeshade.dev` is fetched, and only to read its
@@ -251,4 +289,11 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
     The bundle alone was also run in Chromium on SwiftShader with the two multipass examples,
     which drew a trail and a blurred pattern.
 - **3a**, the web plugin probe: `docs/measurements/web-plugin-load/`. The plugin loads on VS Code
-  for the Web as an ES module under a `browser` field; §4 lists what 3b owes because of it.
+  for the Web as an ES module under a `browser` field; §4 lists what 3b owed because of it.
+- **3b**, the web build, released as 0.2.0 (the owner creates the tag `extension-v0.2.0` after the
+  merge): `packages/tsserver-plugin/src/web.ts` and `dist/index.web.js` (4,601,293 bytes, minified),
+  `packages/vscode-typeshade/src/extension.web.ts` and `web-support.ts` (the stub entry), the
+  `browser` field and the staging in `scripts/package-extension.mjs`, the web suite
+  (`test-web/suite.ts`, `npm run test:web`) and the `web` job of `ci.yml`. §4 has what it does and
+  why the Playground commands are not in it, and `docs/design.md` §3.1, §6 and §7 the rest. The
+  `web` job had not run on a GitHub runner when this was written.

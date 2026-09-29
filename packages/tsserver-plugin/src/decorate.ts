@@ -12,7 +12,7 @@
 
 import type ts from 'typescript';
 import { createTypeshadeLanguageService, type TypeshadeLanguageService } from './compiler.js';
-import { DocumentSync } from './documents.js';
+import { DocumentSync, type SyncHost } from './documents.js';
 import { isTypeshadeFile } from './directive.js';
 import {
   toClassifications,
@@ -62,6 +62,39 @@ function toTextSpan(range: ts.TextRange): ts.TextSpan {
 /** What the plugin writes to the tsserver log, so a failure is findable rather than silent. */
 export type Log = (message: string) => void;
 
+/** Which of tsserver's two readers answers for a file that has no script snapshot, which in
+ *  practice is a package's `package.json`. */
+export type ReadFrom = 'languageServiceHost' | 'serverHost';
+
+/** How a decoration is set up; every field is optional and the default is the desktop path. */
+export interface DecorateOptions {
+  /** Where `readFile` comes from. Desktop uses `info.languageServiceHost.readFile`. The web
+   *  entry (`web.ts`) uses `info.serverHost.readFile`, the reader measured to answer inside
+   *  VS Code for the Web's tsserver worker (`docs/measurements/web-plugin-load/`). Snapshots,
+   *  versions and the file list come from the language service host either way: `serverHost`
+   *  has no counterpart for them. */
+  readFrom?: ReadFrom;
+}
+
+/**
+ * The host a `DocumentSync` reads through, for the chosen reader.
+ *
+ * The default hands over the project's own host unchanged, so the desktop path is the same
+ * object it always was. `serverHost` gets a thin object that reads files from the server and
+ * delegates everything else to the host.
+ */
+function syncHostOf(info: ts.server.PluginCreateInfo, readFrom: ReadFrom): SyncHost {
+  const host = info.languageServiceHost;
+  if (readFrom !== 'serverHost') return host;
+  return {
+    getScriptVersion: (fileName) => host.getScriptVersion(fileName),
+    getScriptSnapshot: (fileName) => host.getScriptSnapshot(fileName),
+    getScriptFileNames: () => host.getScriptFileNames(),
+    getProjectVersion: host.getProjectVersion?.bind(host),
+    readFile: (fileName) => info.serverHost.readFile(fileName),
+  };
+}
+
 /**
  * Builds the language service tsserver uses in place of the project's own.
  *
@@ -70,12 +103,14 @@ export type Log = (message: string) => void;
  * @param typescript - the host's own `typescript` module. Never one this package imports: a
  *   second instance would build nodes the host's `ts.is*` checks do not recognise.
  * @param log - where to report a failure.
+ * @param options - how the decoration is set up (`readFrom`).
  * @returns the decorated service.
  */
 export function decorate(
   info: ts.server.PluginCreateInfo,
   typescript: typeof ts,
   log: Log,
+  options: DecorateOptions = {},
 ): ts.LanguageService {
   const inner = info.languageService;
 
@@ -86,7 +121,11 @@ export function decorate(
   const shade: TypeshadeLanguageService = createTypeshadeLanguageService({
     readDocument: (uri) => sync?.readDocument(uri),
   });
-  sync = new DocumentSync(typescript, info.languageServiceHost, shade);
+  sync = new DocumentSync(
+    typescript,
+    syncHostOf(info, options.readFrom ?? 'languageServiceHost'),
+    shade,
+  );
   const ctx: ConvertContext = { typescript, shade };
   const documents = sync;
 
