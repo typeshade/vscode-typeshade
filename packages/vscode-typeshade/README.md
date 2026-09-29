@@ -51,9 +51,9 @@ On vscode.dev and other VS Code for the Web pages the extension gives a `"use ty
 the language features and nothing else: diagnostics, TypeScript's false errors gone, hover, and
 imports between shader files. They come from the same TypeScript server plugin as on the desktop.
 
-Every command in the table above needs the desktop version. On the web each one shows a message
+Every command listed above needs the desktop version. On the web each one shows a message
 that says so and does nothing else: there is no preview, no Canvas, no Run Entry on CPU and no
-Playground link. The settings below are not read on the web.
+Playground link. The settings listed above are not read on the web.
 
 Two conditions apply:
 
@@ -62,9 +62,9 @@ Two conditions apply:
   shows a warning once.
 - **A page that is cross-origin isolated.** Without it the TypeScript server does not run its
   semantic checks in the browser, so there are no TypeShade diagnostics and TypeScript shows none
-  of its own either; the extension shows a warning once. vscode.dev was checked to be isolated when
-  the web build was written, and the extension's own tests do not check that. A VS Code for the
-  Web you host yourself needs the `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
+  of its own either; the extension shows a warning once. vscode.dev was reported to be isolated
+  in planning notes that are not kept, and has not been measured since; the extension's own tests
+  do not check it either. A VS Code for the Web you host yourself needs the `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
   headers.
 
 Completion, signature help, references, rename and the outline use the same plugin methods on the

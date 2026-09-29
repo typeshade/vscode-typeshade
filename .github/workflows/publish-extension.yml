@@ -8,7 +8,7 @@ name: publish-extension
 #
 # WHY THE GATE RUNS AGAIN, when CI already ran it on the commit: both registries refuse to take a
 # version twice, so one bad upload burns the number. `verify` CALLS ci.yml (`workflow_call`), the
-# electron job included, so the checks a release runs are the CI jobs themselves.
+# electron job and the web job included, so the checks a release runs are the CI jobs themselves.
 #
 # WHAT IS TESTED IS WHAT IS PUBLISHED. `pack` builds the .vsix with scripts/package-extension.mjs
 # and runs the electron suite against the directory it was packed from, which is what the .vsix
@@ -30,6 +30,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # `npm ci` would otherwise download a Chromium for `@vscode/test-web`, which no step here uses
+  # (the browser is fetched by the `web` job of ci.yml alone).
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
 concurrency:
   group: publish-extension-${{ github.ref }}

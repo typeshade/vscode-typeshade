@@ -715,9 +715,9 @@ VS Code for the Web must be 1.110.0 or newer.
 `engines.vscode` stays `^1.90.0` (§8 item 10), so a VS Code for the Web older than 1.110 can install
 the extension. The stub's activation warning is the only safeguard there: it shows once, and says
 which of the two conditions failed. The version case is worded so that it never suggests isolation
-would help, and the version is checked first (`describeEnvironment`, `web-support.ts`). The wording
-"vscode.dev is isolated" in the isolation warning rests on the notes above and is not measured
-here.
+would help, and the version is checked first (`describeEnvironment`, `web-support.ts`). The
+isolation warning names no host as isolated, because that rests on the notes above and is not
+measured here; it names the two headers a self-hosted page needs.
 
 **Why a stub entry at all.** The plugin does not need one to run, and VS Code does not treat an
 extension as a web extension without a `browser` entry, so the contribution would never be read
@@ -1424,8 +1424,8 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
       window now that the kind is `workspace,web`, and 1.95 to 1.108.
     - _Hiding the stubs on the web_ (`menus.commandPalette` with `when: !isWeb`): not done; the
       title menu and key bindings reach the stubs regardless.
-    - _The plugin sharing the host's `typescript`_ is still no (item 11); the web bundle's
-      the plugin without its own `typescript` was measured in planning at 1.06 MB minified, and only there.
+    - _The plugin sharing the host's `typescript`_ is still no (item 11); a web bundle
+      without its own `typescript` was measured in planning at 1.06 MB minified, and only there.
     - _Bundle splitting under 2.4 MB_, if a CDN turns out to compress below a threshold: decide
       after the header check of §7.
     - _The two pinned `test-web` builds_ (`ci.yml`) are bumped by hand when a new stable is worth

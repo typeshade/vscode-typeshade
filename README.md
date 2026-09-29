@@ -85,7 +85,18 @@ a CI round trip.
 the extension loaded and asserts what only a real host can answer, including that the server
 plugin loaded at all. It downloads VS Code once (327 MB) and needs a display, so on a headless
 machine run it as `xvfb-run -a npm run test:electron`; CI runs it as its own job for the same
-reason, and a Marketplace publish must not wait on it.
+reason.
+
+`npm run test:web` runs the same plugin cases in a browser build of VS Code for the Web, in
+Playwright's Chromium, against the packaged extension (`node scripts/package-extension.mjs`
+first). The browser comes from `npx playwright install chromium`. CI sets
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` so that no `npm ci` downloads one except through that command
+in the `web` job, which runs one cell per VS Code build and per isolation setting
+(`docs/design.md` §6).
+
+Neither the electron job nor the `web` job is a required check on `main`, but
+[`publish-extension.yml`](./.github/workflows/publish-extension.yml) calls all of `ci.yml`, so a
+red run of either one holds a release.
 
 ## Conventions
 

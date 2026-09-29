@@ -20,6 +20,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # `@vscode/test-web` depends on `@playwright/browser-chromium`, whose install script downloads
+  # a browser during every `npm ci`. Only the `web` job needs one, and it fetches it explicitly
+  # (`npx playwright install`, which this variable does not stop), so the required checks and the
+  # release jobs never wait on a Chromium download.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -104,7 +111,8 @@ jobs:
       # `xvfb-run` because VS Code is an Electron application and exits immediately with
       # "Missing X server or $DISPLAY" without one. This is the environment the VS Code team
       # documents for the runner, and the reason this is a separate job: it downloads a 327 MB
-      # build, and a Marketplace publish must not wait on it (`docs/design.md` §6).
+      # build. Not a required check, but `publish-extension.yml` calls this whole workflow, so a
+      # red run here holds a release (`docs/design.md` §6).
       - run: xvfb-run -a npm run test:electron
       # The same suite against the packaged extension: the directory the .vsix is packed from, so
       # the plugin loads from the package's own node_modules as it will for a user

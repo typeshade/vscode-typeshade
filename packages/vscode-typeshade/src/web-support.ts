@@ -16,9 +16,9 @@ export const FIRST_WEB_PLUGIN_VERSION = '1.110.0';
 /** What every stubbed command shows, and the line a reader can trust about the web: what it
  *  gives and what it does not. */
 export const WEB_STUB_MESSAGE =
-  'TypeShade on the web gives diagnostics, hover, completion and navigation in "use typeshade" ' +
-  'files. The preview, the Canvas, Run Entry on CPU and the Playground link need the desktop ' +
-  'version.';
+  'TypeShade on the web gives diagnostics, hover and imports between shader files in "use ' +
+  'typeshade" files. The preview, the Canvas, Run Entry on CPU and the Playground link need the ' +
+  'desktop version.';
 
 /** What the web entry reports about the page it runs in, for the user's warning and for a test. */
 export interface WebEnvironment {
@@ -110,8 +110,8 @@ export function describeEnvironment(environment: {
     return (
       'TypeShade: this page is not cross-origin isolated, so the TypeScript server runs without ' +
       'its semantic checks in the browser. There are no TypeShade diagnostics here, and ' +
-      'TypeScript shows none of its own either. vscode.dev is isolated; a self-hosted VS Code ' +
-      'for the Web needs the Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.'
+      'TypeScript shows none of its own either. A self-hosted VS Code for the Web needs the ' +
+      'Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.'
     );
   }
   return undefined;

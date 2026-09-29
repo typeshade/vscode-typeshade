@@ -147,7 +147,7 @@ describe('the web extension bundle, activated in a realm with no Node globals', 
       expect(shown.length, id).toBe(before + 1);
       expect(shown[before].kind).toBe('information');
       expect(shown[before].text).toMatch(STUB_TEXT);
-      expect(shown[before].text).toContain('diagnostics, hover, completion and navigation');
+      expect(shown[before].text).toContain('diagnostics, hover and imports between shader files');
     }
   });
 
