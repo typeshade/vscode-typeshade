@@ -677,7 +677,10 @@ assertion on a hover whose text has both halves.
 **Decision (2026-09-29): the web build is the plugin and nothing else.** The plugin is the part of
 this extension that is not extension code, so it is the part that can run in the tsserver web
 worker with no Node in it. The preview, the Canvas, Run Entry on CPU and the Playground commands
-stay on the desktop, and on the web each of them is a command that says so. The probe that
+stay on the desktop, and on the web each of them is a command that says so. The Command Palette
+shows seven of them only in a shader (`typeshade.isShader`), which only the desktop entry sets, so
+on the web the palette lists "Open Playground Link" alone and the rest are reached by a key binding
+(`docs/measurements/vscode-dev-live/`, finding 3). The probe that
 established the route is `docs/measurements/web-plugin-load/`, and `docs/playground-bridge.md` §4
 has the part of the story that is about the Playground.
 
@@ -700,12 +703,13 @@ VS Code for the Web must be 1.110.0 or newer.
 - _Isolation._ Without it the web TypeScript server runs only its syntax half: the plugin loads
   once, in that server, `getSemanticDiagnostics` is never called, and neither TypeScript nor
   TypeShade reports a semantic error (measured in the probe with `--coi` off: TS8004 and TS2322
-  both absent, hover still answered). vscode.dev, github.dev without a sign-in and
-  insiders.vscode.dev were reported isolated in the planning notes of this change, as the page's
-  `crossOriginIsolated` and its opener and embedder policy headers. That run is not committed here
-  and was not repeated, so the claim is not reproducible from this repository until §7's manual
-  check is done on the installed extension. A self-hosted VS Code for the Web, an embedder,
-  Firefox and Safari were not measured.
+  both absent, hover still answered). vscode.dev is isolated: §7's manual check on the installed
+  0.2.0 (`docs/measurements/vscode-dev-live/`, 2026-09-29) read `crossOriginIsolated` true in the
+  page, the extension host frame and worker and both TypeScript servers, with
+  `cross-origin-opener-policy: same-origin` and `cross-origin-embedder-policy: require-corp` on the
+  page, and the TypeShade diagnostics arrived. github.dev and insiders.vscode.dev were reported
+  isolated in the planning notes of this change and not measured since. A self-hosted VS Code for
+  the Web, an embedder, Firefox and Safari were not measured.
 - _Version._ 1.110.0 is the oldest build measured to load the plugin (web suite, 7 of 7). 1.109.0
   and 1.90.0 were run in the planning runs and did not request the plugin file, so TypeScript's
   false errors stay there. Those runs are not committed; the suite skips the plugin cases on
@@ -716,8 +720,8 @@ VS Code for the Web must be 1.110.0 or newer.
 the extension. The stub's activation warning is the only safeguard there: it shows once, and says
 which of the two conditions failed. The version case is worded so that it never suggests isolation
 would help, and the version is checked first (`describeEnvironment`, `web-support.ts`). The
-isolation warning names no host as isolated, because that rests on the notes above and is not
-measured here; it names the two headers a self-hosted page needs.
+isolation warning names no host as isolated, since a host can change its headers and the
+warning only shows where the page is not; it names the two headers a self-hosted page needs.
 
 **Why a stub entry at all.** The plugin does not need one to run, and VS Code does not treat an
 extension as a web extension without a `browser` entry, so the contribution would never be read
@@ -1157,7 +1161,8 @@ That last run also showed two cases that passed with the plugin removed, and bot
 the replacement case now requires the list to stay empty for 5 s, and hover asks at `vec4`, where
 bare TypeScript says `any`. What has not been measured: the `web` job on a GitHub runner (it has to
 run at least three times before it is trusted, since a red cell holds a release, §7), Firefox,
-Safari, vscode.dev itself, and a real CDN's content types.
+Safari, vscode.dev itself, and a real CDN's content types. The last two were measured once the
+extension was published, by hand rather than by the suite (`docs/measurements/vscode-dev-live/`).
 
 **The debug adapter is tested at the protocol level**, with `@vscode/debugadapter-testsupport`'s
 `DebugClient` over a pipe: launch a fixture shader, set a breakpoint on a known line, assert the
@@ -1426,15 +1431,18 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
       title menu and key bindings reach the stubs regardless.
     - _The plugin sharing the host's `typescript`_ is still no (item 11); a web bundle
       without its own `typescript` was measured in planning at 1.06 MB minified, and only there.
-    - _Bundle splitting under 2.4 MB_, if a CDN turns out to compress below a threshold: decide
-      after the header check of §7.
+    - _Bundle splitting under 2.4 MB_, if a CDN turns out to compress below a threshold: not
+      needed for now. §7's header check found the 4.4 MiB plugin bundle served under Brotli at
+      1.18 MB (`docs/measurements/vscode-dev-live/`, step 5).
     - _The two pinned `test-web` builds_ (`ci.yml`) are bumped by hand when a new stable is worth
       testing; the 1.109.0 row is not in CI, since the job has to be stable first. The `web`
       job is not a required check, and making it one is a ruleset change that is the owner's.
     - _`typeshade.diagnostics.replace`_ does nothing on either platform, because the plugin has no
       handler for what `extension.ts` sends it (§3.1). Fix it or delete the setting in a separate
       issue.
-    - _Who does the manual vscode.dev check_ (§7) is not decided.
+    - _Who does the manual vscode.dev check_ (§7) is not decided. For 0.2.0 an agent ran it, on
+      vscode.dev only (`docs/measurements/vscode-dev-live/`); steps 1 and 2 hold, step 3 was not
+      done.
 
 ## Decisions for the owner
 

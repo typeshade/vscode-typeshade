@@ -146,9 +146,13 @@ export class Harness {
     this.child.stdout.on('data', (chunk: Buffer) => this.read(chunk));
   }
 
-  /** The file's absolute path inside the fixture. */
+  /** The file's absolute path inside the fixture, or `name` itself when it is a name VS Code
+   *  gives an editor with no file behind it: `^/untitled/...` on the desktop,
+   *  `/untitled/...` on the web. */
   file(name: string): string {
-    return join(this.options.dir, name);
+    return name.startsWith('^/') || name.startsWith('/untitled/')
+      ? name
+      : join(this.options.dir, name);
   }
 
   /** Opens a file with the text on disk, or with `text` when the test supplies one. */
@@ -159,6 +163,11 @@ export class Harness {
       fileContent: text ?? readFileSync(file, 'utf8'),
       scriptKindName: 'TS',
     });
+  }
+
+  /** Closes an open file. */
+  close(name: string): void {
+    this.send('close', { file: this.file(name) });
   }
 
   /** Replaces an open file's text, the way an edit followed by a save does. Close and re-open

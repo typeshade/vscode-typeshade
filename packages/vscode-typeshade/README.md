@@ -62,10 +62,11 @@ Two conditions apply:
   shows a warning once.
 - **A page that is cross-origin isolated.** Without it the TypeScript server does not run its
   semantic checks in the browser, so there are no TypeShade diagnostics and TypeScript shows none
-  of its own either; the extension shows a warning once. vscode.dev was reported to be isolated
-  in planning notes that are not kept, and has not been measured since; the extension's own tests
-  do not check it either. A VS Code for the Web you host yourself needs the `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
-  headers.
+  of its own either; the extension shows a warning once. vscode.dev is isolated: the installed
+  0.2.0 was checked there on 2026-09-29, with the page, the extension host and both TypeScript
+  servers isolated (`docs/measurements/vscode-dev-live/` in the repository). github.dev was not
+  checked. A VS Code for the Web you host yourself needs the `Cross-Origin-Opener-Policy` and
+  `Cross-Origin-Embedder-Policy` headers.
 
 Completion, signature help, references, rename and the outline use the same plugin methods on the
 web, and are not covered by the extension's web tests. The web build was tested on VS Code for the
