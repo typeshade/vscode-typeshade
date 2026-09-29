@@ -4,8 +4,9 @@
 // extension host loads the extension's `main` the same way, and an MCP client runs the server's
 // `bin` under node; and all three have to carry the compiler with them: it is a pinned submodule
 // rather than an installed dependency until it publishes (`docs/design.md` §2). `tsc` does the
-// type-checking and emits nothing. The fourth artifact, the web plugin, is an ES module for a
-// browser worker and is described where it is built.
+// type-checking and emits nothing. The web artifacts are described where they are built: the
+// web plugin, an ES module for a browser worker, and the extension's web entry, a small CommonJS
+// stub for the web extension host.
 //
 // The bundles are NOT configured alike, and the difference is load-bearing.
 //
@@ -164,6 +165,26 @@ built.push(
     entry: 'packages/vscode-typeshade/src/extension.ts',
     outfile: 'packages/vscode-typeshade/dist/extension.js',
     external: ['vscode'],
+  }),
+);
+
+// The extension's entry in VS Code for the Web (`docs/playground-bridge.md` §4), which the
+// manifest's `browser` field names. It is a stub over `vscode` and carries neither the compiler
+// nor TypeScript, so it is a few kilobytes; `web-build.test.ts` holds it to that.
+//
+//   `cjs`      not `esm`: the web extension host runs the file as
+//              `new Function('module', 'exports', 'require', text)` and refuses an ES module, so
+//              the format is the desktop bundle's even though the platform is not.
+//   `browser`  so a Node built-in that slipped into the entry's imports is an esbuild error here
+//              (`eslint.config.mjs` catches it earlier, in the editor), not a `require` that
+//              fails in a worker.
+//   unminified because the file is tiny, and a stack in the web host's log is worth reading.
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/src/extension.web.ts',
+    outfile: 'packages/vscode-typeshade/dist/web/extension.js',
+    external: ['vscode'],
+    base: { ...shared, platform: 'browser', format: 'cjs', target: 'es2022' },
   }),
 );
 
