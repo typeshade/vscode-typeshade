@@ -1,5 +1,7 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compileModule } from './compiler.js';
+import { compile, compileModule, packModule, reflect } from './compiler.js';
 import { PreviewModel, shaderReader } from './model.js';
 
 const URI = 'file:///p/hello.shade.ts';
@@ -113,6 +115,70 @@ describe('the preview model', () => {
     preview.setDocument(URI, BROKEN, 1);
     expect(preview.output(URI, 'wgsl')?.stale).toBe(false);
   });
+
+  it('shows an untitled editor, whose uri has no TypeScript extension', () => {
+    // `untitled:Untitled-1` is how VS Code names a new editor. The service's TypeScript program
+    // left such a root out, so every text tab answered nothing (vscode-typeshade#44's finding,
+    // in the plugin).
+    const untitled = 'untitled:Untitled-1';
+    const preview = new PreviewModel();
+    preview.setDocument(untitled, SHADER, 1);
+    for (const tab of ['wgsl', 'glsl-vertex', 'glsl-fragment'] as const) {
+      const output = preview.output(untitled, tab);
+      expect(output?.diagnostics).toEqual([]);
+      expect(output?.text).toBe(model().output(URI, tab)?.text);
+    }
+    expect(preview.entries(untitled).map((entry) => entry.name)).toEqual(['vs', 'fs']);
+    // A diagnostic comes back under the editor's name, not the alias the service held it by.
+    preview.setDocument(untitled, BROKEN, 2);
+    const broken = preview.output(untitled, 'wgsl')?.diagnostics ?? [];
+    expect(broken.length).toBeGreaterThan(0);
+    expect(broken.every((d) => d.uri === untitled)).toBe(true);
+  });
+});
+
+/** The compiler's examples, which the extension's own checks read from the pinned compiler. */
+const EXAMPLES = new URL('../../../vendor/typeshade/examples/', import.meta.url);
+const readFromDisk = (uri: string): string | undefined => {
+  try {
+    return readFileSync(fileURLToPath(uri), 'utf8');
+  } catch {
+    return undefined;
+  }
+};
+
+describe("the preview's module is the one compile() builds", () => {
+  // The model builds the module a reflection and a run read from the front end's result, and
+  // built it with four of compile()'s fields: a reflection listed no override, a run could not
+  // read one or a module's `var`, and a static-only class became a struct. `packModule` reads
+  // every field, the WGSL and the layouts among them, so the two manifests differ where the two
+  // modules do.
+  const files = readdirSync(fileURLToPath(EXAMPLES)).filter((f) => f.endsWith('.shade.ts'));
+
+  it('reads a corpus with an override in it (the instrument)', () => {
+    expect(files.length).toBeGreaterThan(50);
+    const overrides = files.filter((file) => {
+      const uri = new URL(file, EXAMPLES).toString();
+      const compiled = compile(readFromDisk(uri)!, { fileName: uri, readDocument: readFromDisk });
+      return compiled.module !== undefined && reflect(compiled.module).overrides.length > 0;
+    });
+    expect(overrides.length).toBeGreaterThan(0);
+  });
+
+  for (const file of files) {
+    it(file, () => {
+      const uri = new URL(file, EXAMPLES).toString();
+      const text = readFromDisk(uri)!;
+      const compiled = compile(text, { fileName: uri, readDocument: readFromDisk });
+      const preview = new PreviewModel({ readDocument: readFromDisk });
+      preview.setDocument(uri, text, 1);
+      if (compiled.diagnostics.some((d) => d.category === 'error')) {
+        expect(preview.module(uri)).toBeUndefined();
+        return;
+      }
+      expect(packModule(preview.module(uri)!)).toEqual(packModule(compiled.module!));
+    });
+  }
 });
 
 /** The file a shader imports, and where the model's host finds it. */

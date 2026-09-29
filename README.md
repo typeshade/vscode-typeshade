@@ -15,24 +15,26 @@ This repository holds three packages and a Claude Code plugin:
 
 ## Status
 
-Early. `@typeshade/mcp` 0.1.1 is on npm, published by pushing its tag
-([`docs/agents.md`](./docs/agents.md) §6). Nothing else is published yet, to npm or to the Visual
-Studio Marketplace: the compiler itself is not on npm, so the other two packages stay private
-while the interfaces settle. The plan, the architecture and the decisions behind them are in
+Early. The VS Code extension is on the Visual Studio Marketplace and Open VSX, 0.2.1 at this
+writing, published by pushing its tag `extension-v<version>` ([`docs/design.md`](./docs/design.md)
+§7). `@typeshade/mcp` 0.1.1 is on npm, published by pushing its tag
+([`docs/agents.md`](./docs/agents.md) §6). The TypeScript server plugin is not published on its
+own: the extension carries it, and a package for other editors waits for the compiler itself to
+be on npm. The plan, the architecture and the decisions behind them are in
 [`docs/design.md`](./docs/design.md) for the editor and [`docs/agents.md`](./docs/agents.md) for
 coding agents.
 
-| Piece                            | State                                                |
-| -------------------------------- | ---------------------------------------------------- |
-| Workspace, CI, conventions       | done                                                 |
-| Design document                  | done, [`docs/design.md`](./docs/design.md)           |
-| TypeScript server plugin         | done, tested against a real tsserver                 |
-| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client |
-| MCP server publish workflow      | done; 0.1.1 published from the tag `mcp-v0.1.1`      |
-| Skill and Claude Code plugin     | done; the server entry runs the npm package          |
-| VS Code extension and preview    | done, tested in a real VS Code                       |
-| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands           |
-| Marketplace publish workflow     | done; publishes on the tag `extension-v<version>`    |
+| Piece                            | State                                                 |
+| -------------------------------- | ----------------------------------------------------- |
+| Workspace, CI, conventions       | done                                                  |
+| Design document                  | done, [`docs/design.md`](./docs/design.md)            |
+| TypeScript server plugin         | done, tested against a real tsserver                  |
+| MCP server (`@typeshade/mcp`)    | done, tested over stdio with the official MCP client  |
+| MCP server publish workflow      | done; 0.1.1 published from the tag `mcp-v0.1.1`       |
+| Skill and Claude Code plugin     | done; the server entry runs the npm package           |
+| VS Code extension and preview    | done, tested in a real VS Code                        |
+| Debug adapter (`typeshade` type) | after the compiler's stepping engine lands            |
+| Marketplace publish workflow     | done; 0.2.1 published from the tag `extension-v0.2.1` |
 
 ## Use with a coding agent
 

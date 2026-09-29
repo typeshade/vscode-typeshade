@@ -11,6 +11,7 @@
 // documents. What the duplication costs is measured in §4: 15.5 MB retained for the one-document
 // case, almost all of it the service's fixed cost rather than per document.
 
+import { withProgramNames } from '../../tsserver-plugin/src/program-names.js';
 import {
   compileTsSource,
   createTypeshadeLanguageService,
@@ -129,7 +130,10 @@ export class PreviewModel {
   private readonly readDocument: (uri: string) => string | undefined;
 
   constructor(host?: TypeshadeLanguageServiceHost) {
-    this.service = createTypeshadeLanguageService(host);
+    // An untitled editor's uri, `untitled:Untitled-1`, has no TypeScript extension, and the
+    // service's TypeScript program leaves such a root out, so every tab answered nothing for it.
+    // The plugin's wrapper holds the file under an alias and answers in the editor's names.
+    this.service = withProgramNames(createTypeshadeLanguageService(host));
     this.readDocument = host?.readDocument ?? (() => undefined);
   }
 
@@ -260,13 +264,22 @@ export class PreviewModel {
       },
     });
     const failed = result.diagnostics.some((d) => d.category === 'error');
+    // The module `compile()` builds, field for field: without the overrides a reflection listed
+    // none and a run could not read one, without the module's `var`s a run could not read or
+    // write them, and a static-only class, a namespace of functions with no layout, was a struct.
     const module = failed
       ? undefined
       : {
           consts: [...result.consts],
-          structs: result.structs.map((struct) => struct.decl),
+          structs: result.structs
+            .filter((struct) => !struct.namespace)
+            .map((struct) => struct.decl),
           bindings: [...result.bindings],
           funcs: [...result.funcs],
+          overrides: [...result.overrides],
+          vars: [...result.vars],
+          enables: [...result.enables],
+          ...(result.directives.length > 0 ? { diagnostics: [...result.directives] } : {}),
         };
     this.modules.set(uri, { version: document.version, reads, module });
     return module;
