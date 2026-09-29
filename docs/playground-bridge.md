@@ -148,6 +148,24 @@ plugin's load line. Then:
 The compiler's language service already runs in a browser worker on the site, so the service
 itself is not the risk; the plugin's host is.
 
+**Measured on 2026-09-29: the plugin loads**
+([`docs/measurements/web-plugin-load/`](./measurements/web-plugin-load/README.md)). VS Code for
+the Web 1.139.1, run with `@vscode/test-web`, created a plugin that a web extension contributes in
+its TypeScript 6.0.3 web server, and the plugin's diagnostics and hover reached the editor. So the
+first branch above holds, with four things the probe adds to it:
+
+- The plugin package sits at `node_modules/<name>/` in the extension, and its `package.json` needs
+  a `browser` field naming an **ES module whose default export is the plugin's init function**. A
+  CommonJS bundle does not load (`module is not defined`), and a `main` alone is not read.
+- Inside the plugin's worker there is no `vscode` API and no Node: the plugin reads files through
+  `info.serverHost`, and uses the `typescript` instance its init receives. The reader through
+  `vscode.workspace.fs` holds for the panel only.
+- The plugin is created twice, in a `partialSemantic` syntax server and in the semantic server.
+- The semantic server runs only on a cross-origin isolated page: without `SharedArrayBuffer` the
+  plugin loads in the syntax server alone and never sees `getSemanticDiagnostics`, so TypeShade's
+  diagnostics would not replace TypeScript's. Whether vscode.dev and github.dev are isolated for
+  the extension host was not measured, and is the first thing 3b checks.
+
 **A VS Code of our own on the site** (a VS Code for the Web build served from typeshade.dev with
 the extension installed) is not proposed. It is tens of megabytes to host and keep current for
 what the Playground's Monaco editor already gives a reader, and vscode.dev already opens any
@@ -162,7 +180,7 @@ public GitHub repository with the extension.
 | 1c    | this one   | Publish the extension (`docs/design.md` §7, PR 5)                              | the owner's go-ahead     |
 | 1d    | site       | Open in VS Code beside Download                                                | 1b and 1c                |
 | 2     | this one   | The Canvas tab over the compiler's runtime (built, §7)                         | compiler change 0025     |
-| 3a    | this one   | The web plugin probe                                                           | nothing                  |
+| 3a    | this one   | The web plugin probe (measured, §4: it loads)                                  | nothing                  |
 | 3b    | this one   | The web build, by the probe's answer                                           | 3a, and 2 for the canvas |
 
 No stage changes a rule, an export, a surface section or a diagnostic code of the compiler, so
@@ -232,3 +250,5 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
     flags are the runner's, not the extension's; a user's VS Code with a GPU needs none of them.
     The bundle alone was also run in Chromium on SwiftShader with the two multipass examples,
     which drew a trail and a blurred pattern.
+- **3a**, the web plugin probe: `docs/measurements/web-plugin-load/`. The plugin loads on VS Code
+  for the Web as an ES module under a `browser` field; §4 lists what 3b owes because of it.

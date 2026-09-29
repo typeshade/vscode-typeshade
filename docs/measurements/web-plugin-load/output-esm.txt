@@ -1,0 +1,11 @@
+WebAssembly=object SharedArrayBuffer=function crossOriginIsolated=true require=undefined process=undefined self=object
+(0 - syntax) Plugin validation succeeded
+    /lib.es2015.proxy.d.ts
+    ../../lib.es2015.proxy.d.ts
+      Library referenced via 'es2015.proxy' from file '../../lib.es2015.d.ts'
+(1 - semantic) [probe-plugin] create() ran; ts 6.0.3; project /dev/null/inferredProject1*; config {"name":"typeshade-web-probe-plugin",
+"global":true}
+(1 - semantic) [probe-plugin] env: readFile via serverHost length=106 fileExists=true | fetch=function importScripts=function Worker=function 
+(1 - semantic) Plugin validation succeeded
+(1 - semantic) [probe-plugin] getSyntacticDiagnostics /vscode-test-web/mount/a.ts
+(1 - semantic) [probe-plugin] getSemanticDiagnostics /vscode-test-web/mount/a.ts
