@@ -45,9 +45,35 @@ the last frame on screen under a banner that says why.
 | `typeshade.debug.precision`     | `f32`   | The arithmetic Run Entry on CPU uses                         |
 | `typeshade.trace.server`        | `off`   | Log the plugin's requests into the TypeScript server log     |
 
+## VS Code for the Web
+
+On vscode.dev and other VS Code for the Web pages the extension gives a `"use typeshade"` file
+the language features and nothing else: diagnostics, TypeScript's false errors gone, hover, and
+imports between shader files. They come from the same TypeScript server plugin as on the desktop.
+
+Every command in the table above needs the desktop version. On the web each one shows a message
+that says so and does nothing else: there is no preview, no Canvas, no Run Entry on CPU and no
+Playground link. The settings below are not read on the web.
+
+Two conditions apply:
+
+- **VS Code for the Web 1.110 or newer.** An older one does not load the plugin at all, so
+  TypeScript's own false errors stay on a shader file. The extension installs there anyway and
+  shows a warning once.
+- **A page that is cross-origin isolated.** Without it the TypeScript server does not run its
+  semantic checks in the browser, so there are no TypeShade diagnostics and TypeScript shows none
+  of its own either; the extension shows a warning once. vscode.dev was checked to be isolated when
+  the web build was written, and the extension's own tests do not check that. A VS Code for the
+  Web you host yourself needs the `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy`
+  headers.
+
+Completion, signature help, references, rename and the outline use the same plugin methods on the
+web, and are not covered by the extension's web tests. The web build was tested on VS Code for the
+Web 1.139.1 and 1.110.0 in Chromium; other browsers were not tested.
+
 ## Requirements
 
-VS Code 1.90 or newer. A repository that pins its own `typescript` gets the plugin too: the
+VS Code 1.90 or newer on the desktop (see above for the web). A repository that pins its own `typescript` gets the plugin too: the
 extension enables it for the workspace TypeScript version.
 
 The status bar names the entry points of a shader file, and says so when TypeScript is still
