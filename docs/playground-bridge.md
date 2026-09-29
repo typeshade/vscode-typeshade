@@ -186,3 +186,8 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
 - **1c**, the publish workflow (`docs/design.md` §7): `.github/workflows/publish-extension.yml`
   and `scripts/package-extension.mjs`. The extension's version is 0.1.0, and pushing the tag
   `extension-v0.1.0` on `main` publishes it to both registries.
+- **Link handling.** A pasted link and the `vscode://` handler's `link` come from any web page,
+  so `workspace-link.ts` decides what may cost a request (`planLink`): only a short link
+  (`/s/<id>`) whose origin is exactly `https://typeshade.dev` is fetched, and only to read its
+  redirect, which `shortLinkTarget` accepts only when it leads back to that origin. Every other
+  link is read from its own fragment and never fetched.

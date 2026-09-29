@@ -11,8 +11,10 @@
 import * as vscode from 'vscode';
 import {
   folderOf,
+  planLink,
   readLink,
   readManifest,
+  shortLinkTarget,
   writeLink,
   type Pass,
   type Workspace,
@@ -132,15 +134,16 @@ async function workspaceOf(active: vscode.Uri): Promise<Workspace> {
   return { main: { path: relative(mainUri), text: mainText }, files, passes: linkPasses };
 }
 
-/** The Playground link a short link (`/s/<id>`) redirects to; any other link as it is. */
+/** The Playground link a link stands for. Only the site's own short links are fetched, and only
+ *  to read where they redirect; `workspace-link.ts` decides and has the tests. */
 async function resolveLink(link: string): Promise<string> {
-  const url = new URL(link);
-  if (!url.pathname.startsWith('/s/')) return link;
-  const response = await fetch(url, { redirect: 'manual' });
-  const location = response.headers.get('location');
-  if (location === null)
-    throw new Error(`the short link ${link} does not redirect (${response.status})`);
-  return new URL(location, url).toString();
+  const plan = planLink(link);
+  if (plan.kind === 'fragment') return plan.link;
+  const response = await fetch(plan.url, {
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+  });
+  return shortLinkTarget(plan.url, response.status, response.headers.get('location'));
 }
 
 /** Writes the workspace a link carries to a folder the reader picks, then opens it. */

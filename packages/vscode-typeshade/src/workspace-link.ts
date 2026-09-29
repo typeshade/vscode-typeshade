@@ -20,6 +20,73 @@ export const PLAYGROUND_MAIN = 'hello.shade.ts';
 /** The site the link opens on. */
 export const PLAYGROUND_ORIGIN = 'https://typeshade.dev';
 
+/** How a pasted link is read: a short link on the site's own origin is fetched once to learn its
+ *  fragment; every other link is read from its own fragment and never fetched. */
+export type LinkPlan =
+  | { readonly kind: 'fetch'; readonly url: string }
+  | { readonly kind: 'fragment'; readonly link: string };
+
+/** The site's short link: `/s/<id>`, with the trailing slash the Worker writes. */
+const SHORT_LINK_PATH = /^\/s\/[^/]+\/?$/;
+
+/**
+ * Decides whether a link may cost a network request.
+ *
+ * The `vscode://` handler takes its link from any web page, so a link is data from a stranger:
+ * following a short link wherever it points would let a page make the reader's machine fetch
+ * an address of its choosing (a host on the reader's network, for one). Only a short link whose
+ * origin is exactly the site's is fetched. Anything else, including a link that is no URL at all
+ * (the bare fragment `readLink` also reads), is read from the text it carries.
+ *
+ * @param link - what the reader pasted or the handler received.
+ * @param origin - the origin whose short links may be followed; the site's by default.
+ */
+export function planLink(link: string, origin: string = PLAYGROUND_ORIGIN): LinkPlan {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return { kind: 'fragment', link };
+  }
+  if (url.origin === origin && SHORT_LINK_PATH.test(url.pathname))
+    return { kind: 'fetch', url: url.toString() };
+  return { kind: 'fragment', link };
+}
+
+/**
+ * The Playground link a short link's response redirects to, or an error.
+ *
+ * It fails closed: a response that is no redirect, has no `Location`, or sends the reader to
+ * another origin is refused, so a short link cannot be turned into a link to somewhere else. The
+ * caller reads the returned link's fragment and does not fetch it.
+ *
+ * @param shortLink - the short link that was fetched.
+ * @param status - the response's status.
+ * @param location - the response's `Location` header, if any.
+ * @param origin - the only origin a redirect may name; the site's by default.
+ * @throws when the response is not a redirect back to `origin`.
+ */
+export function shortLinkTarget(
+  shortLink: string,
+  status: number,
+  location: string | null,
+  origin: string = PLAYGROUND_ORIGIN,
+): string {
+  if (status < 300 || status >= 400 || location === null)
+    throw new Error(`the short link ${shortLink} does not redirect (${status})`);
+  let target: URL;
+  try {
+    target = new URL(location, shortLink);
+  } catch {
+    throw new Error(`the short link ${shortLink} redirects to something that is no address`);
+  }
+  if (target.origin !== origin)
+    throw new Error(
+      `the short link ${shortLink} redirects away from ${origin}, so it was not followed`,
+    );
+  return target.toString();
+}
+
 /** One pass of the graph, in draw order (compiler change 0026). */
 export interface Pass {
   readonly name: string;

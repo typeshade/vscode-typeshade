@@ -8,8 +8,10 @@ import {
   decodeSource,
   encodeSource,
   folderOf,
+  planLink,
   readLink,
   readManifest,
+  shortLinkTarget,
   writeLink,
   type Workspace,
 } from './workspace-link.js';
@@ -91,5 +93,83 @@ describe('the folder', () => {
     expect(readManifest('{ "main": "a.shade.ts" }')).toEqual({ main: 'a.shade.ts', passes: [] });
     expect(() => readManifest('{ "passes": [] }')).toThrow(/main/);
     expect(() => readManifest('{ "main": "a.shade.ts", "passes": [1] }')).toThrow(/passes/);
+  });
+});
+
+describe('which links may be fetched', () => {
+  it("follows a short link on the site's own origin, and only that", () => {
+    expect(planLink('https://typeshade.dev/s/AbC123/')).toEqual({
+      kind: 'fetch',
+      url: 'https://typeshade.dev/s/AbC123/',
+    });
+    expect(planLink('https://typeshade.dev/s/AbC123')).toEqual({
+      kind: 'fetch',
+      url: 'https://typeshade.dev/s/AbC123',
+    });
+  });
+
+  it('never fetches a short link on any other origin', () => {
+    for (const link of [
+      'https://evil.example/s/AbC123/',
+      'http://typeshade.dev/s/AbC123/',
+      'https://typeshade.dev:8443/s/AbC123/',
+      'https://www.typeshade.dev/s/AbC123/',
+      'https://typeshade.dev.evil.example/s/AbC123/',
+      'https://typeshade.dev@evil.example/s/AbC123/',
+      'https://evil.example/s/AbC123/#code=zUyo',
+      'http://169.254.169.254/s/latest/',
+    ])
+      expect(planLink(link)).toEqual({ kind: 'fragment', link });
+  });
+
+  it('reads a link that is not a short link from its own fragment', () => {
+    for (const link of [
+      SITE_LINK,
+      'https://typeshade.dev/s/',
+      'https://typeshade.dev/s/a/b',
+      'https://typeshade.dev/sx/AbC123/',
+      'https://typeshade.dev/playground/',
+      'code=zUyo&passes=a:b.shade.ts',
+      '',
+    ])
+      expect(planLink(link)).toEqual({ kind: 'fragment', link });
+  });
+
+  it('reads a bare fragment or a link on another origin, never fetching it', () => {
+    const link = writeLink(workspace, 'https://example.org');
+    const plan = planLink(link);
+    expect(plan.kind).toBe('fragment');
+    expect(readLink(link)).toEqual({ kind: 'workspace', workspace });
+  });
+});
+
+describe('where a short link may redirect', () => {
+  const SHORT = 'https://typeshade.dev/s/AbC123/';
+
+  it('accepts a redirect back to the site, absolute or relative', () => {
+    expect(shortLinkTarget(SHORT, 302, 'https://typeshade.dev/playground/#code=zUyo')).toBe(
+      'https://typeshade.dev/playground/#code=zUyo',
+    );
+    expect(shortLinkTarget(SHORT, 301, '/ko/playground/#code=zUyo')).toBe(
+      'https://typeshade.dev/ko/playground/#code=zUyo',
+    );
+  });
+
+  it('fails closed on a redirect to another origin', () => {
+    for (const location of [
+      'https://evil.example/playground/#code=zUyo',
+      'http://typeshade.dev/playground/#code=zUyo',
+      '//evil.example/playground/#code=zUyo',
+      'https://typeshade.dev.evil.example/',
+      'https://typeshade.dev@evil.example/',
+    ])
+      expect(() => shortLinkTarget(SHORT, 302, location)).toThrow(/redirects away/);
+  });
+
+  it('fails closed on a response that is no redirect', () => {
+    expect(() => shortLinkTarget(SHORT, 200, null)).toThrow(/does not redirect \(200\)/);
+    expect(() => shortLinkTarget(SHORT, 302, null)).toThrow(/does not redirect \(302\)/);
+    expect(() => shortLinkTarget(SHORT, 200, '/playground/')).toThrow(/does not redirect/);
+    expect(() => shortLinkTarget(SHORT, 404, '/playground/')).toThrow(/does not redirect/);
   });
 });
