@@ -436,6 +436,25 @@ describe('the plugin, in a real tsserver', () => {
     expect(all(await server.diagnostics('uses-package.shade.ts'))).toEqual([]);
   });
 
+  it('reports the real errors in an untitled editor, whose name has no extension', async () => {
+    // VS Code opens an untitled editor under a name with no extension, `^/untitled/...` on the
+    // desktop and `/untitled/...` on the web. The service's own program left such a file out and
+    // answered nothing, on the live vscode.dev (`docs/measurements/vscode-dev-live/`, finding 1).
+    for (const name of [
+      '^/untitled/ts-nul-authority/Untitled-1',
+      '/untitled/ts-nul-authority/Untitled-2',
+    ]) {
+      server.open(name, BROKEN);
+      expect(summarize((await server.diagnostics(name)).semantic)).toEqual(['8004/typeshade@5']);
+      const info = await server.request<{ documentation?: string }>('quickinfo', {
+        file: server.file(name),
+        ...Harness.at(3, 22),
+      });
+      expect(info?.documentation ?? '').toContain('32-bit floating-point');
+      server.close(name);
+    }
+  });
+
   it('gives TypeScript its file back when the directive is deleted', async () => {
     server.open('clean.shade.ts');
     expect(all(await server.diagnostics('clean.shade.ts'))).toEqual([]);

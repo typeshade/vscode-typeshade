@@ -14,6 +14,7 @@ import type ts from 'typescript';
 import { createTypeshadeLanguageService, type TypeshadeLanguageService } from './compiler.js';
 import { DocumentSync, type SyncHost } from './documents.js';
 import { isTypeshadeFile } from './directive.js';
+import { withProgramNames } from './program-names.js';
 import {
   toClassifications,
   toCompletionEntryDetails,
@@ -118,9 +119,13 @@ export function decorate(
   // file through `readDocument`, and the sync answers from tsserver's snapshots. The indirection
   // is one closure rather than a setter, so `sync` is never observably half-built.
   let sync: DocumentSync | undefined;
-  const shade: TypeshadeLanguageService = createTypeshadeLanguageService({
-    readDocument: (uri) => sync?.readDocument(uri),
-  });
+  // Wrapped, so an untitled editor's file, whose name has no extension, is one the service's
+  // program holds (`program-names.ts`).
+  const shade: TypeshadeLanguageService = withProgramNames(
+    createTypeshadeLanguageService({
+      readDocument: (uri) => sync?.readDocument(uri),
+    }),
+  );
   sync = new DocumentSync(
     typescript,
     syncHostOf(info, options.readFrom ?? 'languageServiceHost'),

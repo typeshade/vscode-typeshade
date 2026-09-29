@@ -165,10 +165,10 @@ first branch above holds, with four things the probe adds to it:
 - The plugin is created twice, in a `partialSemantic` syntax server and in the semantic server.
 - The semantic server runs only on a cross-origin isolated page: without `SharedArrayBuffer` the
   plugin loads in the syntax server alone and never sees `getSemanticDiagnostics`, so TypeShade's
-  diagnostics would not replace TypeScript's. Whether vscode.dev and github.dev are isolated for
-  the extension host was not measured by the probe. The notes of the planning run for 3b report
-  them isolated, without a committed record, so 3b's release step checks it again on the installed
-  extension (`docs/design.md` §7).
+  diagnostics would not replace TypeScript's. The probe did not measure whether vscode.dev and
+  github.dev are isolated. §7's check on the installed 0.2.0 did for vscode.dev: isolated, in the
+  page, the extension host and both TypeScript servers, and the TypeShade diagnostics arrived
+  (`docs/measurements/vscode-dev-live/`). github.dev is still not measured.
 
 **Built in 3b (0.2.0): the plugin, and a stub entry.** The extension's manifest gains
 `"browser": "./dist/web/extension.js"`, a 4 KB file that registers every command of the manifest as

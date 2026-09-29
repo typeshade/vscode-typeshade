@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- An untitled editor that starts with `"use typeshade"` now gets TypeShade's diagnostics and
+  hover, on the desktop and on the web. Before, TypeScript's false errors went away and nothing
+  took their place: an untitled editor's name has no extension, and the compiler's service left a
+  file with such a name out of its program.
+
 ## 0.2.0
 
 The first release that runs in VS Code for the Web, over the same compiler as 0.1.0: `typeshade`
