@@ -21,6 +21,7 @@
     "vscode": "^1.90.0"
   },
   "main": "./dist/extension.js",
+  "browser": "./dist/web/extension.js",
   "activationEvents": [
     "onLanguage:typescript",
     "onUri"
