@@ -12,6 +12,9 @@
 //   package.json          the extension's manifest, without its scripts and dev dependencies,
 //                         and with the plugin as its one dependency
 //   dist/extension.js     the extension's bundle
+//   dist/webview/canvas.js
+//                         the Canvas tab's webview script, which the panel loads by its own uri;
+//                         the webview's `localResourceRoots` is this one directory
 //   node_modules/@typeshade/tsserver-plugin/
 //                         the plugin's bundle, as a REAL directory with a minimal package.json:
 //                         VS Code hands the extension's directory to tsserver as a probe
@@ -44,10 +47,11 @@ const plugin = JSON.parse(
 
 rmSync(stage, { recursive: true, force: true });
 const pluginDir = join(stage, 'node_modules', plugin.name);
-mkdirSync(join(stage, 'dist'), { recursive: true });
+mkdirSync(join(stage, 'dist/webview'), { recursive: true });
 mkdirSync(pluginDir, { recursive: true });
 
 copyFileSync(join(pkg, 'dist/extension.js'), join(stage, 'dist/extension.js'));
+copyFileSync(join(pkg, 'dist/webview/canvas.js'), join(stage, 'dist/webview/canvas.js'));
 copyFileSync(join(root, 'packages/tsserver-plugin/dist/index.js'), join(pluginDir, 'index.js'));
 writeFileSync(
   join(pluginDir, 'package.json'),

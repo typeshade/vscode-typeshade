@@ -678,12 +678,50 @@ most people first open a `.shade.ts` file. tsserver puts such a file in an infer
 plugin passed through `--globalPlugins`, which is how `contributes.typescriptServerPlugins`
 arrives, is enabled there too. §6 carries a fixture with no `tsconfig.json` for exactly this.
 
-**The preview panel.** One `WebviewPanel`, opened beside the editor, with four tabs: WGSL, GLSL
-vertex, GLSL fragment, and reflection. Diagnostics are not a tab: they belong to the Problems
-view, and a second copy of them in a panel is a second place to be stale. The panel follows the
-active editor, updates on edit behind a debounce (default 300 ms), and shows the previous output
-greyed out while the current text has an error, because a blank panel while you are mid-edit is
-worse than a stale one that says it is stale.
+**The preview panel.** One `WebviewPanel`, opened beside the editor, with five tabs: WGSL, GLSL
+vertex, GLSL fragment, reflection, and Canvas. Diagnostics are not a tab: they belong to the
+Problems view, and a second copy of them in a panel is a second place to be stale. The panel
+follows the active editor, updates on edit behind a debounce (default 300 ms), and shows the
+previous output greyed out while the current text has an error, because a blank panel while you
+are mid-edit is worse than a stale one that says it is stale.
+
+**The Canvas tab draws the active shader** (`docs/playground-bridge.md` §3), and it is the one
+tab that is not text, so it is built differently. The webview gets no compiler: the extension
+host compiles the active file's workspace with the compiler it already holds (`canvas.ts`),
+packs each file into the manifest the compiler's program runtime loads (`packModule`), works
+out what every binding of each program gets (`canvas-plan.ts`), and posts the result. The
+webview runs a second, browser-side bundle (`dist/webview/canvas.js`, 52 KB, built from
+`src/webview/canvas.ts`) that carries `typeshade/runtime` and none of the compiler. It loads the
+manifests, records one render pass per file each frame and puts the last into the canvas. The
+panel writes the Canvas document once, on the switch to the tab, and then only messages it, since
+it holds a GPU device, an animation loop and the pointer, which a document rewritten on every
+keystroke would throw away; a text tab is rewritten as before. The content security policy is
+the text tabs' (`default-src 'none'` and the nonce), because the bundle is admitted by the same
+nonce as an inline script, and `localResourceRoots` is the one directory the bundle sits in.
+
+What it draws is the Playground's drawing. A file that declares no `@vertex` entry is compiled
+behind the site's fullscreen triangle, which is how the Playground reads a fragment program
+alone. With a `typeshade.json` at the root of the file's workspace folder that names the active
+file, as its main file or one of its passes, it draws the passes in order and then the main
+file; otherwise the active file alone. The passes follow compiler change 0026: each is a program
+of its own, drawn into a texture the size of the canvas in `rgba16float`, and a `texture_2d<f32>`
+named like a pass reads that pass's output, this frame's when the pass is drawn earlier, the
+frame before's when it is the reader itself or is drawn later, zeroes on the first frame. The
+uniform fields `time` (`f32` seconds), `resolution` (`vec2` pixels), `mouse` (`vec2`, 0 to 1
+from the bottom left), `frame` (`u32`) and `timeDelta` (`f32`) are filled as the site's
+live-shader contract fills them, and only when the uniform struct declares them at those
+types; every other field is zero. A `texture_2d<f32>` that is no pass gets the site's checker,
+and a sampler is linear and clamped. A binding the Canvas cannot fill (a storage buffer, a
+comparison sampler, a texture of another kind) is refused with a sentence that names it, and so
+is a program without exactly one `@vertex` and one `@fragment` entry or with more than one
+colour output; a file that does not compile keeps the last graph on screen with a banner that
+says why, as the text tabs do.
+
+The runtime is WebGPU only. Where the webview has no `navigator.gpu`, or no adapter, the tab
+says so in one sentence and draws nothing, and every entry point of the script ends in a report
+rather than a throw. What a real VS Code does is measured, not assumed (`docs/playground-bridge.md`
+§7 has the numbers): the webview has `navigator.gpu` and, under `--disable-gpu`, no adapter, so
+CI's electron run sees the sentence; with a software adapter it draws.
 
 **Where the panel's text comes from is a real decision.** `getCompiledOutput` lives in the
 `TypeshadeLanguageService`, and the plugin's instance of that service lives inside the tsserver
@@ -718,6 +756,7 @@ processes** on top of what each already holds. About 15.5 MB of each copy is the
 | `typeshade.showWgsl`           | TypeShade: Show WGSL            | Opens the panel on the WGSL tab for the active file                                                                           |
 | `typeshade.showGlsl`           | TypeShade: Show GLSL            | Opens the panel on the GLSL vertex tab                                                                                        |
 | `typeshade.showReflection`     | TypeShade: Show Reflection      | Opens the panel on the reflection tab (`reflect(module)`, exported from the compiler's root barrel)                           |
+| `typeshade.showCanvas`         | TypeShade: Show Canvas          | Opens the panel on the Canvas tab, which draws the active file's workspace with the compiler's program runtime                |
 | `typeshade.runEntry`           | TypeShade: Run Entry on CPU     | Picks an entry from the file's document symbols, asks for the invocation, runs it on the CPU oracle, shows the returned value |
 | `typeshade.copyOutput`         | TypeShade: Copy Output          | Copies the active tab's text                                                                                                  |
 | `typeshade.openInPlayground`   | TypeShade: Open in Playground   | Opens the active shader's workspace in the site's Playground, as a link (`docs/playground-bridge.md` §2.3)                    |
@@ -757,14 +796,15 @@ one-way channel is for.
 - **Formatting.** TypeScript's formatter already formats these files correctly, and the plugin
   passes the formatting methods through.
 - **A WGSL or GLSL language server for the output panel.** The panel is read-only.
-- **Rendering a shader.** A preview that draws pixels needs a GPU, a pipeline and a host
-  runtime. The call layer (`typeshade/vite` draws a full-screen `@fragment` entry into a canvas,
-  proposal 0016) runs in the host application's page. The compiler's program runtime,
-  `typeshade/runtime` (change 0025), now gives a webview both things it lacked. It requests a
-  device of its own, with the features the program needs. It binds by the names the source
-  declares, packing plain values by the manifest's layouts, so a preview keeps no copy of the
-  bindings. Building the preview is still a feature to propose on its own, not part of this
-  surface: `docs/playground-bridge.md` §3 is that proposal, over that runtime.
+- **A renderer of the extension's own.** The Canvas tab draws, but only through the compiler's
+  program runtime, `typeshade/runtime` (change 0025), which requests its own device, binds by
+  the names the source declares and packs plain values by the manifest's layouts, so the
+  extension keeps no copy of the bindings and no second copy of the site's 2,160-line
+  `shader-runtime.ts`. What the runtime does not do stays out of the tab: no WebGL2 or CPU tier
+  (version 1 of the runtime is WebGPU only, and a webview without an adapter draws nothing),
+  no controls for the shader's own uniform fields (they are zero), no dropped picture on a
+  texture (the checker is the only source, and `typeshade.json` carries no bindings),
+  and no scene, camera or material, which the runtime does not have either.
 
 ## 5. The debugger
 
@@ -927,15 +967,18 @@ TypeScript 6.0.3 where this repository pins 5.6.3, threw on the first `navtree` 
 left the window with no diagnostics at all; §2 has the cause. **A suite that only asserted "a
 shader reports nothing" would have called that a pass**, which is why the first assertion about
 a shader is preceded by one about a plain `.ts` file with a real type error: TS2322 has to
-arrive before silence on a shader means anything. The suite is seven cases and uses no test
+arrive before silence on a shader means anything. The suite is eight cases and uses no test
 framework, because the runner's contract is a module exporting `run()` and `node:assert` covers
 the rest.
 
 The extension's logic lives in modules that do not import `vscode` (the compiled-output model,
-the invocation form's validation, the panel's HTML, the launch configuration mapping), each
+the invocation form's validation, the panel's HTML, the Canvas's plan and message, the launch
+configuration mapping), each
 unit-tested with vitest, so the electron suite is left with exactly what only a real host can
 answer: that the extension activates, that its commands register, that the panel opens beside
-the editor, and that the plugin the manifest contributes actually loaded.
+the editor, that the Canvas tab's script loads and reports that it drew or why it could not (the
+extension returns that status from `activate`, since nothing else can tell whether a webview
+drew), and that the plugin the manifest contributes actually loaded.
 
 **The debug adapter is tested at the protocol level**, with `@vscode/debugadapter-testsupport`'s
 `DebugClient` over a pipe: launch a fixture shader, set a breakpoint on a known line, assert the
@@ -996,12 +1039,14 @@ packaged suite on every pull request too, so a packaging regression is red befor
 
 **The package is staged, not packed in place.** `scripts/package-extension.mjs` copies what ships
 into `out/extension`: the manifest without its scripts and dev dependencies, the extension's
-bundle, the plugin's bundle as a real `node_modules/@typeshade/tsserver-plugin` directory with a
+bundle, the Canvas tab's webview bundle (`dist/webview/canvas.js`, §4), the plugin's bundle as a real `node_modules/@typeshade/tsserver-plugin` directory with a
 minimal `package.json`, the extension's README and CHANGELOG, and the repository's LICENSE and
 NOTICE. The plugin is the staged manifest's one dependency, which is what makes vsce's `npm list`
 pack that directory of `node_modules` and nothing else. Measured on 2026-09-28: 10 files,
 3.86 MB, and the electron suite passes against it in VS Code 1.139.1, the plugin replacing
-TypeScript's answers included.
+TypeScript's answers included. With the Canvas tab's webview bundle it is 11 files and 3.9 MB,
+and the suite passes against the staged directory again, so a `.vsix` that forgot the bundle
+would fail the Canvas case rather than ship a tab that never loads.
 
 **Both registries, in one run.** The same job publishes to the Visual Studio Marketplace with
 `npx @vscode/vsce publish` and then to Open VSX with `npx ovsx publish`, creating the `typeshade`

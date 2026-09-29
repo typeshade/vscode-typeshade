@@ -13,7 +13,8 @@ import { PREVIEW_TABS, type PreviewOutput, type PreviewTab } from './model.js';
 export interface PanelState {
   /** The file name shown in the header, already short. */
   readonly fileName: string;
-  /** Which tab is selected. */
+  /** Which tab is selected. The text tabs are this document; the canvas is
+   *  {@link canvasHtml}'s. */
   readonly active: PreviewTab;
   /** The selected tab's output, or undefined when the model holds nothing for this file. */
   readonly output: PreviewOutput | undefined;
@@ -25,6 +26,7 @@ const TAB_LABELS: Readonly<Record<PreviewTab, string>> = {
   'glsl-vertex': 'GLSL vertex',
   'glsl-fragment': 'GLSL fragment',
   reflection: 'Reflection',
+  canvas: 'Canvas',
 };
 
 /**
@@ -56,6 +58,48 @@ export function panelHtml(state: PanelState, nonce: string): string {
 ${banner(state.output)}
 <pre class="${state.output?.stale === true ? 'output stale' : 'output'}">${escapeHtml(bodyText(state.output))}</pre>
 <script nonce="${nonce}">${SCRIPT}</script>
+</body>
+</html>
+`;
+}
+
+/**
+ * The Canvas tab's document.
+ *
+ * Unlike the text tabs it is written once and then only messaged: it holds a GPU device, a loop
+ * and the pointer, and a document rewritten on every keystroke would throw all three away. The
+ * script is the extension's own bundle, loaded by the URI the webview gave it, and the policy
+ * admits it by nonce like the inline ones, so it adds nothing to the text tabs' policy and keeps
+ * `default-src 'none'`: the canvas draws from what the host posts and loads nothing itself.
+ *
+ * @param state - the file name and the tab strip's selection (`canvas`).
+ * @param nonce - the one value the content security policy admits, fresh per render.
+ * @param scriptUri - the bundle's `webview.asWebviewUri`.
+ * @returns the HTML.
+ */
+export function canvasHtml(state: PanelState, nonce: string, scriptUri: string): string {
+  const csp = [
+    "default-src 'none'",
+    `style-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}'`,
+  ].join('; ');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${escapeHtml(csp)}">
+<title>TypeShade preview</title>
+<style nonce="${nonce}">${STYLE}${CANVAS_STYLE}</style>
+</head>
+<body class="canvas-body">
+<header>
+  <span class="file" id="file">${escapeHtml(state.fileName)}</span>
+  <nav>${tabs(state.active)}</nav>
+</header>
+<p class="banner" id="banner" hidden></p>
+<p class="note" id="note" hidden></p>
+<canvas id="canvas" aria-label="The active shader, drawn"></canvas>
+<script nonce="${nonce}" src="${escapeHtml(scriptUri)}"></script>
 </body>
 </html>
 `;
@@ -130,6 +174,14 @@ const STYLE = `
             font-family: var(--vscode-editor-font-family);
             font-size: var(--vscode-editor-font-size); }
   .output.stale { opacity: 0.5; }
+`;
+
+/** The Canvas tab's own rules: the canvas takes what the header and the banners leave. */
+const CANVAS_STYLE = `
+  .canvas-body { display: flex; flex-direction: column; height: 100vh; }
+  [hidden] { display: none !important; }
+  .note { margin: 0; padding: 0.4rem 0.75rem; }
+  #canvas { flex: 1; min-height: 0; width: 100%; display: block; }
 `;
 
 /** The panel's script: the tab strip, and nothing else. The panel is read-only (§4), so this is

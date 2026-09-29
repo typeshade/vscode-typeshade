@@ -16,6 +16,7 @@ TypeScript file is left as it is.
 | TypeShade: Show WGSL            | Opens the preview beside the editor, on the WGSL the active file compiles to |
 | TypeShade: Show GLSL            | The same, on the GLSL ES 3.00 vertex and fragment shaders                    |
 | TypeShade: Show Reflection      | The same, on the bind groups, entry points and uniforms                      |
+| TypeShade: Show Canvas          | The same, drawing the shader instead of printing it (needs WebGPU)           |
 | TypeShade: Run Entry on CPU     | Runs a function of the file on the CPU, with the arguments you type          |
 | TypeShade: Copy Output          | Copies the text of the preview's open tab                                    |
 | TypeShade: Open in Playground   | Opens the file, the files it imports and its passes in the site's Playground |
@@ -24,6 +25,15 @@ TypeScript file is left as it is.
 The preview follows the active editor and recompiles as you type. A folder downloaded from the
 Playground carries a `typeshade.json` that names its main file and its passes, and Open in
 Playground reads it.
+
+The Canvas tab draws the active file every frame the way the Playground does: a file with no
+`@vertex` entry gets the fullscreen triangle, the passes of a `typeshade.json` that names the file
+are drawn in order into textures the size of the canvas, and the main file is drawn last. A
+uniform struct's `time`, `resolution` (pixels), `mouse` (0 to 1 from the bottom left), `frame`
+and `timeDelta` fields are filled, and any other field is zero; a `texture_2d<f32>` that is not a
+pass shows a checker. The Canvas uses WebGPU, so it draws only where VS Code's webview has an
+adapter; where it has none the tab says so and draws nothing. A file that stops compiling keeps
+the last frame on screen under a banner that says why.
 
 ## Settings
 

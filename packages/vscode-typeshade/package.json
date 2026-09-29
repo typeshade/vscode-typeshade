@@ -46,6 +46,10 @@
         "title": "TypeShade: Show Reflection"
       },
       {
+        "command": "typeshade.showCanvas",
+        "title": "TypeShade: Show Canvas"
+      },
+      {
         "command": "typeshade.runEntry",
         "title": "TypeShade: Run Entry on CPU"
       },
@@ -74,6 +78,10 @@
         },
         {
           "command": "typeshade.showReflection",
+          "when": "typeshade.isShader"
+        },
+        {
+          "command": "typeshade.showCanvas",
           "when": "typeshade.isShader"
         },
         {

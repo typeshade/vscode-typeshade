@@ -43,13 +43,14 @@ import { dirname, join, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** The compiler's published specifiers, resolved to the pinned submodule. The same three
+/** The compiler's published specifiers, resolved to the pinned submodule. The same four
  *  mappings are in `tsconfig.base.json` `paths` for type-checking and in `vitest.config.mts`
  *  for the tests; all three go away together on the day `typeshade` is on npm. */
 const alias = {
   typeshade: join(root, 'vendor/typeshade/src/index.ts'),
   'typeshade/language-service': join(root, 'vendor/typeshade/src/language-service/index.ts'),
   'typeshade/debug': join(root, 'vendor/typeshade/src/debug.ts'),
+  'typeshade/runtime': join(root, 'vendor/typeshade/src/runtime.ts'),
 };
 
 /** What every bundle shares.
@@ -149,6 +150,28 @@ built.push(
     },
   }),
 );
+
+// The Canvas tab's webview script (`docs/playground-bridge.md` §3): the only bundle that runs in a
+// browser context rather than in node, so it is not `common`'s. An IIFE, because a webview loads
+// it with a plain `<script>` tag and a module script would need a second content security policy
+// entry. It carries `typeshade/runtime` (the program runtime, compiler change 0025) and nothing
+// of the compiler: the extension host compiles and posts the manifests, and `webview.test.ts`
+// holds the bundle to that, since a webview that quietly grew the whole compiler would still work.
+const webview = await build({
+  entryPoints: [join(root, 'packages/vscode-typeshade/src/webview/canvas.ts')],
+  outfile: join(root, 'packages/vscode-typeshade/dist/webview/canvas.js'),
+  bundle: true,
+  platform: 'browser',
+  format: 'iife',
+  target: 'es2022',
+  alias,
+  logLevel: 'warning',
+  metafile: true,
+});
+built.push({
+  outfile: 'packages/vscode-typeshade/dist/webview/canvas.js',
+  bytes: webview.metafile.outputs[Object.keys(webview.metafile.outputs)[0]].bytes,
+});
 
 // The electron suite and its launcher, built the same way for the same reason: the extension
 // host loads the suite with `require`, and the launcher runs under plain node. Neither belongs in

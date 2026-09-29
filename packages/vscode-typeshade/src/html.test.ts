@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, panelHtml } from './html.js';
+import { canvasHtml, escapeHtml, panelHtml } from './html.js';
 import { PREVIEW_TABS, type PreviewOutput } from './model.js';
 
 function output(over: Partial<PreviewOutput> = {}): PreviewOutput {
@@ -72,6 +72,58 @@ describe('the panel document', () => {
   it('renders with no output at all', () => {
     const html = panelHtml({ fileName: 'a.ts', active: 'wgsl', output: undefined }, 'n1');
     expect(html).toContain('<pre class="output"></pre>');
+  });
+});
+
+describe('the Canvas document', () => {
+  const canvas = (nonce = 'n1', script = 'vscode-resource://x/dist/webview/canvas.js'): string =>
+    canvasHtml({ fileName: 'hello.shade.ts', active: 'canvas', output: undefined }, nonce, script);
+
+  it('is the text tabs, then a fifth, with the canvas selected', () => {
+    const html = canvas();
+    for (const tab of PREVIEW_TABS) expect(html).toContain(`data-tab="${tab}"`);
+    expect(PREVIEW_TABS).toEqual(['wgsl', 'glsl-vertex', 'glsl-fragment', 'reflection', 'canvas']);
+    expect(html).toContain('data-tab="canvas" aria-pressed="true"');
+    expect(html).toContain('>Canvas</button>');
+    expect(html).toContain('<canvas id="canvas"');
+  });
+
+  it("loads the extension's bundle by the URI it was given, and admits it by nonce", () => {
+    const html = canvas('abc123');
+    expect(html).toContain(
+      '<script nonce="abc123" src="vscode-resource://x/dist/webview/canvas.js"></script>',
+    );
+    // The policy is the text tabs' policy: nothing is added for the script, and nothing else is
+    // allowed, so the canvas loads no image, no font, no frame and makes no request of its own.
+    expect(html).toContain(
+      'default-src &#39;none&#39;; style-src &#39;nonce-abc123&#39;; script-src &#39;nonce-abc123&#39;',
+    );
+    expect(html).not.toContain('unsafe-inline');
+    expect(html).not.toContain('unsafe-eval');
+    expect(html).not.toMatch(/(connect|img|frame|font|worker)-src/);
+  });
+
+  it('carries no inline script, since the bundle wires the tab strip itself', () => {
+    // A second `acquireVsCodeApi()` in one webview throws, so the tab strip's script cannot be
+    // here as well.
+    expect(canvas()).not.toMatch(/<script nonce="[^"]*">/);
+  });
+
+  it('escapes the file name and the script URI', () => {
+    const html = canvasHtml(
+      { fileName: '<b>.shade.ts', active: 'canvas', output: undefined },
+      'n1',
+      'x" onload="alert(1)',
+    );
+    expect(html).toContain('&lt;b&gt;.shade.ts');
+    expect(html).not.toContain('<b>.shade.ts');
+    expect(html).toContain('src="x&quot; onload=&quot;alert(1)"');
+  });
+
+  it('starts with the banners hidden, which the script fills with text and never with HTML', () => {
+    const html = canvas();
+    expect(html).toContain('id="banner" hidden');
+    expect(html).toContain('id="note" hidden');
   });
 });
 

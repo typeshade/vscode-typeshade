@@ -24,22 +24,24 @@ import {
   type TypeshadeLanguageServiceHost,
 } from './compiler.js';
 
-/** The panel's four tabs. The first three are `getCompiledOutput` targets and the fourth is not,
- *  which is why `output` branches on it. */
-export type PreviewTab = 'wgsl' | 'glsl-vertex' | 'glsl-fragment' | 'reflection';
+/** The tabs that show text: the first three are `getCompiledOutput` targets and the fourth is
+ *  not, which is why `output` branches on it. */
+export type TextTab = 'wgsl' | 'glsl-vertex' | 'glsl-fragment' | 'reflection';
 
-/** Every tab, in the order the panel shows them. */
-export const PREVIEW_TABS: readonly PreviewTab[] = [
-  'wgsl',
-  'glsl-vertex',
-  'glsl-fragment',
-  'reflection',
-];
+/** The panel's five tabs. The fifth draws the shader instead of printing it (`canvas.ts`), so it
+ *  has no text and the model has no output for it. */
+export type PreviewTab = TextTab | 'canvas';
+
+/** The tabs that show text, in the order the panel shows them. */
+export const TEXT_TABS: readonly TextTab[] = ['wgsl', 'glsl-vertex', 'glsl-fragment', 'reflection'];
+
+/** Every tab, in the order the panel shows them: the text ones, then the canvas. */
+export const PREVIEW_TABS: readonly PreviewTab[] = [...TEXT_TABS, 'canvas'];
 
 /** What the panel renders for one tab. */
 export interface PreviewOutput {
   /** The tab this is for. */
-  readonly tab: PreviewTab;
+  readonly tab: TextTab;
   /** The text to show, which is the previous good output when `stale`. */
   readonly text: string;
   /** True when the document does not compile right now and `text` is what it last produced.
@@ -155,7 +157,7 @@ export class PreviewModel {
     if (!this.held.delete(uri)) return;
     this.service.closeDocument(uri);
     this.modules.delete(uri);
-    for (const tab of PREVIEW_TABS) this.lastGood.delete(key(uri, tab));
+    for (const tab of TEXT_TABS) this.lastGood.delete(key(uri, tab));
   }
 
   /** Whether the model holds `uri`. */
@@ -170,7 +172,7 @@ export class PreviewModel {
    * @param tab - which tab.
    * @returns the text and whether it is stale, or undefined when the document is not held.
    */
-  output(uri: string, tab: PreviewTab): PreviewOutput | undefined {
+  output(uri: string, tab: TextTab): PreviewOutput | undefined {
     if (!this.held.has(uri)) return undefined;
     if (tab === 'reflection') {
       const module = this.moduleOf(uri);
@@ -216,7 +218,7 @@ export class PreviewModel {
   /** Records an output that compiled, or falls back to the last one that did. */
   private settle(
     uri: string,
-    tab: PreviewTab,
+    tab: TextTab,
     text: string,
     diagnostics: readonly TypeshadeDiagnostic[],
   ): PreviewOutput {
@@ -278,6 +280,6 @@ export class PreviewModel {
 }
 
 /** The key one document's one tab is remembered under. A newline cannot appear in either half. */
-function key(uri: string, tab: PreviewTab): string {
+function key(uri: string, tab: TextTab): string {
   return `${uri}\n${tab}`;
 }

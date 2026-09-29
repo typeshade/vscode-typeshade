@@ -8,7 +8,9 @@
 // looks like is `html.ts`, neither of which imports `vscode`.
 
 import * as vscode from 'vscode';
-import { panelHtml } from './html.js';
+import { canvasMessageFor } from './canvas-source.js';
+import type { CanvasMessage, CanvasStatus, WebviewMessage } from './canvas-plan.js';
+import { canvasHtml, panelHtml } from './html.js';
 import type { PreviewModel, PreviewTab } from './model.js';
 
 /** The view type the panel is registered under, and the key its state is restored with. */
@@ -32,10 +34,20 @@ export class PreviewPanel {
   private uri: string | undefined;
   private tab: PreviewTab = 'wgsl';
   private timer: ReturnType<typeof setTimeout> | undefined;
+  /** Whether the webview's document is the Canvas one, written once and then only messaged. */
+  private canvasDocument = false;
+  /** Whether that document's script is listening, which it says with `canvas-ready`. */
+  private canvasReady = false;
+  /** Bumped by every push, so a slow compile does not land after a newer one. */
+  private push = 0;
+  /** What the Canvas script last said about itself, for the extension's test hook. */
+  private status: CanvasStatus | undefined;
 
   constructor(
     private readonly model: PreviewModel,
     private readonly settings: () => PreviewSettings,
+    private readonly extensionUri: vscode.Uri,
+    private readonly readDocument: (uri: string) => string | undefined,
   ) {}
 
   /**
@@ -80,9 +92,10 @@ export class PreviewPanel {
     }, debounceMs);
   }
 
-  /** The text the panel is showing, for `typeshade.copyOutput`. Empty when nothing is. */
+  /** The text the panel is showing, for `typeshade.copyOutput`. Empty when nothing is, and for
+   *  the Canvas, which shows none. */
   currentText(): string {
-    if (this.uri === undefined) return '';
+    if (this.uri === undefined || this.tab === 'canvas') return '';
     return this.model.output(this.uri, this.tab)?.text ?? '';
   }
 
@@ -90,6 +103,12 @@ export class PreviewPanel {
    *  its error message both need to know. */
   isOpen(): boolean {
     return this.panel !== undefined;
+  }
+
+  /** What the Canvas script last reported: no WebGPU, frames drawing, or a failure. Undefined
+   *  until it has said anything. `typeshade.showCanvas`'s test reads it (`extension.ts`). */
+  canvasStatus(): CanvasStatus | undefined {
+    return this.status;
   }
 
   /** Closes the panel and cancels a pending render. */
@@ -107,19 +126,38 @@ export class PreviewPanel {
       VIEW_TYPE,
       'TypeShade preview',
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-      // No `localResourceRoots`: the document is self-contained, so the webview needs to load
-      // nothing at all, and the content security policy in `html.ts` says so.
-      { enableScripts: true, retainContextWhenHidden: true },
+      {
+        enableScripts: true,
+        // The Canvas needs its GPU device, its loop and the pointer to outlive a hidden tab.
+        retainContextWhenHidden: true,
+        // The one thing the webview may load is the Canvas bundle, so the only directory it may
+        // read is the one that holds it. The text tabs load nothing at all.
+        localResourceRoots: [WEBVIEW_ROOT(this.extensionUri)],
+      },
     );
     panel.onDidDispose(() => {
       this.panel = undefined;
+      this.canvasDocument = false;
+      this.canvasReady = false;
       if (this.timer !== undefined) clearTimeout(this.timer);
       this.timer = undefined;
     });
-    panel.webview.onDidReceiveMessage((message: { type?: string; tab?: PreviewTab }) => {
-      if (message.type !== 'selectTab' || message.tab === undefined) return;
-      this.tab = message.tab;
-      this.render();
+    panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
+      switch (message.type) {
+        case 'selectTab':
+          if (isTab(message.tab)) {
+            this.tab = message.tab;
+            this.render();
+          }
+          return;
+        case 'canvas-ready':
+          this.canvasReady = true;
+          void this.pushCanvas();
+          return;
+        case 'canvas-status':
+          this.status = message;
+          return;
+      }
     });
     this.panel = panel;
     return panel;
@@ -129,16 +167,57 @@ export class PreviewPanel {
   private render(): void {
     if (this.panel === undefined || this.uri === undefined) return;
     const parsed = vscode.Uri.parse(this.uri);
+    const fileName = parsed.path.split('/').pop() ?? this.uri;
+    if (this.tab === 'canvas') {
+      // The Canvas document is written once, on the switch to the tab, and then only messaged.
+      if (!this.canvasDocument) {
+        this.canvasDocument = true;
+        this.canvasReady = false;
+        const script = this.panel.webview.asWebviewUri(
+          vscode.Uri.joinPath(WEBVIEW_ROOT(this.extensionUri), 'canvas.js'),
+        );
+        this.panel.webview.html = canvasHtml(
+          { fileName, active: 'canvas', output: undefined },
+          nonce(),
+          script.toString(),
+        );
+      } else void this.pushCanvas();
+      return;
+    }
+    this.canvasDocument = false;
+    this.canvasReady = false;
     this.panel.webview.html = panelHtml(
       {
-        fileName: parsed.path.split('/').pop() ?? this.uri,
+        fileName,
         active: this.tab,
         output: this.model.output(this.uri, this.tab),
       },
       nonce(),
     );
   }
+
+  /** Compiles the active file's workspace and posts it to the Canvas script. */
+  private async pushCanvas(): Promise<void> {
+    if (this.panel === undefined || this.uri === undefined || !this.canvasReady) return;
+    const mine = ++this.push;
+    const uri = vscode.Uri.parse(this.uri);
+    const message: CanvasMessage = {
+      ...(await canvasMessageFor(uri, this.readDocument)),
+      title: uri.path.split('/').pop() ?? this.uri,
+    };
+    if (mine !== this.push || this.panel === undefined || !this.canvasReady) return;
+    void this.panel.webview.postMessage(message);
+  }
 }
+
+/** The directory the extension ships the webview bundle in. */
+const WEBVIEW_ROOT = (extensionUri: vscode.Uri): vscode.Uri =>
+  vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
+
+const TABS: readonly string[] = ['wgsl', 'glsl-vertex', 'glsl-fragment', 'reflection', 'canvas'];
+
+/** A tab id a webview sent, which is untrusted input like everything else it posts. */
+const isTab = (tab: string): tab is PreviewTab => TABS.includes(tab);
 
 /** A fresh nonce per render. `Math.random` is not a security primitive, and this does not need
  *  one: the nonce stops a script the panel's own HTML did not carry, and that HTML is written

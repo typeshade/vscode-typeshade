@@ -41,11 +41,12 @@ describe('the extension manifest', () => {
     expect(manifest.engines.vscode).toBe('^1.90.0');
   });
 
-  it("declares §4's seven commands, with §4's titles", () => {
+  it("declares §4's eight commands, with §4's titles", () => {
     expect(manifest.contributes.commands).toEqual([
       { command: 'typeshade.showWgsl', title: 'TypeShade: Show WGSL' },
       { command: 'typeshade.showGlsl', title: 'TypeShade: Show GLSL' },
       { command: 'typeshade.showReflection', title: 'TypeShade: Show Reflection' },
+      { command: 'typeshade.showCanvas', title: 'TypeShade: Show Canvas' },
       { command: 'typeshade.runEntry', title: 'TypeShade: Run Entry on CPU' },
       { command: 'typeshade.copyOutput', title: 'TypeShade: Copy Output' },
       { command: 'typeshade.openInPlayground', title: 'TypeShade: Open in Playground' },

@@ -12,7 +12,14 @@
 // hand out. So the extension calls `compileTsSource` itself for those two, with the same
 // `emit: false` the service uses, and the service only for what the panel shows as text.
 
-export { compileModule, compileTsSource, isTypeshadeSource, reflect } from 'typeshade';
+export {
+  compile,
+  compileModule,
+  compileTsSource,
+  isTypeshadeSource,
+  packModule,
+  reflect,
+} from 'typeshade';
 export { createTypeshadeLanguageService } from 'typeshade/language-service';
 
 export type {
@@ -22,8 +29,12 @@ export type {
   EntryInfo,
   FuncDecl,
   ModuleDecl,
+  Pack,
+  PackBinding,
+  PackEntry,
   Reflection,
   ShaderType,
+  TsCompilerDiagnostic,
 } from 'typeshade';
 
 export type {
