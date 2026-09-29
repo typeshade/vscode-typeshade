@@ -5,3 +5,4 @@ out/
 coverage/
 *.vsix
 .vscode-test/
+.vscode-test-web/

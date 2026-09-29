@@ -17,6 +17,8 @@ export default tseslint.config(
       'coverage/**',
       // The VS Code build the electron job downloads, 327 MB of someone else's JavaScript.
       '.vscode-test/**',
+      // The VS Code for the Web builds `scripts/test-web.mjs` downloads, likewise.
+      '.vscode-test-web/**',
       'packages/vscode-typeshade/test-electron/fixture/**',
     ],
   },

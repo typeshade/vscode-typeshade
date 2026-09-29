@@ -188,6 +188,32 @@ built.push(
   }),
 );
 
+// The web suite (`packages/vscode-typeshade/test-web/suite.ts`), which `@vscode/test-web` runs in
+// the web extension host. Built like the web entry, for a browser, as CommonJS with `vscode`
+// external, and with two more aliases: the plugin cases it shares with the electron suite import
+// `node:assert/strict` and `node:timers/promises`, and the browser has neither, so each resolves to
+// a small stand-in (`test-web/shims/`). A third Node import would be an esbuild error here rather
+// than a `require` that fails in the host. Not in the `.vsix`: `scripts/test-web.mjs` copies it
+// beside the packaged extension for the run.
+built.push(
+  await bundle({
+    entry: 'packages/vscode-typeshade/test-web/suite.ts',
+    outfile: 'packages/vscode-typeshade/dist/test-web/suite.js',
+    external: ['vscode'],
+    base: {
+      ...shared,
+      alias: {
+        ...alias,
+        'node:assert/strict': join(root, 'packages/vscode-typeshade/test-web/shims/assert.ts'),
+        'node:timers/promises': join(root, 'packages/vscode-typeshade/test-web/shims/timers.ts'),
+      },
+      platform: 'browser',
+      format: 'cjs',
+      target: 'es2022',
+    },
+  }),
+);
+
 /** The compiler the bundles carry, as `version (commit)`, for the MCP server to report: an agent
  *  told which commit it is talking to can tell a language change from its own mistake. The
  *  commit is read from the submodule's checkout, and a build outside git says so rather than
