@@ -42,11 +42,12 @@
     // The compiler is a pinned submodule until it publishes (`docs/design.md` §2). These are
     // the specifiers the published package will serve, mapped in ONE place, so the switch to
     // the npm dependency deletes these entries and changes no source file. `scripts/build.mjs`
-    // gives esbuild the same three as aliases.
+    // gives esbuild the same four as aliases.
     "paths": {
       "typeshade": ["./vendor/typeshade/src/index.ts"],
       "typeshade/language-service": ["./vendor/typeshade/src/language-service/index.ts"],
-      "typeshade/debug": ["./vendor/typeshade/src/debug.ts"]
+      "typeshade/debug": ["./vendor/typeshade/src/debug.ts"],
+      "typeshade/runtime": ["./vendor/typeshade/src/runtime.ts"]
     }
   }
 }

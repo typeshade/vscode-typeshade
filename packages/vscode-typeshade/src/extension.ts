@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { registerBridge } from './bridge.js';
 import { compileModule, isTypeshadeSource, type CpuValue } from './compiler.js';
 import { describe, parseInvocation } from './invocation.js';
+import type { CanvasStatus } from './canvas-plan.js';
 import { PreviewModel, shaderReader, type Entry, type PreviewTab } from './model.js';
 import { PreviewPanel, type PreviewSettings } from './panel.js';
 
@@ -21,20 +22,31 @@ const PLUGIN_ID = '@typeshade/tsserver-plugin';
  *  it agrees with the plugin about what a shader is: both ask the compiler. */
 const IS_SHADER = 'typeshade.isShader';
 
+/** What `activate` returns, which is what another extension or a test gets from
+ *  `extension.exports`. It answers one question and changes nothing. */
+export interface TypeshadeApi {
+  /** What the Canvas tab's webview last said about itself: that it has no WebGPU, that frames are
+   *  drawing, or that it failed. Undefined until the tab has opened and said anything. The
+   *  electron suite reads it, because nothing else in a real VS Code can tell whether a webview
+   *  drew. */
+  canvasStatus(): CanvasStatus | undefined;
+}
+
 /**
  * Called by the extension host the first time one of the extension's activation events fires.
  *
  * @param context - the extension context, which owns the disposables the extension registers.
+ * @returns the extension's small API.
  */
-export function activate(context: vscode.ExtensionContext): void {
-  const model = new PreviewModel({
-    // A shader that imports another is compiled with it (the compiler's Rule 3.9), so the file an
-    // import names is read the way the plugin reads it (`docs/design.md` §1.7): an open editor's
-    // text first, unsaved edits included, else the file on disk, and only when it carries the
-    // directive. Only the files an import names are read, never the workspace at large.
-    readDocument: shaderReader((uri) => openText(uri) ?? diskText(uri)),
-  });
-  const panel = new PreviewPanel(model, settings);
+export function activate(context: vscode.ExtensionContext): TypeshadeApi {
+  // A shader that imports another is compiled with it (the compiler's Rule 3.9), so the file an
+  // import names is read the way the plugin reads it (`docs/design.md` §1.7): an open editor's
+  // text first, unsaved edits included, else the file on disk, and only when it carries the
+  // directive. Only the files an import names are read, never the workspace at large. The Canvas
+  // tab compiles the passes and the imports of the same workspace with the same reader.
+  const readDocument = shaderReader((uri) => openText(uri) ?? diskText(uri));
+  const model = new PreviewModel({ readDocument });
+  const panel = new PreviewPanel(model, settings, context.extensionUri, readDocument);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'typeshade.showWgsl';
 
@@ -97,6 +109,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ['typeshade.showWgsl', 'wgsl'],
     ['typeshade.showGlsl', 'glsl-vertex'],
     ['typeshade.showReflection', 'reflection'],
+    ['typeshade.showCanvas', 'canvas'],
   ] as const) {
     context.subscriptions.push(
       vscode.commands.registerCommand(command, () => {
@@ -127,6 +140,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   void configurePlugin();
   refresh();
+  return { canvasStatus: () => panel.canvasStatus() };
 }
 
 /** Called by the extension host on shutdown. Every disposable is owned by the context's

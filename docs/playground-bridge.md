@@ -1,12 +1,12 @@
 # The Playground and the editor: one workspace in two places
 
-Status: **accepted**, and Stage 1 is being built (§7). It answers the owner's request to carry the site's Playground
+Status: **accepted**, and Stages 1 and 2 are built (§7). It answers the owner's request to carry the site's Playground
 into VS Code: work on a shader in the browser, continue it in the editor with the extension, and
 bring it back, and to have a VS Code in the browser as well. The pinned compiler is
-`typeshade/typeshade` at `88ba8ad`; the site is `typeshade/typeshade.github.io` at `1ef8fd6`,
-whose Playground has file tabs, passes (compiler change 0026), texture bindings and short links
-(typeshade.github.io#108, #115, #117). Nothing here is built yet, and §6 lists what waits on an
-answer.
+`typeshade/typeshade` at `7c274e2` (it was `88ba8ad` when Stage 1 was written); the site is
+`typeshade/typeshade.github.io` at `1ef8fd6`, whose Playground has file tabs, passes (compiler
+change 0026), texture bindings and short links (typeshade.github.io#108, #115, #117). §7 lists
+what is built, and §6 what the owner decided.
 
 ## 0. What exists on both sides
 
@@ -27,7 +27,7 @@ and the CPU oracle), and the language service runs in a web worker from the comp
 
 **The extension** (this repository, `docs/design.md` §4) is a desktop VS Code extension: the
 tsserver plugin replaces TypeScript's answers on a `"use typeshade"` file, and a webview panel
-shows the WGSL, the GLSL and the reflection. It draws no pixels (§4, "What stays out"), it is not
+shows the WGSL, the GLSL and the reflection. It drew no pixels until Stage 2 (§3, §7), it is not
 a web extension, and it is not published yet: the Marketplace and Open VSX return nothing for
 `typeshade.vscode-typeshade`, and the publish workflow is `docs/design.md` §7's PR 5.
 
@@ -110,11 +110,13 @@ Where the drawing code comes from is the decision:
 - **A copy of the site's `shader-runtime.ts`.** It works today, 2,160 lines, and would be a
   second copy of code that already has one, drifting from the first the day it is copied.
 
-**Proposed: wait for 0025 rather than copy.** Stage 1 does not need the canvas, and the order
-below puts Stage 2 after 0025 lands. It has landed: the pin carries it, so Stage 2 is the next
-stage to build. A webview has WebGL2 on every platform VS Code runs on;
-WebGPU in the webview depends on Electron's flags and is measured, not assumed, the same way
-§1.3 of `docs/design.md` measures memory.
+**Decided: wait for 0025 rather than copy** (§6, item 3). It has landed: the pin carries it, and
+§7 records how the tab uses it. The runtime is WebGPU only in version 1, so the tab is too: a
+webview with no adapter says so and draws nothing. Whether a webview has WebGPU depends on
+Electron's flags and is measured, not assumed, the same way §1.3 of `docs/design.md` measures
+memory; §7 has the measurement. The WebGL2 tier that the earlier draft of this section counted
+on ("a webview has WebGL2 on every platform VS Code runs on") waits for the runtime's own WebGL2
+proposal (0025, "What it does not do"), which is the only place it can be written once.
 
 ## 4. Stage 3: VS Code in the browser
 
@@ -155,7 +157,7 @@ public GitHub repository with the extension.
 | 1b    | this one   | Move the pin to carry 0026; `typeshade.json`; Open in Playground; `UriHandler` | 1a's format              |
 | 1c    | this one   | Publish the extension (`docs/design.md` §7, PR 5)                              | the owner's go-ahead     |
 | 1d    | site       | Open in VS Code beside Download                                                | 1b and 1c                |
-| 2     | this one   | The Canvas tab over the compiler's runtime                                     | compiler change 0025     |
+| 2     | this one   | The Canvas tab over the compiler's runtime (built, §7)                         | compiler change 0025     |
 | 3a    | this one   | The web plugin probe                                                           | nothing                  |
 | 3b    | this one   | The web build, by the probe's answer                                           | 3a, and 2 for the canvas |
 
@@ -191,3 +193,35 @@ Decided on 2026-09-28, in the orchestrating session: the owner took every sugges
   (`/s/<id>`) whose origin is exactly `https://typeshade.dev` is fetched, and only to read its
   redirect, which `shortLinkTarget` accepts only when it leads back to that origin. Every other
   link is read from its own fragment and never fetched.
+- **2**, the Canvas tab, this repository: `TypeShade: Show Canvas` (`typeshade.showCanvas`) opens
+  the panel on a fifth tab that draws the active file's workspace each frame. The pin does not
+  move for it: `7c274e2` already carries `typeshade/runtime` (0025) and the pass semantics of
+  0026 that the tab implements. The extension host compiles (`canvas.ts`: `compile` and `packModule`, the
+  fullscreen vertex half composed as the site does) and plans every binding
+  (`canvas-plan.ts`), and a second esbuild bundle, `dist/webview/canvas.js`
+  (`src/webview/canvas.ts`, browser IIFE, 52 KB, no compiler in it), loads what the host posts
+  into the runtime. `docs/design.md` §4 describes it and §6 how it is tested.
+  - **Passes: done, not deferred.** With a `typeshade.json` that names the active file, the
+    passes are drawn in order into `rgba16float` textures the size of the canvas, two per pass
+    swapped each frame, and the main file goes to the canvas. A `texture_2d<f32>` named like a
+    pass reads this frame's output of an earlier pass and the previous frame's of itself or a
+    later one, zeroes on the first frame. `separable-blur` (this frame's read) and
+    `feedback-trail` (the previous frame's, through the frame counter) both draw.
+  - **Uniforms:** `time`, `resolution`, `mouse`, `frame` and `timeDelta` are filled when the
+    uniform struct declares them at those types and nowhere else; every other field is zero.
+    A `texture_2d<f32>` that is no pass gets the site's checker, and a sampler is linear and
+    clamped. A storage buffer, a comparison sampler, a storage texture, a texture of another
+    kind, a program without exactly one `@vertex` and one `@fragment`, or a fragment with more
+    than one colour output is refused with a sentence that names it.
+  - **Backend: WebGPU only,** because the runtime is. Nothing is drawn on WebGL2 or the CPU
+    oracle, and there is no control for a shader's own uniform fields and no dropped picture:
+    the Playground has both, and they are the next steps if the tab is to match it.
+  - **Measured in VS Code 1.139.1** (Electron on Linux, under `xvfb-run`): the webview has
+    `navigator.gpu`. With `--disable-gpu`, which CI uses, `requestAdapter` returns nothing and
+    the tab says so in one sentence. With `--enable-unsafe-webgpu --enable-unsafe-swiftshader
+--use-angle=swiftshader --use-vulkan=swiftshader` instead of `--disable-gpu`, the same
+    build's webview gets a software adapter and draws: the electron suite's Canvas case
+    reads `drawing`, from the development path and from the packaged directory alike. Those
+    flags are the runner's, not the extension's; a user's VS Code with a GPU needs none of them.
+    The bundle alone was also run in Chromium on SwiftShader with the two multipass examples,
+    which drew a trail and a blurred pattern.

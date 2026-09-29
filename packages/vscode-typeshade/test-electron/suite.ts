@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as vscode from 'vscode';
+import type { TypeshadeApi } from '../src/extension.js';
 
 /** The extension's id, as the Marketplace will address it: publisher, then name. */
 const EXTENSION_ID = 'typeshade.vscode-typeshade';
@@ -53,6 +54,7 @@ test('registers every command it contributes', async () => {
     'typeshade.showWgsl',
     'typeshade.showGlsl',
     'typeshade.showReflection',
+    'typeshade.showCanvas',
     'typeshade.runEntry',
     'typeshade.copyOutput',
     'typeshade.openInPlayground',
@@ -76,6 +78,37 @@ test('opens the preview with the compiled WGSL in it', async () => {
   // `model.test.ts`'s assertion, over the same model this panel renders.
   assert.notEqual(panel.group.viewColumn, vscode.window.activeTextEditor?.viewColumn);
   assert.ok(document.getText().includes('use typeshade'));
+});
+
+test('opens the Canvas tab, which draws or says why it cannot, and never fails', async () => {
+  // The Canvas draws with WebGPU in the webview (`docs/playground-bridge.md` §3), which a
+  // headless runner under `--disable-gpu` does not have: there the script says so in one
+  // sentence and draws nothing, and on a machine with a GPU it draws. Either is a pass. What
+  // this asserts is the one thing a webview must not do here: fail, or say nothing at all,
+  // which is how a script the content security policy refused, a bundle missing from the
+  // package or a message that never arrived would look.
+  const extension = vscode.extensions.getExtension(EXTENSION_ID);
+  assert.ok(extension, `${EXTENSION_ID} is not installed in this host`);
+  const api = (await extension.activate()) as TypeshadeApi;
+  assert.equal(typeof api.canvasStatus, 'function', 'the extension returns no API');
+  await open('hello.shade.ts');
+  await vscode.commands.executeCommand('typeshade.showCanvas');
+  const panel = await waitFor(() =>
+    vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .find((tab) => tab.label === 'TypeShade preview'),
+  );
+  assert.ok(panel, 'the preview panel did not open');
+  const status = await waitFor(() => api.canvasStatus(), 60_000);
+  assert.ok(status, 'the Canvas script said nothing: it did not load, or it did not run');
+  assert.notEqual(
+    status.state,
+    'failed',
+    `the Canvas failed: ${status.state === 'failed' ? status.reason : ''}`,
+  );
+  console.log(
+    `  canvas: ${status.state}${status.state === 'unsupported' ? ` (${status.reason})` : ''}`,
+  );
 });
 
 test('leaves a file without the directive alone', async () => {

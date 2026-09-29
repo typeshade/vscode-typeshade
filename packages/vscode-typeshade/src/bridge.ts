@@ -47,7 +47,7 @@ export function registerBridge(context: vscode.ExtensionContext): void {
 }
 
 /** The text of a file: an open editor's, unsaved edits included, else the one on disk. */
-async function textOf(uri: vscode.Uri): Promise<string | undefined> {
+export async function textOf(uri: vscode.Uri): Promise<string | undefined> {
   const open = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
   if (open !== undefined) return open.getText();
   try {

@@ -18,6 +18,7 @@ export default defineConfig({
         replacement: vendor('./vendor/typeshade/src/language-service/index.ts'),
       },
       { find: 'typeshade/debug', replacement: vendor('./vendor/typeshade/src/debug.ts') },
+      { find: 'typeshade/runtime', replacement: vendor('./vendor/typeshade/src/runtime.ts') },
       { find: /^typeshade$/, replacement: vendor('./vendor/typeshade/src/index.ts') },
     ],
   },
