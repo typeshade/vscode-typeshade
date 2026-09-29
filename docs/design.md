@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `7c274e2`
-(2026-09-29), and was `41872ee` (2026-09-28) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `1599b04`
+(2026-09-29), and was `7c274e2` (2026-09-29) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move

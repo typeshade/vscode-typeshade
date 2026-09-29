@@ -113,3 +113,7 @@ id first, then the pull request that did the work.
   invocation, which `tools.test.ts` pins; docs/design.md §4 records that the runtime gives a
   preview its own device and binds by name, and docs/playground-bridge.md §3 that 0025 is at the
   pin, handled in #40.
+- 0028: what the program runtime's first hosts need: references/host.md's program runtime
+  section names the override values `render()` and `compute()` take, the texture layout the
+  calls that read a texture decide, the console's counts `submit()` resolves to, and `read()` and
+  `readFloats()`, handled in #48.
