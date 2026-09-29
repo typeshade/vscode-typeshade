@@ -1,0 +1,16 @@
+      Library referenced via 'es2015.proxy' from file '../../lib.es2015.d.ts'
+(1 - semantic) Dynamically importing typeshade-web-probe-plugin from /../../.. (resolved to /../../../node_modules)
+(1 - semantic) Failed to dynamically import module 'typeshade-web-probe-plugin' from http://localhost:3001/static/devextensions/node_modules: 
+ReferenceError: module is not defined
+    at http://localhost:3001/static/devextensions/node_modules/typeshade-web-probe-plugin/plugin.js:39:1
+(1 - semantic) Failed to dynamically import module 'typeshade-web-probe-plugin' from /../../../node_modules: Error: Could not load plugin. 
+Could not load 'package.json'.
+    at Object.importPlugin (http://localhost:3001/static/build/extensions/typescript-language-features/dist/browser/typescript/tsserver.web.
+    js:433:2449570)
+    at async MOe.importServicePluginAsync (http://localhost:3001/static/build/extensions/typescript-language-features/dist/browser/typescript/
+    tsserver.web.js:397:160501)
+    at async pge.enableRequestedPluginsWorker (http://localhost:3001/static/build/extensions/typescript-language-features/dist/browser/
+    typescript/tsserver.web.js:408:26091)
+    at async pge.enableRequestedPluginsAsync (http://localhost:3001/static/build/extensions/typescript-language-features/dist/browser/
+    typescript/tsserver.web.js:408:25947)
+(1 - semantic) Couldn't find typeshade-web-probe-plugin
