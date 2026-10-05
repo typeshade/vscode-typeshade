@@ -3,7 +3,7 @@
 Status: **accepted**, and Stages 1 and 2 are built, and Stage 3's plugin half (§7). It answers the owner's request to carry the site's Playground
 into VS Code: work on a shader in the browser, continue it in the editor with the extension, and
 bring it back, and to have a VS Code in the browser as well. The pinned compiler is
-`typeshade/typeshade` at `a29410f` (it was `88ba8ad` when Stage 1 was written); the site is
+`typeshade/typeshade` at `45ec661` (it was `88ba8ad` when Stage 1 was written); the site is
 `typeshade/typeshade.github.io` at `1ef8fd6`, whose Playground has file tabs, passes (compiler
 change 0026), texture bindings and short links (typeshade.github.io#108, #115, #117). §7 lists
 what is built, and §6 what the owner decided.
