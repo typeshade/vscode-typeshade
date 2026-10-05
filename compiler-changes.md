@@ -166,3 +166,9 @@ id first, then the pull request that did the work.
   that GLSL now writes the zero; the tsserver test reports `typeshade(8075)` once on a read
   before an assignment and nothing on an `@out` argument, and the MCP `check` test the same,
   handled in #51.
+- 0044: `bitcast` takes a vector, `bitcast<vec4u>(v)` and `bitcast<vec4>(w)`:
+  references/language.md's bitcast line names the vector forms and the width refusal, handled in
+  the pull request that pins the compiler at fd39ba3.
+- 0045: a NaN or subnormal `f32` word has no portable `bitcast`: references/language.md says to
+  keep integer words in a `storage<array<u32>>` or `storage<array<vec4u>>` binding, handled in the
+  same pull request.

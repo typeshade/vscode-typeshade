@@ -147,7 +147,13 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
   `vec3<u32>(1, 2, 3)` names the element type; `array(1., 2., 3.)` is an `array<f32, 3>`;
   `mat3(m4)` truncates; `mat3(c0, c1, c2)` builds from columns.
 - `x as T` is a claim to the type checker, not a conversion, and emits nothing.
-- `bitcast<u32>(x)` reinterprets the bits of an `f32`, and `bitcast<f32>(u)` the reverse.
+- `bitcast<u32>(x)` reinterprets the bits of an `f32`, and `bitcast<f32>(u)` the reverse. A
+  vector reads each component the same way: `bitcast<vec4u>(v)` on a `vec4`, `bitcast<vec4>(w)` on
+  a `vec4u`, and the same for `vec2` and `vec3`. A vector of another width is `TS8003`.
+- A NaN or subnormal bit pattern has no portable `bitcast<u32>`: a GPU may flush it and the CPU
+  oracle gives a NaN back as `0x7fc00000`. A small integer is a subnormal `f32` pattern, so keep
+  integer words in a `storage<array<u32>>` or `storage<array<vec4u>>` binding, not in the bits of
+  an `f32`.
 
 ```ts
 "use typeshade"
