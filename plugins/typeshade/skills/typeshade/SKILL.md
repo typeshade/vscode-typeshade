@@ -237,6 +237,15 @@ the `readDocument` you pass it ([references/host.md](references/host.md));
 [references/language.md](references/language.md) has a two-file example and a package's
 `exports`.
 
+**11. `mouse` is already 0 to 1; do not divide it by `resolution`.** The Playground and the
+editor's canvas fill the uniform struct's `time` (seconds), `resolution` (pixels) and
+`mouse: vec2` (the pointer over the canvas from 0 to 1, origin at the bottom left: the space
+`uv` is in). Use `u.mouse` as it is; `u.mouse * u.resolution` is the pointer in pixels.
+ShaderToy's `iMouse.xy / iResolution.xy` does not carry over: it shrinks the pointer to nearly 0.
+An untouched canvas holds `(0.5, 0.5)`, not 0, so `if (u.mouse.x > 0.)` is always true; read
+the pointer as an offset from the centre (`u.mouse - vec2(0.5)`) so the untouched frame is the
+default view.
+
 ## Types and resources at a glance
 
 | Write                                                               | Means                                                       |
