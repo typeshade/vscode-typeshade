@@ -14,6 +14,7 @@ import type ts from 'typescript';
 import { createTypeshadeLanguageService, type TypeshadeLanguageService } from './compiler.js';
 import { DocumentSync, type SyncHost } from './documents.js';
 import { isTypeshadeFile } from './directive.js';
+import { referenceHints } from './inlay.js';
 import { withProgramNames } from './program-names.js';
 import {
   toClassifications,
@@ -480,6 +481,18 @@ export function decorate(
     return toClassifications(ctx, fileName, shade.getSemanticTokens(fileName, range));
   });
 
+  // ── inlay hints ──────────────────────────────────────────────────────────────────────────
+
+  // The `&` before each argument an `@inout` or `@out` parameter takes (the compiler's change
+  // 0040). The compiler delivers no inlay hint, so the plugin reads the qualifier off the
+  // callee's declaration in the syntax tsserver parsed (`inlay.ts`). TypeScript's own hints are
+  // not merged in: they come from the project's program, which is the wrong one for a shader.
+  override('provideInlayHints', (fileName, span, preferences) => {
+    if (!isShade(fileName)) return inner.provideInlayHints(fileName, span, preferences);
+    const sourceFile = sourceFileOf(fileName);
+    return sourceFile === undefined ? [] : referenceHints(typescript, sourceFile, span);
+  });
+
   // ── answered with nothing, because the project's program would answer from the wrong one ──
 
   override('getCodeFixesAtPosition', (fileName, start, end, codes, formatting, preferences) =>
@@ -490,7 +503,6 @@ export function decorate(
 
   nothingForShaders('getCombinedCodeFix', () => ({ changes: [] }), namedProperty('fileName'));
   nothingForShaders('getDocumentHighlights', () => undefined);
-  nothingForShaders('provideInlayHints', () => []);
   nothingForShaders('getApplicableRefactors', () => []);
   nothingForShaders('getEditsForRefactor', () => undefined);
   nothingForShaders('prepareCallHierarchy', () => undefined);

@@ -3,7 +3,8 @@
 // Test-only. `docs/design.md` §6 names what this has to contain, and every file here exists
 // because one assertion needs it rather than for completeness: a clean shader, a shader with a
 // real TypeShade error, a syntax error, an importing pair, a plain TypeScript file, a host file
-// that imports a shader, and a shader long enough to cross the 500-line threshold at which
+// that imports a shader, a shader with `@inout` and `@out` parameters, one that reads a local
+// before it is assigned, and a shader long enough to cross the 500-line threshold at which
 // tsserver switches to `getRegionSemanticDiagnostics`.
 //
 // The shaders are written in the language the compiler's own examples use, and each was run
@@ -138,6 +139,58 @@ export function fs(): f32 {
 }
 `;
 
+/** A shader that declares parameters `@inout` and `@out` and calls them with unmarked arguments
+ *  (the compiler's change 0040), passes a local with no value to the `@out` one (0043), and
+ *  hands an unannotated `-1` to a constructor whose parameter declares `i32` (0036 and 0037).
+ *  The compiler and its language service accept it with no diagnostic; TypeScript's own checker
+ *  reads `add(x, 1., s)` as a read of `s` before it is assigned (TS2454). */
+export const REFERENCES = `"use typeshade"
+
+function lift(@inout w: f32, k: f32): void {
+  w = w + k
+}
+
+function add(a: f32, b: f32, @out c: f32): void {
+  c = a + b
+}
+
+namespace Steps {
+  export function nudge(@inout w: f32): void {
+    lift(w, 1.)
+  }
+}
+
+class Hit {
+  objectIndex: i32
+  constructor(objectIndex: i32) {
+    this.objectIndex = objectIndex
+  }
+}
+
+@fragment
+export function fs(): f32 {
+  let x: f32 = 1.
+  lift(x, 2.)
+  Steps.nudge(x)
+  let s: f32
+  add(x, 1., s)
+  let objectIndex = -1
+  const hit = new Hit(objectIndex)
+  return x + s + f32(hit.objectIndex)
+}
+`;
+
+/** A shader that reads a local before it is assigned: the compiler's `TS8075`, which the editor
+ *  shows in the place of TypeScript's TS2454 (the compiler's change 0043). */
+export const UNASSIGNED = `"use typeshade"
+
+@fragment
+export function fs(): f32 {
+  let s: f32
+  return s
+}
+`;
+
 /** A shader with an import it does not use, so `organizeImports` and `getPasteEdits` have
  *  something to do. On `broken.shade.ts` they answer empty from both servers, which made the
  *  assertion about them true without the plugin. */
@@ -221,6 +274,8 @@ export const PROJECT: Readonly<Record<string, string>> = {
   'host-imports-shader.ts': HOST_IMPORTS_SHADER,
   'big.shade.ts': longShader(520),
   'uses-package.shade.ts': USES_PACKAGE,
+  'references.shade.ts': REFERENCES,
+  'unassigned.shade.ts': UNASSIGNED,
   'node_modules/shade-lib/package.json': PACKAGE_JSON,
   'node_modules/shade-lib/src/index.shade.ts': PACKAGE_SHADER,
   'node_modules/shade-lib/dist/index.js': 'export const triple = (x) => x * 3\n',

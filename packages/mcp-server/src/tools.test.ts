@@ -15,6 +15,7 @@ import {
   LOGGING,
   MAIN,
   PLAIN,
+  REFERENCES,
   RUNAWAY,
   TABLE,
   testProject,
@@ -91,6 +92,16 @@ describe('check', () => {
     const { tools } = setup({});
     expect(tools.check({ source: CLEAN })).toBe('<source>: no problems');
     expect(tools.check({ source: BROKEN })).toContain('error TS8004 [typeshade] <source>:5:13');
+  });
+
+  it("reports a read before an assignment as the compiler's TS8075, and an @out argument as one (compiler 0040, 0043)", () => {
+    const { tools } = setup({ 'references.shade.ts': REFERENCES });
+    expect(tools.check({ file: 'references.shade.ts' })).toBe('No problems: references.shade.ts');
+    const early = REFERENCES.replace('  add(x, y, s)\n  return x + s', '  return x + s');
+    const report = tools.check({ source: early });
+    expect(report).toContain('error TS8075 [typeshade] <source>:18:14');
+    expect(report).toContain('"s" is read here before it is assigned');
+    expect(report).not.toContain('TS2454');
   });
 
   it('says a file without the directive is ordinary TypeScript', () => {
@@ -264,6 +275,40 @@ describe('navigation', () => {
     expect(hover).toContain('let x: f32');
   });
 
+  it('answers hover on a qualified parameter and on its function as the compiler writes them (compiler 0040)', () => {
+    const { tools } = setup({ 'references.shade.ts': REFERENCES });
+    expect(tools.hover({ file: 'references.shade.ts', line: 3, symbol: 'a' })).toContain(
+      '(parameter) @inout a: f32',
+    );
+    expect(tools.hover({ file: 'references.shade.ts', line: 9, symbol: 'c' })).toContain(
+      '(parameter) @out c: f32',
+    );
+    expect(tools.hover({ file: 'references.shade.ts', line: 16, symbol: 'swap' })).toContain(
+      'function swap(@inout a: f32, @inout b: f32): void',
+    );
+  });
+
+  it('answers hover with the integer type a declared parameter gives an unannotated local (compiler 0036)', () => {
+    const source = [
+      '"use typeshade"',
+      '',
+      'function objectId(index: i32): i32 {',
+      '  return index',
+      '}',
+      '',
+      'export function selected(): i32 {',
+      '  let objectIndex = -1',
+      '  return objectId(objectIndex)',
+      '}',
+      '',
+    ].join('\n');
+    const { tools } = setup({ 'infer.shade.ts': source });
+    expect(tools.check({ file: 'infer.shade.ts' })).toBe('No problems: infer.shade.ts');
+    expect(tools.hover({ file: 'infer.shade.ts', line: 8, symbol: 'objectIndex' })).toContain(
+      'let objectIndex: i32',
+    );
+  });
+
   it('quotes the line back when the symbol is not on it', () => {
     const { tools } = setup({ 'float.shade.ts': FLOAT });
     expect(refusal(() => tools.hover({ file: 'float.shade.ts', line: 5, symbol: 'y' }))).toBe(
@@ -349,6 +394,17 @@ describe('docs', () => {
     expect(vocabulary.lookup('textureSampel')).toContain('Nearest names: textureSample().');
   });
 
+  it("answers @inout and @out from the compiler's attribute table, and no reference type (compiler 0040)", () => {
+    expect(vocabulary.lookup('@inout')).toMatch(/^@inout: attribute\n/);
+    expect(vocabulary.lookup('inout')).toContain("the caller's place");
+    expect(vocabulary.lookup('out')).toMatch(/^@out: attribute\n/);
+    // `@in` is no qualifier (TypeScript does not parse it), and the earlier spelling's `Ref<T>`
+    // and `ref()` are gone from the language.
+    for (const name of ['in', 'Ref', 'ref']) {
+      expect(vocabulary.has(name), name).toBe(false);
+    }
+  });
+
   it('translates only to names TypeShade has, and only names it does not', () => {
     // A foreign name that TypeShade also had would never be reached, since the real tables are
     // asked first; a target it does not have would send the model after a name that fails.
@@ -360,6 +416,13 @@ describe('docs', () => {
 });
 
 describe('run', () => {
+  it('runs a function that hands its variables to @inout and @out parameters (compiler 0040)', () => {
+    const { tools } = setup({ 'references.shade.ts': REFERENCES });
+    expect(tools.run({ file: 'references.shade.ts', function: 'demo' })).toBe(
+      'demo returned 5\nprecision: f32',
+    );
+  });
+
   it('runs a helper with positional arguments', () => {
     const { tools } = setup({ 'clean.shade.ts': CLEAN });
     expect(tools.run({ file: 'clean.shade.ts', function: 'tint', args: [3] })).toBe(

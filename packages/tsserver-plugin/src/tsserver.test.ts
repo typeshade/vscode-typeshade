@@ -6,6 +6,7 @@ import {
   HOST_IMPORT_PROJECT,
   INFERRED_PROJECT,
   PROJECT,
+  REFERENCES,
 } from './fixtures.js';
 import {
   Harness,
@@ -49,6 +50,14 @@ async function withBareServer<T>(
     server.stop();
     removeFixture(dir);
   }
+}
+
+/** The one-based protocol position of `needle`'s first character on zero-based `line` of
+ *  `text`, so an assertion names what it points at rather than a column it counted. */
+function find(text: string, line: number, needle: string): { line: number; offset: number } {
+  const character = text.split('\n')[line].indexOf(needle);
+  expect(character, `${needle} on line ${line}`).toBeGreaterThanOrEqual(0);
+  return Harness.at(line, character);
 }
 
 describe('the plugin, in a real tsserver', () => {
@@ -165,6 +174,91 @@ describe('the plugin, in a real tsserver', () => {
       });
     });
     expect(bare?.documentation ?? '').not.toContain('clip-space');
+  });
+
+  it('hovers a qualified parameter and its function as the compiler writes them (compiler 0040)', async () => {
+    // The editor's TypeScript sees `@inout w: f32` as `w: f32`; the qualifier and the sentence
+    // about the caller's place are the compiler's, and the bare server has neither.
+    server.open('references.shade.ts');
+    const file = server.file('references.shade.ts');
+    const parameter = await server.request<{ displayString?: string; documentation?: string }>(
+      'quickinfo',
+      { file, ...find(REFERENCES, 2, 'w: f32') },
+    );
+    expect(parameter?.displayString).toBe('(parameter) @inout w: f32');
+    expect(parameter?.documentation ?? '').toContain("Names the caller's place");
+    const output = await server.request<{ displayString?: string }>('quickinfo', {
+      file,
+      ...find(REFERENCES, 6, 'c: f32'),
+    });
+    expect(output?.displayString).toBe('(parameter) @out c: f32');
+    const call = await server.request<{ displayString?: string }>('quickinfo', {
+      file,
+      ...find(REFERENCES, 26, 'lift'),
+    });
+    expect(call?.displayString).toBe('function lift(@inout w: f32, k: f32): void');
+
+    const bare = await withBareServer(PROJECT, async (s) => {
+      s.open('references.shade.ts');
+      return s.request<{ displayString?: string }>('quickinfo', {
+        file: s.file('references.shade.ts'),
+        ...find(REFERENCES, 26, 'lift'),
+      });
+    });
+    expect(bare?.displayString ?? '').not.toContain('@inout');
+  });
+
+  it('hovers a local whose integer type a constructor argument decides (compiler 0036, 0037)', async () => {
+    server.open('references.shade.ts');
+    const at = find(REFERENCES, 30, 'objectIndex');
+    const withPlugin = await server.request<{ displayString?: string }>('quickinfo', {
+      file: server.file('references.shade.ts'),
+      ...at,
+    });
+    expect(withPlugin?.displayString).toBe('let objectIndex: i32');
+    const bare = await withBareServer(PROJECT, async (s) => {
+      s.open('references.shade.ts');
+      return s.request<{ displayString?: string }>('quickinfo', {
+        file: s.file('references.shade.ts'),
+        ...at,
+      });
+    });
+    expect(bare?.displayString).toBe('let objectIndex: number');
+  });
+
+  it('shows & before each argument an @inout or @out parameter takes (compiler 0040)', async () => {
+    // The compiler delivers no inlay hint (0040, deviation 7); the plugin reads the qualifier
+    // off the callee's declaration. A bare server has no hint to give: the source marks nothing.
+    server.open('references.shade.ts');
+    const hints = await server.request<
+      { text: string; position: { line: number; offset: number }; kind?: string }[]
+    >('provideInlayHints', {
+      file: server.file('references.shade.ts'),
+      start: 0,
+      length: REFERENCES.length,
+    });
+    expect((hints ?? []).map((hint) => hint.text)).toEqual(['&', '&', '&', '&']);
+    expect((hints ?? []).map((hint) => hint.position)).toEqual([
+      find(REFERENCES, 12, 'w, 1.'),
+      find(REFERENCES, 26, 'x, 2.'),
+      find(REFERENCES, 27, 'x)'),
+      find(REFERENCES, 29, 's)'),
+    ]);
+    expect((hints ?? []).every((hint) => hint.kind === 'Parameter')).toBe(true);
+  });
+
+  it("reports a read before an assignment as the compiler's TS8075, never TS2454 (compiler 0043)", async () => {
+    // The service's own TypeScript program, which knows `f32`, reads `add(x, 1., s)` as a read of
+    // `s` before it is assigned (TS2454); the `@out` parameter in fact assigns it. The compiler's
+    // analysis knows that, and its TS8075 replaces TS2454 in the editor. No bare-server contrast
+    // is drawn here: a server with no plugin does not know `f32`, and TypeScript reports no
+    // TS2454 on a local whose type did not resolve.
+    server.open('references.shade.ts');
+    server.open('unassigned.shade.ts');
+    expect(all(await server.diagnostics('references.shade.ts'))).toEqual([]);
+    const withPlugin = all(await server.diagnostics('unassigned.shade.ts'));
+    expect(summarize(withPlugin)).toEqual(['8075/typeshade@6']);
+    expect(withPlugin[0]?.text).toContain('"s" is read here before it is assigned');
   });
 
   it('offers the attribute vocabulary, and the builtin ids inside @builtin("', async () => {

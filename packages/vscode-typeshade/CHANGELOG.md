@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- An inlay hint `&` before each argument that an `@inout` or `@out` parameter takes, the
+  compiler's parameter qualifiers (its change 0040). The call passes the variable unmarked, and
+  the hint shows that the function may change it. The hint covers a function of the same file,
+  called by its name or through its namespaces. VS Code shows it only where it shows inlay hints.
+
+### Changed
+
+- The compiler is `typeshade` at `a29410f`. A hover on a qualified parameter shows its qualifier,
+  and a read of a variable before it is assigned is the compiler's `TS8075`, where TypeScript
+  reported TS2454.
+
 ### Fixed
 
 - The preview panel shows an untitled editor that starts with `"use typeshade"`. Its WGSL and
