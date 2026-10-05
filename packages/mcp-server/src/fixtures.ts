@@ -122,6 +122,31 @@ export function half(): f32 {
 }
 `;
 
+/** Parameters that name the caller's place (the compiler's change 0040): `swap` takes two
+ *  `@inout` on line 3, `add` an `@out` on line 9, and `demo` hands each an unmarked variable,
+ *  `s` with no value yet (change 0043). `demo` returns 2 + 3 = 5. */
+export const REFERENCES = `"use typeshade"
+
+function swap(@inout a: f32, @inout b: f32): void {
+  const t = a
+  a = b
+  b = t
+}
+
+function add(a: f32, b: f32, @out c: f32): void {
+  c = a + b
+}
+
+export function demo(): f32 {
+  let x: f32 = 1.
+  let y: f32 = 2.
+  swap(x, y)
+  let s: f32
+  add(x, y, s)
+  return x + s
+}
+`;
+
 /** The imported half of a pair. `double` is declared on line 3. */
 export const LIB = `"use typeshade"
 

@@ -123,6 +123,13 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
   parameter, a return type, a struct field, an element of `vec3u(...)` or of an annotated list,
   the other operand of an integer operator, an index. `let n: u32 = 7` and `gid.x < 100` are
   fine.
+- An unannotated function-local `let` or `const` whose initializer is an integer-written literal
+  (`-1`, `(3)`) takes `i32` or `u32` from its declared uses (§13): an argument of a function, a
+  constructor, an instance or a static method whose parameter declares the type, a typed
+  initialization or assignment (`let j: i32 = k`, `j = k`), and an assignment from a field that
+  declares it (`k = hit.objectIndex`). Uses that disagree (`i32` and `f32`) are `TS8003`:
+  annotate. A generic parameter, a call through a function value, an index and arithmetic decide
+  nothing.
 - Where nothing declares a type, an integer-written literal is an `f32` today: `let i = 0` is an
   f32, and `xs[i]` is then `TS8003`. A `for` initializer is the exception (`for (let i = 0; ...)`
   is an `i32`). The default will change to `i32`; `compile(src, { deprecations: true })` warns
@@ -170,16 +177,91 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 
 - An object literal takes its struct from the context: the return type, an annotated `const`,
   a parameter, an assignment target. Shorthand `{ pos, uv }` and spread `{ ...p, y: 9. }` work.
-- A missing, extra or optional field is `TS8010`. Two declarations of one name are `TS8023`,
-  interfaces included (TypeScript would merge them; TypeShade does not).
+- A missing, extra or optional field is `TS8010`. Two declarations of one name in one scope are
+  `TS8023`, interfaces included (TypeScript would merge them; TypeShade does not).
 - Assigning or passing a struct copies it.
 - Classes have methods, a constructor, static members, getters and setters, `#private` members,
   parameter properties and `readonly`, and are built with `new` (§26). A method that assigns to
   `this` needs a `let` receiver (`TS8035` on a `const`). Generic functions and classes are
   compiled once per type used (§30, §32). `namespace N { export function f() }` becomes `N_f`.
+- A class may have no instance fields (§26): `class Empty {}`, a class of methods or getters
+  only, and a class of static members are built with `new` like any other. The host and a CPU
+  run see its value as `{}`; the GPU code carries a hidden `u32` in its place.
+- A derived class value goes where its base is declared (an argument, a field, a return, an
+  annotated `let`) when the compiler proves the base view read-only (§26): no override changes
+  a call made through the base, and nothing writes the value or its inherited fields through a
+  method or an alias. The value is then copied as the base. What the proof cannot show is
+  `TS8003`, whose remedy is to keep the derived type: there is no runtime dispatch through a
+  base type.
 - Field attributes: `@location(n)`, `@builtin("...")`, `@interpolate("flat")` or
   `@interpolate("perspective", "centroid")`, `@invariant`, `@blend_src`. `@align`, `@size` and
   `@offset` are refused: the compiler lays out buffers itself.
+
+```ts
+"use typeshade"
+
+class Material {
+  albedo: vec3
+  tint(k: f32): vec3 {
+    return this.albedo * k
+  }
+}
+
+class LeafMaterial extends Material {
+  vein: f32
+}
+
+class Leaf {
+  material: Material
+  constructor(material: Material) {
+    this.material = material
+  }
+}
+
+class Shading {
+  half(c: vec3): vec3 {
+    return c * 0.5
+  }
+}
+
+export function leafColor(): vec3 {
+  const leaf = new Leaf(new LeafMaterial())
+  return new Shading().half(leaf.material.tint(0.5))
+}
+```
+
+An override that a call through the base would reach is refused:
+
+<!-- expect: TS8003 -->
+
+```ts
+"use typeshade"
+
+class Material {
+  albedo: vec3
+  tint(k: f32): vec3 {
+    return this.albedo * k
+  }
+}
+
+class Glow extends Material {
+  tint(k: f32): vec3 {
+    return vec3(k)
+  }
+}
+
+class Leaf {
+  material: Material
+  constructor(material: Material) {
+    this.material = material
+  }
+}
+
+export function leafColor(): vec3 {
+  const leaf = new Leaf(new Glow())
+  return leaf.material.tint(0.5)
+}
+```
 
 ## Resources
 
@@ -253,14 +335,22 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 
 - Annotate every parameter. A helper's return type is inferred from its first `return` with a
   value; an entry that returns a value needs its annotation (`TS8021`).
-- Parameters are immutable (`TS8018`). Default values work (`b: f32 = 0.8`) as long as they do
-  not read another parameter; optional (`b?: f32`) and rest parameters are `TS8020`.
+- A parameter is a value. A whole write to it (`x = 0.`) changes a local copy; a write into a
+  field, element or component of it (`r.origin = o`) is `TS8018`, whose remedy names `@inout`.
+  Default values work (`b: f32 = 0.8`) as long as they do not read another parameter; optional
+  (`b?: f32`) and rest parameters are `TS8020`.
 - `const` is immutable (`TS8005`), `let` is mutable. `let x: f32` without an initializer needs
-  its annotation. Block scope and shadowing work.
+  its annotation. A read of it before it is assigned on every path is `TS8075`, by TypeScript's
+  rule for TS2454 (the editor shows `TS8075` in its place), and every target starts it at zero:
+  WGSL and the CPU, and GLSL, which writes the zero as its initializer (`float x = 0.0;`).
+- Block scope and shadowing work as in TypeScript. A parameter or a local may shadow a module
+  constant, a binding, an override or a module variable (`const u = fract(p)` beside a
+  `declare const u: uniform<Frame>`); the module's `u` keeps its name in the emitted code. Two
+  declarations in one scope, a local that repeats a parameter included, are `TS8023`.
 - Destructuring a vector or a struct works (`const { x, y } = v`); an array pattern does not.
 - A local function is a nested `function` or an arrow constant, and it may read and write the
-  locals around it. A parameter may be a function (`h: (x: f32) => f32`), and an arrow may be
-  written as the argument.
+  locals around it, and an `@inout` or `@out` parameter of the function around it. A parameter
+  may be a function (`h: (x: f32) => f32`), and an arrow may be written as the argument.
 - Recursion, direct or mutual, is `TS8031`.
 - A call alone on a line is fine; a value alone on a line (`vec3(1.)`) is refused.
 - `if` needs a `bool` condition (`if (x)` on an `f32` is `TS8003`). The ternary works on any
@@ -326,6 +416,98 @@ export function fs(@location(0) uv: vec2): vec4 {
   }
   const twice = (x: f32): f32 => x * 2.
   return vec4(twice(acc) * vignette(uv), f32(tier(1)) / 99., 0., 1.)
+}
+```
+
+## Parameters that change the caller's variable
+
+A parameter declared `@inout` or `@out` names the caller's variable (§70): reading it reads that
+variable, and assigning to it, or to a field, element or component of it, writes that variable.
+The call passes the variable unmarked, as GLSL and HLSL do, and the editor shows `&` before such
+an argument.
+
+- `@inout p: T` is read and written. `@out p: T` starts with no value: the body writes it whole
+  before it reads it, and on every path before it returns, or it is `TS8075`. A variable with no
+  value yet may be passed to `@out`, and it is assigned after the call.
+- There is no `@in`: TypeScript does not parse it, and a parameter with no qualifier is GLSL's
+  `in`.
+- A qualifier goes on a parameter of a function declared at the top of the file or of a
+  namespace. On a method, a constructor, an accessor, an entry, a local function or a generic
+  function it is `TS8073`, and so are two qualifiers on one parameter.
+- The argument is a variable a function may write: a `let`, a `const` whose initializer built
+  its value (`const p = new P()`), a module variable, an element of a `read_write` storage
+  binding, a qualified parameter passed on, a column of a matrix, or a field or an element of
+  one of those. A literal, an expression (`a * b`, `f()`), a value parameter, a read-only binding
+  and a vector's component (`v.x`) are `TS8073`.
+- One call may not take two references that reach one variable when the callee writes either:
+  `swap(x, x)`, `swap(o.a, o.b)` and `swap(xs[i], xs[j])` are `TS8074`. A method's object and a
+  variable a local function writes count as references.
+- The place is fixed when the call is made: `xs[i]` is evaluated once, before the call.
+- A local function reads and writes a qualified parameter of the function around it as it does
+  any variable it captures, and passes it on to another qualified parameter as itself.
+- WGSL takes a pointer (`swap(&x, &y)`, `*a = *b`), GLSL ES 3.00 an `inout` parameter, and the
+  CPU copies the value in and stores it back. A host call passes values, so an export with a
+  qualified parameter is `never` in the host view; a function of the module calls it.
+
+```ts
+"use typeshade"
+
+class Ray {
+  origin: vec3
+  dir: vec3
+}
+
+function swap(@inout a: f32, @inout b: f32): void {
+  const t = a
+  a = b
+  b = t
+}
+
+function add(a: f32, b: f32, @out c: f32): void {
+  c = a + b
+}
+
+function advance(@inout r: Ray, t: f32): void {
+  r.origin = r.origin + r.dir * t
+}
+
+function scaleBoth(@inout a: f32, @inout b: f32, k: f32): void {
+  const scale = (): void => {
+    a = a * k
+    b = b * k
+  }
+  scale()
+}
+
+export function demo(): f32 {
+  let x: f32 = 1.
+  let y: f32 = 2.
+  swap(x, y)
+  let s: f32
+  add(x, y, s)
+  let r = new Ray()
+  r.dir = vec3(1., 0., 0.)
+  advance(r, 3.)
+  scaleBoth(x, y, 2.)
+  return x + s + r.origin.x
+}
+```
+
+<!-- expect: TS8073 -->
+
+```ts
+"use typeshade"
+
+function swap(@inout a: f32, @inout b: f32): void {
+  const t = a
+  a = b
+  b = t
+}
+
+export function demo(): f32 {
+  let y: f32 = 2.
+  swap(1., y)
+  return y
 }
 ```
 

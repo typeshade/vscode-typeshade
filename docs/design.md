@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `1599b04`
-(2026-09-29), and was `7c274e2` (2026-09-29) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `46f6b84`
+(2026-10-05), and was `1599b04` (2026-09-29) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
@@ -14,7 +14,9 @@ repository names and change no mapping, and so does the move on to `c9dc8c0`, wh
 (`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). The moves
 after `c9dc8c0` record what each owed in `compiler-changes.md` and change no mapping either: at
 `41872ee` every service call in §3 type-checks and the tests pass, and `npm run check` passes at
-`7c274e2` too. §1.3, §4 and §7 were re-measured at `7f0b482` with the
+`7c274e2` too. The move to `46f6b84` changes one row: `provideInlayHints`, which answered
+nothing for a directive file, now answers the `&` of the compiler's change 0040, computed in the
+plugin (§3). §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
@@ -508,24 +510,25 @@ Which methods matter was read off `typescript.js` rather than off the type decla
 `getLanguageService().<method>` and `languageService.<method>` call site in the pinned 5.6.3 was
 listed, so a row here names something tsserver actually calls.
 
-| `ts.LanguageService` method                                                             | Directive file                                                        | Service call                        |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------- |
-| `getSemanticDiagnostics`                                                                | replaced, minus the entries the syntactic pass already reported       | `getDiagnostics(uri)`               |
-| `getRegionSemanticDiagnostics`                                                          | replaced with nothing (below)                                         | none                                |
-| `getSyntacticDiagnostics`                                                               | passed through                                                        | none                                |
-| `getSuggestionDiagnostics`                                                              | replaced with nothing                                                 | none                                |
-| `getQuickInfoAtPosition`                                                                | replaced, so the compiler's own type reaches the tooltip (§0 point 3) | `getHover(uri, position)`           |
-| `getCompletionsAtPosition`                                                              | replaced                                                              | `getCompletions(uri, position)`     |
-| `getCompletionEntryDetails`                                                             | replaced, from the same list matched by name                          | `getCompletions(uri, position)`     |
-| `getSignatureHelpItems`                                                                 | replaced                                                              | `getSignatureHelp(uri, position)`   |
-| `getDefinitionAndBoundSpan`                                                             | replaced                                                              | `getDefinition(uri, position)`      |
-| `findReferences`                                                                        | replaced, regrouped per file with a `definition` per group            | `getReferences(uri, position)`      |
-| `getReferencesAtPosition`                                                               | replaced, for clients that call it                                    | `getReferences(uri, position)`      |
-| `findRenameLocations`, `getRenameInfo`                                                  | replaced                                                              | `rename(...)`, `prepareRename(...)` |
-| `getNavigationTree`, `getNavigationBarItems`                                            | replaced                                                              | `getDocumentSymbols(uri)`           |
-| `getEncodedSemanticClassifications`                                                     | replaced, lossily (below)                                             | `getSemanticTokens(uri, range)`     |
-| `getCodeFixesAtPosition`, `getCombinedCodeFix`                                          | replaced with nothing, for now                                        | none                                |
-| `getDefinitionAtPosition`, `getTypeDefinitionAtPosition`, `getImplementationAtPosition` | replaced, from the same definition list                               | `getDefinition(uri, position)`      |
+| `ts.LanguageService` method                                                             | Directive file                                                         | Service call                        |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------- |
+| `getSemanticDiagnostics`                                                                | replaced, minus the entries the syntactic pass already reported        | `getDiagnostics(uri)`               |
+| `getRegionSemanticDiagnostics`                                                          | replaced with nothing (below)                                          | none                                |
+| `getSyntacticDiagnostics`                                                               | passed through                                                         | none                                |
+| `getSuggestionDiagnostics`                                                              | replaced with nothing                                                  | none                                |
+| `getQuickInfoAtPosition`                                                                | replaced, so the compiler's own type reaches the tooltip (§0 point 3)  | `getHover(uri, position)`           |
+| `getCompletionsAtPosition`                                                              | replaced                                                               | `getCompletions(uri, position)`     |
+| `getCompletionEntryDetails`                                                             | replaced, from the same list matched by name                           | `getCompletions(uri, position)`     |
+| `getSignatureHelpItems`                                                                 | replaced                                                               | `getSignatureHelp(uri, position)`   |
+| `getDefinitionAndBoundSpan`                                                             | replaced                                                               | `getDefinition(uri, position)`      |
+| `findReferences`                                                                        | replaced, regrouped per file with a `definition` per group             | `getReferences(uri, position)`      |
+| `getReferencesAtPosition`                                                               | replaced, for clients that call it                                     | `getReferences(uri, position)`      |
+| `findRenameLocations`, `getRenameInfo`                                                  | replaced                                                               | `rename(...)`, `prepareRename(...)` |
+| `getNavigationTree`, `getNavigationBarItems`                                            | replaced                                                               | `getDocumentSymbols(uri)`           |
+| `getEncodedSemanticClassifications`                                                     | replaced, lossily (below)                                              | `getSemanticTokens(uri, range)`     |
+| `provideInlayHints`                                                                     | replaced: `&` before each argument an `@inout` or `@out` takes (below) | none: the plugin reads the syntax   |
+| `getCodeFixesAtPosition`, `getCombinedCodeFix`                                          | replaced with nothing, for now                                         | none                                |
+| `getDefinitionAtPosition`, `getTypeDefinitionAtPosition`, `getImplementationAtPosition` | replaced, from the same definition list                                | `getDefinition(uri, position)`      |
 
 **`findReferences` is the one tsserver actually calls**, at `typescript.js:189656` in
 `getReferencesWorker`, the `references` command path; `getReferencesAtPosition` has no call site
@@ -547,7 +550,7 @@ _Passed through, because they are syntactic and a shader file is still TypeScrip
 `getEncodedSyntacticClassifications`, the comment toggles, and `getProgram`.
 
 _Answered with nothing for a directive file, because the project's program would answer from the
-wrong program:_ `getRegionSemanticDiagnostics`, `getDocumentHighlights`, `provideInlayHints`,
+wrong program:_ `getRegionSemanticDiagnostics`, `getDocumentHighlights`,
 `getApplicableRefactors`, `getEditsForRefactor`, `prepareCallHierarchy`,
 `provideCallHierarchyIncomingCalls`, `provideCallHierarchyOutgoingCalls`, `organizeImports`,
 `getFileReferences`, `getPasteEdits`, `getSupportedCodeFixes`,
@@ -593,12 +596,12 @@ Seven conversions carry all the risk, and each is a decision.
 **Diagnostic codes collide with TypeScript's own, across the whole sequential range.**
 TypeShade's codes run from `TS8001` (`MISSING_DIRECTIVE`) to `TS8038` (`F64_ENTRY_IO`) with 8011
 retired, then `TS8041` (`TEXTURE_ARGUMENT`), `TS8050` to `TS8053`, `TS8068` (`RESERVED_NAME`)
-and `TS8099` (`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`, whose header explains the gaps:
+to `TS8075` (`UNASSIGNED_READ`) and `TS8099` (`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`, whose header explains the gaps:
 codes were handed out in blocks while several branches worked at once, and an unspent number is
 never reused. TypeScript's own family occupies 8001 to 8039, verified by extracting every
 `diag(...)` code from `typescript/lib/typescript.js`: 2063 distinct codes, maximum 95195. So the
-overlap covers the whole sequential range, only TS8041, TS8050 to TS8053, TS8068 and TS8099
-fall outside it, and it starts at the first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
+overlap covers the whole sequential range, only TS8041, TS8050 to TS8053, TS8068 to TS8075 and
+TS8099 fall outside it, and it starts at the first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
 TypeScript library", which is a rename diagnostic, and this document maps `findRenameLocations`
 and `getRenameInfo`. A `ts.Diagnostic.code` is a number, so something has to give.
 
@@ -661,6 +664,21 @@ types: `ts.classifier.v2020` exists only at runtime (`typescript.js:152086`) and
 `typescript.d.ts` declares no `classifier` namespace, so the plugin hard-codes the twelve
 indices and the two encoding constants rather than importing them, with this paragraph's line
 numbers as the comment.
+
+**The inlay hint is the one row the service does not answer.** The compiler's change 0040 lets a
+function of the file declare a parameter `@inout` or `@out`, and the call passes the variable
+unmarked (`swap(x, y)`), so the editor shows the `&` the source does not carry. The compiler
+delivers no inlay hint (0040, deviation 7: a new method of the service would reshape a public
+export the proposal does not declare). The qualifier is a decorator on the callee's declaration,
+so `packages/tsserver-plugin/src/inlay.ts` reads it from the syntax tsserver parsed, as
+`identifierAt` and `argumentSpan` do. It resolves a call by its name, or through the namespaces
+around it (`N.f(x)`), as TypeScript resolves the name from where the call is written, so a
+parameter, a local or a local function of the same name hides the declaration. Three limits
+stand. A function imported from another shader file is not resolved, and its call gets no
+hint. TypeScript's own hints (parameter names, inferred types) are not merged in for a directive
+file, since they come from the project's program. And VS Code's TypeScript extension is understood to ask
+tsserver for inlay hints only when one of its own `typescript.inlayHints.*` settings is on, all
+of which are off by default. That was not measured here, and §8 item 13 carries it.
 
 **Hover is Markdown on one side and display parts on the other.** `TypeshadeHover.contents` is
 one Markdown string (`src/language-service/types.ts`), while `ts.QuickInfo` wants
@@ -1041,8 +1059,9 @@ and tsserver reported "Loading @typeshade/tsserver-plugin from <probe location> 
 
 The fixture project holds a directive file, a non-directive file, a directive file with real
 TypeShade errors, a pair of directive files where one imports the other, a host file that
-imports a shader, a directive file of 500 lines or more, and a second workspace with no
-`tsconfig.json` at all.
+imports a shader, a directive file of 500 lines or more, a directive file whose functions take
+`@inout` and `@out` parameters (the compiler's change 0040) and one that reads a local before it
+is assigned (0043), and a second workspace with no `tsconfig.json` at all.
 
 One assertion this table first carried has been corrected by writing it: "no diagnostic on a
 directive file carries `ts` as its source" is false, and should be. The service's own answer is
@@ -1075,6 +1094,9 @@ the inferred-project path most people meet first (§4). The assertions:
 | In a workspace with no `tsconfig.json`, a directive file still reports zero diagnostics                    | The inferred-project path, which `enableGlobalPlugins` covers (§4)                                                                                          |
 | Deleting the directive brings TypeScript's own errors back, and the document set shrinks                   | The transition §1.1 closes with `closeDocument`; nothing else would catch a leak here                                                                       |
 | A hover whose text has a fenced block and prose splits into `displayParts` and `documentation`             | The seventh conversion of §3, which VS Code renders wrongly if the split is wrong                                                                           |
+| `quickinfo` on an `@inout` parameter and on its function shows the qualifier                               | The compiler's hover of change 0040 must survive the conversion; the editor's TypeScript sees the parameter as its plain type                               |
+| `provideInlayHints` answers `&` at each argument an `@inout` or `@out` parameter takes, and nowhere else   | The one row the plugin computes itself (§3), so nothing else tests it                                                                                       |
+| A read before an assignment is `typeshade(8075)` once, and an `@out` argument assigns                      | The compiler's change 0043 replaced TypeScript's TS2454, which cannot see that an `@out` argument assigns                                                   |
 | The tsserver log contains no plugin exception                                                              | A plugin that throws degrades the whole project's TypeScript, silently                                                                                      |
 
 The harness lives in `packages/tsserver-plugin/src/` beside the code, as vitest tests, with the
@@ -1443,6 +1465,16 @@ Each with the answer this document would take, in the shape `docs/debugging.md` 
     - _Who does the manual vscode.dev check_ (§7) is not decided. For 0.2.0 an agent ran it, on
       vscode.dev only (`docs/measurements/vscode-dev-live/`); steps 1 and 2 hold, step 3 was not
       done.
+13. **Whether the `&` of an `@inout` or `@out` argument reaches a default VS Code (§3).** The
+    plugin answers `provideInlayHints` for a directive file with the `&` of the compiler's change
+    0040, and a real tsserver returns it (`tsserver.test.ts`). VS Code's TypeScript extension is
+    understood to send that request only when one of its `typescript.inlayHints.*` settings is
+    on; none is by default. Not measured. _Suggested:_ measure it in `test-electron` with the
+    settings off and on; if the hint does not show by default, register an inlay hint provider
+    in the extension that asks the plugin, or say in the extension's README which setting to
+    turn on. The hint also skips a function imported from another shader file, since the plugin
+    resolves the callee in the file alone; following the import through `DocumentSync` would
+    close that.
 
 ## Decisions for the owner
 

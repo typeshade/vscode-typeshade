@@ -125,8 +125,11 @@ More complete examples (a fullscreen pass, textures and overrides, a workgroup r
 
 **1. Numbers have a width, and literals follow the declaration.** Write every float with a dot
 (`1.`, `0.5`). An integer-written literal takes an integer type only where one is declared (an
-annotation, a parameter, the other operand, an index, a `for` initializer); where nothing
-declares a type it is an `f32` today. So annotate integer locals:
+annotation, a parameter, the other operand, an index, a `for` initializer). An unannotated local
+such as `let k = -1` also takes `i32` or `u32` from a declared use: an argument of a function, a
+constructor or a method whose parameter declares it, or a typed assignment. Where nothing declares
+a type it is an `f32` today: a use of the local as an index decides nothing. So annotate integer
+locals:
 
 <!-- expect: TS8003 -->
 
@@ -191,8 +194,38 @@ export function march(steps: i32, dt: f32): f32 {
 inferred from its first `return` with a value (none without one); an entry (`@vertex`,
 `@fragment`, `@compute`) that returns a value without an annotation is `TS8021`.
 
-**5. Parameters are immutable** (`TS8018`): copy one into a `let` to change it. A swizzle is
-written one component at a time (`v.x = 1.`; `v.xy = ...` is `TS8018`).
+**5. A parameter is a value, unless it is `@inout` or `@out`.** A whole write to a parameter
+(`x = 0.`) changes a local copy; a write into a field or component of one (`r.origin = o`,
+`v.x = 1.`) is `TS8018`. To change the caller's variable, declare the parameter `@inout` (read
+and written) or `@out` (written before it is read, and on every path, else `TS8075`), on a
+function of the file or of a namespace. The call passes the variable unmarked, and the editor
+shows `&` before it. The argument is a variable, or a field or an element of one: a literal, an
+expression or `v.x` is `TS8073`, and one variable twice in one call is `TS8074`. A method, an
+entry and a local function take values (`TS8073`). There is no `@in`: an unqualified parameter
+is GLSL's `in`. A swizzle is written one component at a time (`v.xy = ...` is `TS8018`).
+
+```ts
+"use typeshade"
+
+function swap(@inout a: f32, @inout b: f32): void {
+  const t = a
+  a = b
+  b = t
+}
+
+function add(a: f32, b: f32, @out c: f32): void {
+  c = a + b
+}
+
+export function demo(): f32 {
+  let x: f32 = 1.
+  let y: f32 = 2.
+  swap(x, y)
+  let s: f32
+  add(x, y, s)
+  return x + s
+}
+```
 
 **6. There are no strings, no `==`, no JavaScript runtime.** Use `===` and `!==`. `console.log`
 takes values and string-literal labels (`console.log("x =", x)`); a template with a value in it
@@ -203,7 +236,8 @@ lines. `Math.random()` is refused; `random(seed)`
 is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`. Of the JavaScript
 array methods, `map`, `forEach`, `some`, `every` and `reduce` compile (`map` only on a fixed-size
 array); `filter`, `find` and the rest are `TS8099`, and the answer is a loop. Functions are written as TypeScript writes them: a nested `function` or
-an arrow constant may read and write the locals around it, and a function may take a function
+an arrow constant may read and write the locals around it, an `@inout` parameter of the function
+around it included, and a function may take a function
 (`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
 **7. Resources are declared, and numbered for you.** Every `declare` resource is `@group(0)`,
@@ -294,7 +328,9 @@ names) are in [references/language.md](references/language.md).
 ## Diagnostics
 
 `TS8xxx` codes are TypeShade's; plain TypeScript codes (`TS2304`) come from TypeScript's checker,
-which still runs, with its false positives on shader code filtered out. The ones met most often:
+which still runs, with its false positives on shader code filtered out. A read of a variable
+before it is assigned is the compiler's `TS8075` where TypeScript reported TS2454, since an `@out`
+argument assigns the variable and TypeScript cannot see that. The ones met most often:
 
 | Code   | Usual cause                                                                                                                 | Fix                                                                    |
 | ------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -303,12 +339,14 @@ which still runs, with its false positives on shader code filtered out. The ones
 | TS8004 | a call to a name not declared or imported (`lerp`, another file's helper)                                                   | `docs` for the TypeShade name; import the helper                       |
 | TS8006 | a loop bound the body writes, or `!=` against a runtime bound                                                               | read the bound into a `const`; compare with `<`                        |
 | TS8015 | an emitter refused the module (a warning drops the GLSL only)                                                               | read the message: often a uniform that is not a struct                 |
-| TS8018 | a write to a parameter or to a multi-component swizzle                                                                      | copy into a `let`; write one component                                 |
+| TS8018 | a write into a field or component of a value parameter, or to a multi-component swizzle                                     | declare the parameter `@inout`; write one component                    |
 | TS8021 | an entry that returns a value with no return annotation                                                                     | annotate it                                                            |
 | TS8022 | an unknown name, field or swizzle; a name read before its declaration                                                       | the name the message suggests; declare before use                      |
 | TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                                                                        | splat: `max(v, vec3(0.))`                                              |
 | TS8052 | `textureSample` or a derivative under a per-fragment branch                                                                 | sample before branching                                                |
 | TS8072 | an import not followed: a wrong path, a plain `.ts` file, a package not installed or not exporting the path, no such export | a path to a shader file, or one the package exports; `export` the name |
+| TS8073 | a literal, an expression or `v.x` passed to an `@inout` or `@out` parameter; a qualifier on a method's parameter            | pass a `let`; move the code into a function of the file                |
+| TS8075 | a variable read before it is assigned on every path; an `@out` parameter read before it is written, or left unwritten       | assign it first, or declare it with a value                            |
 | TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource                                                 | read the message: it names the construct                               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
