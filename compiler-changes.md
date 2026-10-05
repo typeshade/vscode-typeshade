@@ -172,3 +172,6 @@ id first, then the pull request that did the work.
 - 0045: a NaN or subnormal `f32` word has no portable `bitcast`: references/language.md says to
   keep integer words in a `storage<array<u32>>` or `storage<array<vec4u>>` binding, handled in the
   same pull request.
+- 0047: `array<T, N>()` is the zero value of a fixed-size array: references/language.md's
+  Constructors line names `array<u32, 32>()` beside `vec3()`, handled in the pull request that
+  pins the compiler at e56b886.
