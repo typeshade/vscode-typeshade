@@ -143,8 +143,8 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
   `i32(u)` reinterpret the bits.
 - Vectors: through the constructor, `vec3(v3u)`, `vec3u(v)`, `vec2i(p)`, `vec2(gid.xy)`. The sizes
   must match. `f32(v)` on a vector is `TS8003`.
-- Constructors: `vec3(0.5)` splats; `vec4(v3, 1.)` and `vec4(v2, v2)` compose; `vec3()` is zero;
-  `vec3<u32>(1, 2, 3)` names the element type; `array(1., 2., 3.)` is an `array<f32, 3>`;
+- Constructors: `vec3(0.5)` splats; `vec4(v3, 1.)` and `vec4(v2, v2)` compose; `vec3()` is zero, and
+  `array<u32, 32>()` is 32 zeros; `vec3<u32>(1, 2, 3)` names the element type; `array(1., 2., 3.)` is an `array<f32, 3>`;
   `mat3(m4)` truncates; `mat3(c0, c1, c2)` builds from columns.
 - `x as T` is a claim to the type checker, not a conversion, and emits nothing.
 - `bitcast<u32>(x)` reinterprets the bits of an `f32`, and `bitcast<f32>(u)` the reverse. A
