@@ -1,6 +1,6 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `46f6b84`
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `a29410f`
 (2026-10-05), and was `1599b04` (2026-09-29) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
@@ -14,7 +14,7 @@ repository names and change no mapping, and so does the move on to `c9dc8c0`, wh
 (`FOREIGN_NAMES`), both of which the MCP server now calls (`docs/agents.md` §3.1, §3.5). The moves
 after `c9dc8c0` record what each owed in `compiler-changes.md` and change no mapping either: at
 `41872ee` every service call in §3 type-checks and the tests pass, and `npm run check` passes at
-`7c274e2` too. The move to `46f6b84` changes one row: `provideInlayHints`, which answered
+`7c274e2` too. The move to `a29410f` changes one row: `provideInlayHints`, which answered
 nothing for a directive file, now answers the `&` of the compiler's change 0040, computed in the
 plugin (§3). §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured

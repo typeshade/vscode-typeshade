@@ -121,27 +121,27 @@ id first, then the pull request that did the work.
   that `class Empty {}`, a class of methods or getters only and a class of static members are
   built with `new`, that the host and a CPU run see `{}`, and that the GPU code carries a hidden
   `u32`; its class example builds a class of methods only. No skill text or fixture here refused
-  such a class, handled in the pull request that pins `46f6b84`.
+  such a class, handled in #51.
 - 0036: an unannotated local integer takes its type from the declared parameter of a call it is
   passed to: SKILL.md's rule 1 and references/language.md's literals section name the declared
   use, and say that an index decides nothing, so rule 1's `TS8003` example stands; an MCP
   `tools.test.ts` case checks a local `-1` passed to an `i32` parameter as clean and hovers it as
-  `let objectIndex: i32`, handled in the pull request that pins `46f6b84`.
+  `let objectIndex: i32`, handled in #51.
 - 0037: the declared use extends to a constructor, a method and a typed assignment: SKILL.md's
   rule 1 and references/language.md's literals section name them and the `TS8003` of uses that
   disagree; references/diagnostics.md's TS8003 row gains that cause; the tsserver fixture
   `references.shade.ts` passes `-1` to a constructor whose parameter declares `i32`, and the
-  hover test reads the local's type there, handled in the pull request that pins `46f6b84`.
+  hover test reads the local's type there, handled in #51.
 - 0038: a derived class value goes where its base is declared when the compiler proves the base
   view read-only: references/language.md's class section says when, and that there is no
   runtime dispatch through a base type, with a compiled example of the accepted case and an
   `expect: TS8003` example of an override the proof refuses; references/diagnostics.md's TS8003
-  row names the refusal and its remedy, handled in the pull request that pins `46f6b84`.
+  row names the refusal and its remedy, handled in #51.
 - 0039: a parameter or a local may shadow a module value: references/language.md's scope line
   says so, with the example of a local `u` beside a uniform `u`, and that a local that repeats a
   parameter is still `TS8023`; references/diagnostics.md's and references/language.md's TS8023
-  text says "in one scope". No text here told an author to rename for a module value, handled in
-  the pull request that pins `46f6b84`.
+  text says "in one scope". No text here told an author to rename for a module value, handled
+  in #51.
 - 0040: parameters declared `@inout` and `@out`, with unmarked arguments (the third amendment;
   the `Ref<T>` and `ref()` of the earlier text never reached a pin here, so nothing named them):
   the tsserver plugin answers `provideInlayHints` for a directive file with `&` at each argument
@@ -158,11 +158,11 @@ id first, then the pull request that did the work.
   example; references/diagnostics.md's TS8018 row and its TS8073 and TS8074 rows, and an
   `@inout` fix of the TS8018 example; docs/design.md §3 (the `provideInlayHints` row, the
   paragraph on what the hint resolves and its limits), §6 and §8 item 13; the extension's
-  CHANGELOG, handled in the pull request that pins `46f6b84`.
+  CHANGELOG, handled in #51.
 - 0043: a read of a local before it is assigned is the compiler's `TS8075`, and every target
   starts a local at zero: references/diagnostics.md gains the TS8075 row, an `expect: TS8075`
   example and its fix, and says that TS2454 is the compiler's TS8075 now; SKILL.md's diagnostics
   section says the same and gains a TS8075 row; references/language.md's `let x: f32` line says
   that GLSL now writes the zero; the tsserver test reports `typeshade(8075)` once on a read
   before an assignment and nothing on an `@out` argument, and the MCP `check` test the same,
-  handled in the pull request that pins `46f6b84`.
+  handled in #51.

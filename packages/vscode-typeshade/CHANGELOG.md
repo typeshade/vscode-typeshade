@@ -11,7 +11,7 @@
 
 ### Changed
 
-- The compiler is `typeshade` at `46f6b84`. A hover on a qualified parameter shows its qualifier,
+- The compiler is `typeshade` at `a29410f`. A hover on a qualified parameter shows its qualifier,
   and a read of a variable before it is assigned is the compiler's `TS8075`, where TypeScript
   reported TS2454.
 
