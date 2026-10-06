@@ -4,6 +4,12 @@ name: ci
 # steps so a failure names itself in the job summary rather than hiding behind one script. On a
 # pull request, `compiler-bump` also checks what a move of the compiler pin owes this repository.
 #
+# A pull request that changes only documents (a `.md` file outside `packages/` and `plugins/`,
+# whose Markdown ships in a package) runs the two required jobs, which read documents (the prose
+# check, the tests, `compiler-changes.md`), and skips `electron` and `web`, which test the
+# packaged extension and read none. `scope` decides; a push, a dispatch and a release run every
+# job.
+#
 # Node 20 is the floor both packages declare, and the version the VS Code extension host runs
 # is newer than that, so the matrix pins the floor and the current LTS: a plugin that only
 # compiles on the newest Node is a plugin some editors cannot load.
@@ -32,6 +38,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: diff
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              packages/*|plugins/*) code=true ;;
+              *.md) ;;
+              *) code=true ;;
+            esac
+          done < <(git diff --name-only "origin/$BASE...HEAD")
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Code changed: $code" >> "$GITHUB_STEP_SUMMARY"
+
   check:
     name: typecheck + lint + test (node ${{ matrix.node }})
     runs-on: ubuntu-latest
@@ -97,6 +135,8 @@ jobs:
 
   electron:
     name: extension tests in a real VS Code
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -138,6 +178,8 @@ jobs:
     # Not a required check: `.github/workflows/publish-extension.yml` calls this workflow, so a
     # red cell already holds a release, and a merge is not held on a Chromium download.
     name: extension tests in VS Code for the Web (${{ matrix.label }})
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:

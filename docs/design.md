@@ -1201,7 +1201,8 @@ are a third job, which needs Chromium and a build of VS Code per commit (199 MB 
 1.139.1, 109 MB for 1.110.0). Neither is a
 required check on `main`, and `publish-extension.yml` calls all of `ci.yml`, so both hold a
 release (§7). An earlier version of this paragraph said a publish must not wait on the electron
-job; the workflow calls it.
+job; the workflow calls it. A pull request that changes only documents skips both jobs (`change scope` in
+`ci.yml`, and the README's Develop section); a release runs them.
 
 ## 7. Packaging and release
 
