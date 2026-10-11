@@ -315,7 +315,7 @@ export function leafColor(): vec3 {
   constant or an `override<u32>`. The same override may size the outer count of a workgroup array:
 
 ```ts
-"use typeshade"
+"use typeshade";
 
 const WG_SIZE: override<u32> = 64;
 let tile: workgroup<array<f32, WG_SIZE>>;
