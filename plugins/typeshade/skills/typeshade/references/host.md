@@ -145,6 +145,7 @@ await frame.submit() // the console lines print here
   `workgroupShape` is the resolved `[x, y, z]` shape for that pipeline. Use it when deriving the
   dispatch count. WebGL2 supports the declared default shape; a different specialized shape is
   refused because WebGL2 cannot specialize workgroup dimensions.
+
 - **A texture's layout** follows the calls that read it: one a program only loads is
   `unfilterable-float`, so an `r32float` texture binds; one a sampler reads takes a filterable
   format.
