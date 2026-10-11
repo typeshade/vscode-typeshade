@@ -11,6 +11,62 @@ report, a question, a summary after a merge. What goes into the repository stays
 it is: code, comments, commit messages, pull request titles and bodies, and every document in
 the tree.
 
+## Writing and configuration management
+
+Every reply to the owner and every task follows two disciplines from aircraft maintenance
+practice. The writing follows the principles of ASD-STE100, Simplified Technical English. The
+work follows the configuration management functions of SAE EIA-649 and ISO 10007. Both are
+local conventions, and they claim no compliance or certification.
+
+**Writing.**
+
+- Keep descriptive text and procedures apart. Write a procedure as numbered steps in the
+  imperative, with one action in each step.
+- Give each sentence one topic. Keep a step to 20 words and a descriptive sentence to 25. Give
+  each paragraph one topic.
+- Use one term for one thing. Use the exact identifier of each file, symbol, check and command.
+- Use the active voice when the actor is known. Do not invent an actor.
+- Put a warning before the step it applies to. Name an action that cannot be undone (a merge,
+  a force push, a deletion, a release) before it is done.
+- Keep facts, inferences, proposals, decisions and observed results apart. Label each one when
+  the difference matters.
+- A reply in Korean applies these principles in Korean: short sentences, one topic in each, one
+  action in each step, the same term for the same thing. ASD-STE100's dictionary is English and
+  governs only English text.
+
+**Configuration management.**
+
+- Identification. Name each configuration item by its identifier: a repository, a branch, a
+  commit, a pull request, a compiler proposal, the submodule pin, a package version or a
+  required check. "The latest" is no identifier. A commit hash is one.
+- Baselines. `main` at a commit is this repository's baseline. The pin `vendor/typeshade` is
+  its baseline of the compiler. A published package is the build of one tagged commit.
+- Change control. Change a baseline only through a pull request. A pin moves only with the
+  checks of "The packages and the docs follow the pinned compiler". The approval is a review or
+  the owner's go-ahead in the conversation (Merging). A pull request does only what its
+  description says. One pull request carries one change, so two unrelated changes are two pull
+  requests.
+- Status accounting. Record the status of each request and each change: not started, in
+  progress or done. A status report names each one with its identifiers. List each open item
+  with its reason and its next action: deferred work, a compiler proposal this repository still
+  owes, a check that is not green.
+- Verification and audit. Support a claim of completion with the checks that actually ran:
+  the command or check, the date, the configuration (commit, pin, tool versions) and the
+  result. Functional verification (`npm run check`, the extension in a host) and the document
+  audit (`docs/`, the references and the skill match the pinned compiler) are separate. One
+  does not replace the other. Report a check that did not run as not run.
+- Deviations. Record each difference between the request and the delivered work on the pull
+  request, with its disposition: closed, accepted by the owner, or open.
+
+Each task runs in the order of a maintenance task card:
+
+1. Identify the request, the configuration items it touches and their baselines.
+2. Find the change record that authorizes the change, or open one.
+3. Make the change inside what that record declares.
+4. Verify the change with the functional checks and the document audit.
+5. Record what was done, on which configuration, what was verified and what remains open.
+6. Report the status of every request to the owner.
+
 ## The packages and the docs follow the pinned compiler
 
 `vendor/typeshade` is the compiler, pinned as a git submodule (`docs/design.md` §2). A package,

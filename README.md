@@ -100,6 +100,11 @@ Neither the electron job nor the `web` job is a required check on `main`, but
 [`publish-extension.yml`](./.github/workflows/publish-extension.yml) calls all of `ci.yml`, so a
 red run of either one holds a release.
 
+A pull request that changes only documents (`.md` files outside `packages/` and `plugins/`,
+whose Markdown ships in a package) skips both: they test the packaged extension and read no
+document. The `change scope` job decides from the diff. The required checks still run, because
+the prose check, the tests and the compiler-bump job read documents.
+
 ## Conventions
 
 The conventions are the compiler repository's, so that a reader moving between the two
