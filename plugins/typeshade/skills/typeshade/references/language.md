@@ -326,7 +326,7 @@ export function copy(@builtin("local_invocation_id") lid: vec3u): void {
 }
 ```
 
-The workgroup array must be the outer array in workgroup memory. The compiler checks specialized
+The workgroup array must be the outer array in workgroup memory. The runtime checks specialized
 dimensions against device limits when it creates a pipeline.
 - **Builtins are parameters.** Vertex: `vertex_index: u32`, `instance_index: u32`. Vertex
   output and fragment input: `position: vec4`. Fragment: `front_facing: bool`,
