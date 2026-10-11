@@ -132,7 +132,19 @@ await frame.submit() // the console lines print here
 - **Overrides by name.** `render({ targets, constants: { quality: 3 } })` and
   `compute('step', { constants: { iterations: 64 } })` set the program's overrides; one left out
   keeps its default. An unknown name, or a value its type cannot hold, is a `TypeError`; each set
-  of values is its own cached pipeline.
+  of values is its own cached pipeline. A host can choose a workgroup size from ordinary
+  TypeScript, then pass it to the override used by `@compute` and a workgroup array:
+
+  ```ts
+  const selectedSize = input.length >= 256 ? 256 : 64;
+  const pipeline = await program.compute('copy', { constants: { WG_SIZE: selectedSize } });
+  const groups = Math.ceil(input.length / pipeline.workgroupShape[0]);
+  frame.dispatch(pipeline, { src: input, dst: output }, [groups, 1, 1]);
+  ```
+
+  `workgroupShape` is the resolved `[x, y, z]` shape for that pipeline. Use it when deriving the
+  dispatch count. WebGL2 supports the declared default shape; a different specialized shape is
+  refused because WebGL2 cannot specialize workgroup dimensions.
 - **A texture's layout** follows the calls that read it: one a program only loads is
   `unfilterable-float`, so an `r32float` texture binds; one a sampler reads takes a filterable
   format.
@@ -140,6 +152,14 @@ await frame.submit() // the console lines print here
   a `Resident`; a `Texture` or `Sampler` from `rt.texture()` and `rt.sampler()`; or the host's
   own `GPUBuffer`, `GPUTexture` or `GPUSampler`. An unknown name, a missing binding and a value of
   the wrong shape are a `TypeError` naming the entry, its line and the binding.
+- **Host bindings are checked from the module view.** The generated `name.shade.typeshade.ts` view
+  gives each compute and render entry the bindings its shader reaches, so `tsc` can catch a missing
+  or misspelled binding. A manifest read from JSON has no static binding type; cast it to
+  `Pack<BindingsOf<typeof module, 'entry'>>` for the entry it names.
+- **Geometry may stay resident.** `Geometry.vertices` accepts a `Resident<Float32Array>`,
+  `Resident<Int32Array>` or `Resident<Uint32Array>`. `Geometry.indices` accepts a
+  `Resident<Uint32Array>`; its index format is `uint32`. Both remain on the device after their
+  first upload.
 - **A frame** is one encoder: `frame.dispatch()`, `frame.pass(targets, record)`, then `submit()`,
   which resolves to `{ console: [{ entry, lines, dropped }, …] }`, a row per dispatch or draw that
   recorded.

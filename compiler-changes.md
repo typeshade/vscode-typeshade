@@ -117,6 +117,9 @@ id first, then the pull request that did the work.
   section names the override values `render()` and `compute()` take, the texture layout the
   calls that read a texture decide, the console's counts `submit()` resolves to, and `read()` and
   `readFloats()`, handled in #48.
+- 0030: a host view types the bindings each shader entry reaches: references/host.md states that
+  generated host views let `tsc` check draw and dispatch bindings, and that JSON manifests need a
+  `Pack<BindingsOf<…>>` cast, handled in #47.
 - 0035: a class with no instance fields is a value: references/language.md's class section says
   that `class Empty {}`, a class of methods or getters only and a class of static members are
   built with `new`, that the host and a CPU run see `{}`, and that the GPU code carries a hidden
@@ -175,3 +178,9 @@ id first, then the pull request that did the work.
 - 0047: `array<T, N>()` is the zero value of a fixed-size array: references/language.md's
   Constructors line names `array<u32, 32>()` beside `vec3()`, handled in the pull request that
   pins the compiler at e56b886.
+- 0053: `Geometry.vertices` and `Geometry.indices` accept resident buffers: references/host.md
+  names the accepted `Resident` types and their device residency, handled in #47.
+- 0057: an `override<u32>` may set a compute dimension and a workgroup array's outer length:
+  SKILL.md and references/language.md document the source form; references/host.md shows host
+  selection through `compute(..., { constants })`, `workgroupShape` and the WebGL2 limitation,
+  handled in #47.
