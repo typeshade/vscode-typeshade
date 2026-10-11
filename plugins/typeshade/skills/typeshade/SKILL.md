@@ -250,6 +250,8 @@ struct, or the GLSL output is dropped with a `TS8015` warning.
 vec4`); there are no implicit globals. An IO struct is a `class` whose every field has
 `@location(n)` or `@builtin(...)`. Share one output class between the vertex and fragment
 stages: GLSL links varyings by name. `@compute([x])` is one-dimensional (`[8, 8]` is `TS8026`).
+Its dimensions may use a named constant or `override<u32>`; the same override may size the outer
+array of a `workgroup` array. A host can select its value when it creates the compute pipeline.
 Keep one `@vertex` and one `@fragment` per file when WebGL2 matters.
 
 **9. Fragment-only operations stay out of divergent branches.** `textureSample`, `dpdx`,
@@ -293,7 +295,7 @@ default view.
 | `declare const s: storage<array<f32>>` / `storage<T, "read_write">` | read-only / read-write storage buffer                       |
 | `declare const tex: texture_2d<f32>`, `declare const smp: sampler`  | a texture and a sampler                                     |
 | `const k: override<f32> = 1.`                                       | pipeline override (not a compile-time constant)             |
-| `let tile: workgroup<array<f32, 64>>`                               | workgroup memory, compute only                              |
+| `let tile: workgroup<array<f32, WG_SIZE>>`                          | workgroup memory sized by an integer constant or override   |
 
 The full rules (casts, structs and classes, layouts, textures, atomics, uniformity, reserved
 names) are in [references/language.md](references/language.md).

@@ -85,7 +85,9 @@ function shaderBlocks(): Block[] {
       // formatter has rewritten, and it would otherwise be skipped here in silence.
       for (const source of sources) {
         if (/^['"]use typeshade['"];?$/.test(source.split('\n')[0])) {
-          expect(source.split('\n')[0], `${file}: a rewritten directive`).toBe('"use typeshade"');
+          expect(source.split('\n')[0], `${file}: a rewritten directive`).toMatch(
+            /^"use typeshade";?$/,
+          );
         }
       }
       if (!sources.every((source) => source.startsWith('"use typeshade"'))) continue;

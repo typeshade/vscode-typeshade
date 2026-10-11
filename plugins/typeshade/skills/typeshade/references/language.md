@@ -282,9 +282,11 @@ export function leafColor(): vec3 {
   `const`.
 - `const q: override<f32> = 0.5`: a pipeline override, scalar only, set by the host at pipeline
   creation. It takes no binding slot and is not a compile-time constant, so it cannot bound a
-  loop.
+  loop. An `override<u32>` can also set a `@compute` dimension and the outer count of a
+  workgroup array.
 - `let seed: u32 = 7` at the top level: a per-invocation module variable.
-- `let tile: workgroup<array<f32, 64>>`: workgroup memory, with no initializer, compute only.
+- `let tile: workgroup<array<f32, WG_SIZE>>`: workgroup memory, with no initializer, compute
+  only. Its fixed outer count may be an integer constant or a `u32` override.
 - `declare const bins: storage<array<atomic<u32>>, "read_write">`: atomics (`atomic<u32>` or `atomic<i32>`), in
   read-write storage only, used through `atomicAdd(bins[i], 1)` and the other atomic builtins.
 - **Slots.** Every `declare` resource is `@group(0)`, numbered `@binding(0)`, `@binding(1)` ...
@@ -309,7 +311,24 @@ export function leafColor(): vec3 {
 - `@vertex`, `@fragment`, `@compute` go on top-level functions. A function without one is a
   helper. Calling an entry is refused: move the body into a helper both call.
 - `@compute([x])`: y and z must be 1 (`TS8026`), so linearise 2-D work over `gid.x`. A bare
-  `@compute` is a workgroup of 64.
+  `@compute` is a workgroup of 64. A dimension may be a numeric literal, a named integer
+  constant or an `override<u32>`. The same override may size the outer count of a workgroup array:
+
+```ts
+"use typeshade";
+
+const WG_SIZE: override<u32> = 64;
+let tile: workgroup<array<f32, WG_SIZE>>;
+
+@compute([WG_SIZE])
+export function copy(@builtin("local_invocation_id") lid: vec3u): void {
+  tile[lid.x] = 0.;
+}
+```
+
+The workgroup array must be the outer array in workgroup memory. The runtime checks specialized
+dimensions against device limits when it creates a pipeline.
+
 - **Builtins are parameters.** Vertex: `vertex_index: u32`, `instance_index: u32`. Vertex
   output and fragment input: `position: vec4`. Fragment: `front_facing: bool`,
   `sample_index: u32` and `sample_mask: u32` (both WGSL-only), `frag_depth: f32` (output).
