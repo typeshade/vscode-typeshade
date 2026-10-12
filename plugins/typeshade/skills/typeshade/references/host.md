@@ -4,9 +4,10 @@ A host uses a shader module one of three ways:
 
 - **It imports the module** through the `typeshade/vite` plugin and calls its exports. A helper
   runs on the CPU. A kernel function's loops run on the GPU when the compiler proves them
-  independent. A `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry draws
-  into a canvas. The calls request a WebGPU device and make the pipelines themselves, or use the
-  program runtime's device once `configure({ runtime: rt })` names one.
+  independent, and a chain of kernel calls can run as one dispatch inside a `fuse` scope. A
+  `@compute` entry dispatches on WebGPU, and a full-screen `@fragment` entry draws into a canvas.
+  The calls request a WebGPU device and make the pipelines themselves, or use the program
+  runtime's device once `configure({ runtime: rt })` names one.
 - **It loads the compiled program into the program runtime**, `typeshade/runtime`, and draws and
   dispatches it with its own frames: the runtime handles the device, the pipelines, the bindings
   by name and the console, and the application ships no compiler.
@@ -79,6 +80,11 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   When every binding or array a call writes is a `Resident`, the call only queues and returns
   nothing. Entry calls and kernel calls run in the order they were made, and so does a draw that
   reads a `Resident`, so one call's output can be the next one's input.
+- **A `fuse` scope** runs a chain of kernel calls over `Resident` arrays as one plan. On WebGPU the
+  calls reach the queue in one submission, and calls that follow each other become one dispatch
+  when the compiler's facts allow it. `fuse` comes from `typeshade/fuse`, and the plugin needs
+  `typeshade({ fuse: true })`. The section "A chain of kernel calls in one dispatch" has the
+  example, the facts, the report and the scratch arrays.
 - **A full-screen `@fragment` entry** is `entry(canvas, bindings)`, into an `HTMLCanvasElement`
   or an `OffscreenCanvas`. It draws one frame that fills the canvas, on WebGPU, then WebGL2, then
   the CPU, and the first draw into a canvas decides its tier. The promise resolves when the frame
@@ -105,6 +111,192 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   `console` option says when the GPU records the calls: `'dev'`, the default, in `vite dev` only,
   `'always'` in a production build too, and `'never'` in neither. `typeshade({ ir: true })` also
   puts each module's IR in its default export, for the load-time emitter below.
+
+## A chain of kernel calls in one dispatch
+
+A host that calls several kernel functions one after another pays a submission for each call and a
+dispatch for each loop. `fuse` from `typeshade/fuse` records the calls its body makes and runs them
+together when the body returns. The host imports `fuse` on purpose: the package root and
+`typeshade/runtime` do not export it. The same subpath exports the types `FuseReport` and
+`FuseScope`.
+
+Write each operation as a kernel function with one loop. `total` reduces:
+
+```ts
+"use typeshade"
+
+export function add(out: array<f32>, a: array<f32>, b: array<f32>): void {
+  for (let i: u32 = 0; i < out.length; i++) {
+    out[i] = a[i] + b[i]
+  }
+}
+
+export function mul(out: array<f32>, a: array<f32>, b: array<f32>): void {
+  for (let i: u32 = 0; i < out.length; i++) {
+    out[i] = a[i] * b[i]
+  }
+}
+
+export function relu(out: array<f32>, x: array<f32>): void {
+  for (let i: u32 = 0; i < out.length; i++) {
+    out[i] = max(x[i], 0.)
+  }
+}
+
+export function total(xs: array<f32>): f32 {
+  let s = 0.
+  for (let i: u32 = 0; i < xs.length; i++) {
+    s += xs[i]
+  }
+  return s
+}
+```
+
+Call them inside `fuse`:
+
+```ts
+import { resident } from 'typeshade/runtime'
+import { fuse } from 'typeshade/fuse'
+import { add, mul, relu } from './ops.shade.ts'
+
+const a = resident(xs) // xs, ys and zs are Float32Array of n elements
+const b = resident(ys)
+const c = resident(zs)
+const out = resident(new Float32Array(n))
+const report = await fuse((scope) => {
+  const t = scope.scratch(n)
+  const u = scope.scratch(n)
+  add(t, a, b)
+  mul(u, t, c)
+  relu(out, u)
+})
+report.dispatches // 1: the three loops are one dispatch
+report.submissions // 1
+const y = await out.read() // relu((a + b) * c)
+```
+
+**The option.** The plan is made from facts that the compiler writes into the module. It writes them
+only under `typeshade({ fuse: true })`, in `vite dev` and in `vite build`:
+
+```ts
+// vite.config.ts
+export default defineConfig({ plugins: [typeshade({ fuse: true })] })
+```
+
+The record of a kernel function adds, minified and gzipped, about 0.7 kB to a module of one function
+that maps and about 1.3 kB to a module of one that reduces. A module of five functions adds 1.8 kB.
+The option is off by default for that reason. A module built without it works as before, and every
+call of a scope runs apart:
+`add and mul run as two dispatches because mul was built without typeshade({ fuse: true })`.
+
+**The body.** `fuse(body)` runs `body` once, and the body is synchronous. A kernel call in the body
+is recorded, and not run, when every array it writes is a `Resident`. A scratch array is a
+`Resident`. A recorded call may read a typed array, and it reads its arguments when the plan runs.
+It returns the promise that the call returns outside a scope, which resolves once the plan has run.
+Keep a promise you need, and await it after `fuse` resolves: `sum = total(u)` in the body, and
+`await sum` after it. `scope.recorded` counts the calls recorded so far.
+
+**When the plan runs.** When the body returns, the plan runs as one item of the kernel queue, at the
+place where `fuse` was called. The calls made before `fuse` run before the plan. A call or a
+`read()` made after `fuse` was called sees what the plan wrote, whether or not its promise has
+resolved. The promise resolves to the report, and rejects with the first error. The runtime checks
+every recorded call before it runs the first one. A call that fails its check fails the plan before
+any call runs, and the error stays on each `Resident` that the plan writes, for `read()` to throw.
+
+**What fuses.** On WebGPU the plan walks the calls in the order the host made them. A call joins the
+group before it when all of these hold against every call in the group, and not against the last
+one alone. A group of several calls is one dispatch.
+
+- The function lowers to the GPU (a `TS8070` warning means it does not), was built with the option,
+  and has one `for` loop at the top of its body. The loop does not scatter into an integer array,
+  has no `continue`, and runs at least one iteration.
+- The loops start at the same index, run the same number of iterations and step by the same amount.
+  The runtime works the range out for each call from its arguments, so a chain can fuse for one
+  length and not for another.
+- An array that a call in the group wrote and this call reads is written and read at exactly the
+  loop's counter, `out[i]` and `t[i]`. A read of `t[i - 1]` or `t[i ^ 1]`, and a write to
+  `out[2 * i]`, keep the calls apart.
+- This call writes no array that a call in the group reads or writes. Two calls may read one array.
+  One array has one type in a group.
+- The group binds each distinct array once, and one more for each variable that a reduction at its
+  end folds. A device allows `maxStorageBuffersPerShaderStage` of them, and 8 where it reports no
+  limit. A scratch array that the entry holds as a local counts for none, once the last call that
+  names it has joined.
+- A loop that reduces can be the last call of a group. The calls before it run as a prologue of each
+  of its iterations. Nothing joins a group after it, and a reduction alone is not fused.
+
+A call that joins no group starts a group of its own. The results are the same either way.
+
+**The report.** `fuse` resolves to a `FuseReport`:
+
+- `tier` is the best tier that any call of the plan ran on: `'webgpu'`, then `'webgl2'`, then
+  `'cpu'`.
+- `dispatches` counts the dispatches the plan made on WebGPU, or the draws on WebGL2. A fused group
+  counts once.
+- `submissions` counts the `queue.submit` calls of the plan, and the reads of a `Resident` from the
+  device that a call on the host needed.
+- `groups` lists the groups in order. Each has its `calls`, the names of its kernel functions, and
+  `fused`, whether it is one dispatch. A group that stands apart from the one before it also has a
+  `why`.
+
+**The `why`** is `a and b run as two dispatches because` and a reason, in your names. An access that
+is not at the counter is given as you wrote it, with its one-based line:
+``mul and blur run as two dispatches because blur reads `t[i - 1]` (line 9)``. Some other reasons:
+
+- `b was built without typeshade({ fuse: true })`
+- `b has more than one loop`, `b scatters` and `` b has a loop with a `continue` ``
+- `a reduces`, for a call that follows a reduction
+- `the trip counts differ (1000 and 999)` and `the loops start at different indices (0 and 1)`
+- `b writes an array a also writes` and `b writes an array a reads`
+- `one dispatch would bind 9 storage buffers, and the device allows 8`
+
+A function that runs on the CPU gives a whole sentence:
+`prefix runs on the CPU, a loop of it runs on the CPU (TS8070)`. The first group has no `why`.
+
+**Scratch arrays.** `scope.scratch(length)` makes a scratch array, an intermediate that the host
+never reads. `scope.scratch(n, 'i32')` and `scope.scratch(n, 'u32')` make an `array<i32>` and an
+`array<u32>`. A kernel call takes it where it takes an array. It holds zeros when the plan starts.
+Make it while the body runs.
+
+- A fused group holds it as a local variable of its entry, with no device buffer and no host array,
+  when every call of the plan that names it is in that group, exactly one call of the group writes
+  it, every access is at exactly the loop's counter, and no call reads its `.length` anywhere but
+  in the bound of its `for` header (`i < out.length`).
+- Otherwise the plan makes a zeroed array for the scope, and frees it when the plan has run, on
+  success and on failure.
+- `read()` rejects with a `TypeError`, and `write()` throws one. `destroy()` does nothing. A kernel
+  call that takes it outside the body that made it, or after the plan has run, is a `TypeError`.
+- A `Resident` from `resident()` keeps its buffer and its write inside a fused group, so the host
+  can read it after the scope.
+
+**A reduction at the end.** `total(u)` as the last call of a scope takes the calls before it into
+its own loop. Its folds of the partials and its result are the ones the call has outside a scope, so
+the sum is the same on every tier. The plan reads the partials back between the levels, so the
+loop's dispatch and each dispatch that folds a level of partials are a submission each. The three
+calls `add`, `mul` and `total` over 1,000 elements report 2 dispatches and 2 submissions.
+
+**The tiers.** Only WebGPU fuses. The arrays and the results are the same on every tier.
+
+- On WebGL2 each loop is a draw, as it is outside a scope. `dispatches` counts the draws,
+  `submissions` is 0, and the `why` of each group but the first is `WebGL2 runs the calls apart`.
+- The CPU tier runs the calls one after another. `dispatches` and `submissions` are 0, and a group
+  whose function lowers has no `why`. The CPU tier is the oracle of a fused group.
+- `configure({ prefer })` orders the tiers of each call as it does outside a scope.
+
+**Refusals.** A call that cannot be recorded throws a `TypeError` that names it, because it would
+run before the calls recorded earlier. Call it outside `fuse`. These are the calls:
+
+- a kernel call that writes a typed array:
+  `add(): parameter "out" is a Float32Array, and a call inside fuse() writes only a Resident.`
+- an entry call or a draw:
+  `blur(): an entry call cannot run inside fuse(), which records kernel calls only.`
+- `read()`, `write()` and `destroy()` of a `Resident`, and every other use of the kernel queue.
+
+An `async` body is a `TypeError` too, since a call after its first `await` would run outside the
+scope. A body that throws leaves nothing to run, and `fuse` rejects with its error. A `fuse` call in
+the body joins the scope that is open and returns the report of that scope.
+
+`docs/use-typeshade-surface.md` §71 in `typeshade/typeshade` has every reason and every wording.
 
 ## The program runtime
 
@@ -175,6 +367,11 @@ await frame.submit() // the console lines print here
   `typeshade/emit`, records the console of a program whose build did not, from the IR the
   manifest carries when built with `ir: true`. Only the package version that wrote the IR reads
   it.
+- **The fuse scope.** `fuse` from `typeshade/fuse` stands beside `typeshade/emit`. A host imports it
+  on purpose: the package root and `typeshade/runtime` export no `fuse`, so an application that
+  never imports the subpath ships none of the planner. The subpath holds the planner and the WGSL
+  writer, with no file of the front end and no `typescript`: about 74 KB, minified and gzipped,
+  held to a budget in CI. The section "A chain of kernel calls in one dispatch" has its use.
 - **Reading a texture back.** `texture.read()` gives its bytes, rows tightly packed, for any
   uncompressed format and `depth32float`; `texture.readFloats()` gives the same channels as numbers
   (a float format decoded, `unorm` 0 to 1). Either reads what was submitted before the call.
