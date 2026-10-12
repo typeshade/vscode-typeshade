@@ -184,3 +184,15 @@ id first, then the pull request that did the work.
   SKILL.md and references/language.md document the source form; references/host.md shows host
   selection through `compute(..., { constants })`, `workgroupShape` and the WebGL2 limitation,
   handled in #47.
+- 0058: a host fuses a chain of kernel-function calls into one dispatch inside a `fuse` scope from
+  `typeshade/fuse`: SKILL.md's kernel-function passage gains the shader side of a chain, and its
+  host section gains the call, the `typeshade({ fuse: true })` option, what lets a call join a
+  group, the report and its `why`, scratch arrays, the tiers and the refusals inside the body;
+  references/host.md gains the `fuse` bullet beside `Resident`, a section with the same parts in
+  full, and the fuse scope beside the load-time emitter in the program runtime section;
+  references/diagnostics.md is unchanged, since 0058 adds no diagnostic code, handled in the pull
+  request that pins the compiler at 5fb79c7.
+- 0060: the package root no longer exports the IR builder: the packages import `stageOf` and
+  `typeKey`, which stay at the root, and no name that left it; SKILL.md, the four references,
+  docs/design.md and README.md name no builder spelling, so this change needed no text, handled in
+  the pull request that pins the compiler at 5fb79c7.

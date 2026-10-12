@@ -118,6 +118,11 @@ export function multiply(k: f32, xs: array<f32>, ys: array<f32>) {
 }
 ```
 
+A host can run a chain of kernel-function calls as one dispatch, inside `fuse` (see The host side).
+To let a call join the calls before it, write one `for` loop in the function. Write and read each
+array that two calls share at the loop's counter alone: `t[i]`, not `t[i - 1]` or `t[2 * i]`. A
+call that cannot join runs as a dispatch of its own, with the same results.
+
 More complete examples (a fullscreen pass, textures and overrides, a workgroup reduction) are in
 [references/examples.md](references/examples.md).
 
@@ -371,8 +376,54 @@ fs(canvas, { frame: { time, scale: 0.02 } }) // a full-screen @fragment entry dr
 A vector is a tuple of numbers, a struct an object of its fields, a kernel function's array a
 typed array, and an entry's bindings object has one property for each binding the entry reaches. `tsc` reads a generated host view,
 `terrain.shade.typeshade.ts`, through `"moduleSuffixes": [".typeshade", ""]` and an `exclude` of
-the shader sources; `tshc sync` writes the views. Or compile the file and wire the output
-yourself:
+the shader sources. `tshc sync` writes the views.
+
+A host that calls several kernel functions over the same arrays can run the chain as one plan with
+`fuse` from `typeshade/fuse`. The body is synchronous, and every array that a call in it writes is a
+`Resident`. `scope.scratch(n)` makes a scratch array, an intermediate that the host never reads:
+
+```ts
+import { resident } from 'typeshade/runtime'
+import { fuse } from 'typeshade/fuse'
+import { add, mul, relu } from './ops.shade.ts' // kernel functions with one loop each
+
+const a = resident(xs) // xs, ys and zs are Float32Array of n elements
+const b = resident(ys)
+const c = resident(zs)
+const out = resident(new Float32Array(n))
+const report = await fuse((scope) => {
+  const t = scope.scratch(n)
+  const u = scope.scratch(n)
+  add(t, a, b)
+  mul(u, t, c)
+  relu(out, u)
+})
+report.dispatches // 1 on WebGPU: the three loops are one dispatch
+const y = await out.read() // relu((a + b) * c)
+```
+
+- **Build with `typeshade({ fuse: true })`** in `vite.config.ts`. Without it the calls still work,
+  but they run apart, and the report says why.
+- **Write each function for it.** A call joins the group before it when its loop runs over the same
+  range as theirs, an array that a call in the group wrote is written and read at the loop's counter
+  alone (`t[i]`), and it writes no array that a call in the group reads or writes. Otherwise it
+  stands apart, as a dispatch of its own, with the same results. A second loop, a `continue` and a
+  scatter keep a function from joining too.
+- **End a chain with a reduction** when you need a sum: `sum = total(u)` in the body, and
+  `await sum` after `fuse`. The reduction takes the calls before it into its loop. Nothing joins
+  after it.
+- **Read the report.** `report.groups` lists the groups, each with its `calls` and whether it is
+  `fused`. A group that stands apart has a `why` in your names:
+  ``mul and blur run as two dispatches because blur reads `t[i - 1]` (line 9)``.
+- **Only WebGPU fuses.** WebGL2 runs the calls apart, and the CPU tier never fuses. The results are
+  the same on every tier.
+- **Keep other calls out of the body.** `read()`, `write()` and `destroy()` of a `Resident`, a call
+  that writes a typed array, an entry call and a draw throw a `TypeError` inside it, and the message
+  names the call. Put them outside `fuse`. An `async` body is a `TypeError` too.
+- **The host never reads a scratch array.** `read()` and `write()` of one are a `TypeError`. Make the
+  array with `resident()` when the host reads it after the scope.
+
+To compile the file and wire the output yourself instead:
 
 ```ts
 import { compile, reflect } from 'typeshade'
@@ -385,5 +436,5 @@ const layout = reflect(result.module) // bind groups, uniform offsets, entry poi
 ```
 
 Pack uniform buffers at the offsets `reflect` reports, never by hand: a `vec3` aligns to 16
-bytes. The import, the program runtime, WebGPU, WebGL2 and the editor setup are in
+bytes. The import, `fuse`, the program runtime, WebGPU, WebGL2 and the editor setup are in
 [references/host.md](references/host.md).
