@@ -235,6 +235,7 @@ A call that joins no group starts a group of its own. The results are the same e
   counts once.
 - `submissions` counts the `queue.submit` calls of the plan, and the reads of a `Resident` from the
   device that a call on the host needed.
+  The copy of a folded value is in a submission that is counted already, and adds none.
 - `groups` lists the groups in order. Each has its `calls`, the names of its kernel functions, and
   `fused`, whether it is one dispatch. A group that stands apart from the one before it also has a
   `why`.
@@ -271,9 +272,9 @@ Make it while the body runs.
 
 **A reduction at the end.** `total(u)` as the last call of a scope takes the calls before it into
 its own loop. Its folds of the partials and its result are the ones the call has outside a scope, so
-the sum is the same on every tier. The plan reads the partials back between the levels, so the
-loop's dispatch and each dispatch that folds a level of partials are a submission each. The three
-calls `add`, `mul` and `total` over 1,000 elements report 2 dispatches and 2 submissions.
+the sum is the same on every tier. The loop's dispatch and each dispatch that folds a level of
+partials are in the plan's one submission, and the same submission copies the folded value. The
+three calls `add`, `mul` and `total` over 1,000 elements report 2 dispatches and 1 submission.
 
 **The tiers.** Only WebGPU fuses. The arrays and the results are the same on every tier.
 
@@ -302,7 +303,7 @@ the body joins the scope that is open and returns the report of that scope.
 
 A module's default export is its compiled program, the manifest (`Pack`), and
 `packModule(compile(source).module)` returns the same object. `typeshade/runtime` loads it and
-runs it on WebGPU, and imports nothing of the compiler, so an application ships about 10 KB of it.
+runs it on WebGPU or on WebGL2, and imports nothing of the compiler, so an application ships about 10 KB of it.
 
 ```ts
 import { createRuntime } from 'typeshade/runtime'
@@ -375,7 +376,9 @@ await frame.submit() // the console lines print here
 - **Reading a texture back.** `texture.read()` gives its bytes, rows tightly packed, for any
   uncompressed format and `depth32float`; `texture.readFloats()` gives the same channels as numbers
   (a float format decoded, `unorm` 0 to 1). Either reads what was submitted before the call.
-- The runtime is WebGPU only: WebGL2 and the CPU stay the imported module's tiers.
+- **The tier.** `rt.tier` is `'webgpu'` or `'webgl2'`. The runtime runs on the tier of the device it
+  is given, and `createRuntime({ prefer })` orders the tiers when it makes one. It has no CPU tier,
+  and `configure({ runtime })` takes no WebGL2 runtime.
 
 ## compile() and reflect()
 

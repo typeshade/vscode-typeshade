@@ -1,7 +1,7 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `45ec661`
-(2026-10-05), and was `1599b04` (2026-09-29) when this line was last written. The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `ee4f9ab`
+(2026-10-12). Until then this line named `45ec661` (2026-10-05). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move
@@ -17,7 +17,8 @@ after `c9dc8c0` record what each owed in `compiler-changes.md` and change no map
 `7c274e2` too. The move to `a29410f` changes one row: `provideInlayHints`, which answered
 nothing for a directive file, now answers the `&` of the compiler's change 0040, computed in the
 plugin (§3). The move to `45ec661` changes no row: it corrects the `out` attribute's hover text,
-which the MCP `docs` tool repeats. §1.3, §4 and §7 were re-measured at `7f0b482` with the
+which the MCP `docs` tool repeats. The move to `ee4f9ab` changes no row either: the plugin's skill
+references follow the compiler's reduction in one submission and its WebGL2 runtime tier. §1.3, §4 and §7 were re-measured at `7f0b482` with the
 plugin as it now ships, `typescript` inlined (PR 3); the figures that name `ef049e4` were measured
 there. Every claim about the compiler names the file it comes from.
 Nothing here is frozen, and §8 lists what is still open with the answer this document would
