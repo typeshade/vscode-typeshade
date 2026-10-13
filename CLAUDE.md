@@ -99,6 +99,17 @@ dash check and the tests), so a push that passes it locally passes there. `.clau
 also runs the fast half (prettier, eslint and the em dash check, `scripts/commit-gate.mjs`)
 before every `git commit` and blocks the commit while one fails.
 
+## Running sub-agents
+
+The owner's rules, given on 2026-10-13, for every session:
+
+- Run at most three sub-agents at the same time. Start the next one only when one has finished.
+- Stop a sub-agent as soon as its report is in. A sub-agent stops every server and background
+  process that it started before it reports.
+- Give every task its pull request first. Push the first commit early and open a draft pull
+  request at once. Push each later commit to the same branch, so that no work stays only in the
+  container.
+
 ## Merging
 
 `main` is protected by a GitHub ruleset: a pull request, a Code Owner review (`.github/CODEOWNERS`)
