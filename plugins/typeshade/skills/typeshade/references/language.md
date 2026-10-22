@@ -313,8 +313,8 @@ export function leafColor(): vec3 {
 - `declare const tex: texture_2d<f32>` and `declare const smp: sampler`: handles, bare and
   `const`.
 - `const q: override<f32> = 0.5`: a pipeline override, scalar only, set by the host at pipeline
-  creation. It takes no binding slot and is not a compile-time constant, so it cannot bound a
-  loop. An `override<u32>` can also set a `@compute` dimension and the outer count of a
+  creation. It takes no binding slot and stays symbolic through optimization. An integer
+  override can be a runtime loop bound. An `override<u32>` can also set a `@compute` dimension and the outer count of a
   workgroup array.
 - `let seed: u32 = 7` at the top level: a per-invocation module variable.
 - `let tile: workgroup<array<f32, WG_SIZE>>`: workgroup memory, with no initializer, compute
