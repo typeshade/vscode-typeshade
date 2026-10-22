@@ -196,3 +196,17 @@ id first, then the pull request that did the work.
   `typeKey`, which stay at the root, and no name that left it; SKILL.md, the four references,
   docs/design.md and README.md name no builder spelling, so this change needed no text, handled in
   the pull request that pins the compiler at 5fb79c7.
+
+- 0069, this pull request: the host reference accepts tiled and workgroup entry calls in fuse groups and removes the entry refusal.
+- 0071, this pull request: the host reference documents device ownership, options, array pooling, release and disposal.
+- 0072, this pull request: the host reference teaches both common-module faces and their shared CPU oracle.
+- 0073, this pull request: the host reference documents `fp64Flavor`, automatic selection and `recommendFp64Flavor`.
+- 0074, this pull request: the host reference documents time budgets, chunk sizing, timing and rates.
+- 0075, this pull request: the host reference documents indirect entry calls, count-buffer ownership and fuse reporting.
+- 0078, this pull request: the language reference documents ordered push, host capacity and the appended count.
+- 0079, this pull request: the language reference documents kernel array methods and reduction order.
+- 0080, this pull request: the language and host references document Map and Set parameters, tiers and insertion order.
+- 0081, this pull request: pin `ee4f9ab` moves to `94203d3c`. The references document key types, dense numeric Records and host conversions. D1 remains open upstream.
+
+- 0082, #59: pin `85b803f9` includes the first private input-projection implementation from compiler PR #738. The host reference describes eligibility, complete logical validation and the full-layout fallbacks. Physical-device whole-call validation remains pending upstream.
+- 0083, #59: pin `85b803f9` includes compiler PR #736's runtime-information implementation integrated with 0082. The host reference describes `buildInfo`, `Device.info` and `Runtime.info`, nullable identity, immutable historical snapshots and truthful packaging provenance. These host names do not enter the shader ambient library.
