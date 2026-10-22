@@ -116,6 +116,19 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   `'always'` in a production build too, and `'never'` in neither. `typeshade({ ir: true })` also
   puts each module's IR in its default export, for the load-time emitter below.
 
+## Private kernel input layout
+
+An ordinary WebGPU kernel call may upload only live fields of a read-only object array (change 0082).
+The first implementation accepts flat `f32`, `i32` and `u32` fields and keeps their declaration order.
+Field use includes every loop and reachable helper. Unproved uses keep the full layout.
+The host still passes complete objects. Every declared field is validated, including omitted GPU fields.
+Getter and property-read order remain unchanged. Element indices and array length keep their meaning.
+
+Written arrays, `Resident` arrays, fused calls and modules built with `typeshade({ fuse: true })` retain the full layout.
+Authored entry bindings, reflection, manifests and raw bytes keep their external layout.
+CPU and WebGL2 calls keep their original representation. No host or shader spelling changes.
+This reduces eligible input bytes; physical-device whole-call performance validation remains pending.
+
 ## Device owners
 
 `createDevice(options)` from `typeshade/runtime` opens an owner on the first available tier in `prefer`.
@@ -133,6 +146,26 @@ A `Resident` belongs to one owner for its life. Calls refuse arrays from another
 `device.chunkSize(key, max, min = 1)` sizes the next chunk from previous timings.
 `device.fuse(body, { chunk: { key, units, timed } })` fences and times it; `timed: false` skips rate learning.
 The report carries `chunk`, and `device.chunkRates` exposes measured rates.
+
+## Build and device information
+
+Import `buildInfo` from `typeshade` or `typeshade/runtime` for the package's frozen version and nullable source revision.
+`TypeShadeBuildInfo` and `DeviceInfo` are exported types on both paths. These are host APIs, outside the shader ambient library.
+An exact revision requires a clean packaging build with a matching source and emitted-artifact receipt.
+Modified, stale, unknown and unstamped builds report `revision: null`; source imports stay unstamped.
+The runtime build, `Pack.compiler` and benchmark workload provenance remain separate facts.
+
+`device.info` and `rt.info` are deeply frozen, JSON-serializable snapshots of the actual opened device or context.
+Each has `build`, `tier`, `webgpu` and `webgl`. CPU snapshots have no GPU section.
+WebGPU identity comes from the actual device, its retained creation adapter, or stays unavailable.
+Its provenance is `device`, `adapter` or `unavailable`. Features and limits describe the enabled device.
+A supplied device never causes a second adapter request to guess its identity.
+WebGL strings come from the actual context. Unavailable debug strings remain null, and browser redaction is preserved.
+A separate WebGL probe cannot identify a WebGPU device.
+
+Snapshots remain readable after loss or disposal as historical metadata.
+The opened tier does not identify each call's effective tier; `FuseReport.tier` retains its aggregate meaning.
+Reading information sends nothing. The host controls any report submission and consent.
 
 ## A chain of kernel calls in one dispatch
 
@@ -350,7 +383,7 @@ Insertion order is preserved, and Map keeps the value last set for each key.
 
 A module's default export is its compiled program, the manifest (`Pack`), and
 `packModule(compile(source).module)` returns the same object. `typeshade/runtime` loads it and
-runs it on WebGPU or on WebGL2, and imports nothing of the compiler, so an application ships about 10 KB of it.
+runs it on WebGPU or on WebGL2. The runtime entry point imports no compiler.
 
 ```ts
 import { createRuntime } from 'typeshade/runtime'
