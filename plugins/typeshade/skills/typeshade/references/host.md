@@ -71,7 +71,9 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   loop writes one array of numbers at `i`), then the CPU. `configure({ prefer })` orders them.
 - **A `@compute` entry** is `entry(bindings, workgroups)`. `bindings` has one property for each
   binding the entry reaches, typed exactly, so a missing or misspelled binding is a type error.
-  `workgroups` is `n` or `[x, y, z]`, dispatched as written. The promise resolves once every
+  `workgroups` is `n`, `[x, y, z]`, or `{ indirect, offset }`. The indirect form reads three
+  workgroup counts at the element offset of a `Resident<Uint32Array>` when the call runs.
+  The count buffer must share the device owner and must contain all three words. The promise resolves once every
   storage binding it writes has been read back into the caller's value. It runs on WebGPU, and
   on the CPU where there is none (Node). An entry that reaches a barrier or reads a texture needs
   WebGPU, and `configure({ prefer })` orders the two tiers.
@@ -93,6 +95,8 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
 - Every other export is `never` in the view, with the reason, so calling one is a type error.
 - **Host values:**
   - a number for a scalar, a boolean for a `bool`
+  - a union member string for a key-type parameter or result
+  - an object with every key for a `Record` parameter or result
   - a tuple for a `vecN`
   - a flat column-major array for a matrix
   - an object for a struct
@@ -112,13 +116,31 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   `'always'` in a production build too, and `'never'` in neither. `typeshade({ ir: true })` also
   puts each module's IR in its default export, for the load-time emitter below.
 
+## Device owners
+
+`createDevice(options)` from `typeshade/runtime` opens an owner on the first available tier in `prefer`.
+It can use the host's `device`, or a program runtime through `{ runtime }`.
+`device.array(values)` uploads an array; `device.array(length, 'f32')` obtains a pooled array.
+A `Resident` belongs to one owner for its life. Calls refuse arrays from another owner.
+`device.release(r)` returns an array to the pool. `device.dispose()` drains calls and frees owned resources.
+`poolBytes` bounds the pool. Import `typeshade/fuse` to enable `device.fuse(body)`.
+
+`fp64Flavor` is `'auto'`, `'float'` or `'integer'` on `createDevice(options)` and `configure(options)`.
+`'auto'` chooses integer emulation on Apple GPUs and float emulation elsewhere.
+`recommendFp64Flavor({ adapterInfo: adapter.info, userAgent })` exposes the choice, and `device.fp64Flavor` reports it.
+
+`timeBudgetMs` bounds one chunk, defaults to 250, and must be finite from 1 through 60000.
+`device.chunkSize(key, max, min = 1)` sizes the next chunk from previous timings.
+`device.fuse(body, { chunk: { key, units, timed } })` fences and times it; `timed: false` skips rate learning.
+The report carries `chunk`, and `device.chunkRates` exposes measured rates.
+
 ## A chain of kernel calls in one dispatch
 
 A host that calls several kernel functions one after another pays a submission for each call and a
 dispatch for each loop. `fuse` from `typeshade/fuse` records the calls its body makes and runs them
 together when the body returns. The host imports `fuse` on purpose: the package root and
 `typeshade/runtime` do not export it. The same subpath exports the types `FuseReport` and
-`FuseScope`.
+`FuseScope`. `FuseReport` and `mergeReports` also come from `typeshade/runtime`, without the planner.
 
 Write each operation as a kernel function with one loop. `total` reduces:
 
@@ -188,6 +210,12 @@ that maps and about 1.3 kB to a module of one that reduces. A module of five fun
 The option is off by default for that reason. A module built without it works as before, and every
 call of a scope runs apart:
 `add and mul run as two dispatches because mul was built without typeshade({ fuse: true })`.
+
+**Entries and tiles.** A compute entry call is recorded as a group of its own.
+A tiled or workgroup entry retains its barriers and dispatch shape in that group.
+Its runtime-sized storage arrays must be resident, and it cannot write a plain host value.
+An indirect entry reports `indirect: true`; the device reads its count buffer after earlier calls.
+The host reads no scheduling word between these calls.
 
 **The body.** `fuse(body)` runs `body` once, and the body is synchronous. A kernel call in the body
 is recorded, and not run, when every array it writes is a `Resident`. A scratch array is a
@@ -289,8 +317,7 @@ run before the calls recorded earlier. Call it outside `fuse`. These are the cal
 
 - a kernel call that writes a typed array:
   `add(): parameter "out" is a Float32Array, and a call inside fuse() writes only a Resident.`
-- an entry call or a draw:
-  `blur(): an entry call cannot run inside fuse(), which records kernel calls only.`
+- a draw, which cannot be recorded in a compute plan.
 - `read()`, `write()` and `destroy()` of a `Resident`, and every other use of the kernel queue.
 
 An `async` body is a `TypeError` too, since a call after its first `await` would run outside the
@@ -298,6 +325,26 @@ scope. A body that throws leaves nothing to run, and `fuse` rejects with its err
 the body joins the scope that is open and returns the report of that scope.
 
 `docs/use-typeshade-surface.md` §71 in `typeshade/typeshade` has every reason and every wording.
+
+## Common modules
+
+Prefer `typeshade/algorithms` for copy, fill, maps, reductions, scan, compaction and histogram (§72).
+Prefer `typeshade/random` for seeded generators (§73).
+Host code imports these subpaths and calls their functions over arrays, alone or within `fuse`.
+A shader imports the same subpaths under the `typeshade` package condition.
+Shader unary maps use names such as `absMap`; host exports use `abs`. Shader reductions include `maxAll` and `minAll`.
+Both faces run the same TypeShade source. The CPU oracle defines the result on each supported tier.
+Random generators use counter-based ids and a seed, so fusion and dispatch partitioning preserve their output.
+Check each operation's tier support. Scans and compaction can fall back from WebGL2; histograms require atomics on WebGPU.
+
+## Key values and collections
+
+A helper or kernel value parameter converts a key string to its id before execution and converts results back afterward.
+A `Record` value parameter is an object with every member and no extra property.
+Entry bindings and runtime-sized kernel arrays still use numeric ids and arrays in id order (0081 D1 remains open).
+A kernel `Map` or `Set` takes the host's JavaScript collection and updates it in place.
+String-key collections convert keys before and after the loops; unknown strings throw `TypeError`.
+Insertion order is preserved, and Map keeps the value last set for each key.
 
 ## The program runtime
 

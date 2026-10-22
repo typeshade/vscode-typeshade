@@ -191,7 +191,12 @@ describe('what a program gets bound', () => {
       [
         vertexEntry(),
         fragmentEntry(['trail']),
-        { name: 'cs', stage: 'compute', bindings: [{ name: 'unused', writes: false }] } as Entry,
+        {
+          name: 'cs',
+          stage: 'compute',
+          emitted: 'cs',
+          bindings: [{ name: 'unused', writes: false }],
+        } as Entry,
       ],
     );
     expect(planProgram(pack, ['trail'])).toEqual({
