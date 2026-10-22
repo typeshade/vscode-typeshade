@@ -116,6 +116,38 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
 | aliases         | `type Meters = f32`                                                                                                                                                   |                                                                            |
 | handles         | `texture_2d<f32>`, `texture_2d_array`, `texture_cube`, `texture_3d`, `texture_depth_2d`, `sampler`, `sampler_comparison`, `texture_storage_2d<"rgba8unorm", "write">` | declared bare and `const`                                                  |
 
+### String keys and Record
+
+A string-literal union is a key type (§75): `type Channel = "r" | "g" | "b"`.
+The GPU sees a `u32` id. Members sort by UTF-16 code units, so the ids follow `"b"`, `"g"`, `"r"`.
+A single string literal type is also a key type. Equal member sets are the same type.
+A key supports equality and `switch` over its members. Arithmetic, ordering and conversion to a number are refused.
+A literal takes its id where that key type is expected. A string outside the union is refused.
+Open `string` stays refused.
+
+`Record<K, V>` is a fixed array in key-id order. Each member has one value of `V`.
+An object literal must provide every member exactly once, with no extra property.
+`table[k]`, `table.r` and `table["r"]` select elements. Another key type, a number and `.length` are refused.
+A numeric `K` may be an enum or an integer-literal union with distinct values exactly 0 through N-1.
+It indexes by member value. Gaps, negatives and nonintegers are refused with a sentence naming the values.
+`Record<u32, V>` is refused because its domain is open.
+
+```ts
+"use typeshade"
+type Channel = "r" | "g" | "b"
+export function gain(c: Channel, by: Record<Channel, f32>): f32 {
+  switch (c) {
+    case "r": return by.r
+    default: return by[c]
+  }
+}
+```
+
+The host passes and receives the string for a key, and an object for a `Record` parameter or result.
+A string outside the union, a missing property and an extra property produce a `TypeError`.
+In entry bindings and runtime-sized kernel arrays, keys remain numeric ids and records remain arrays in id order.
+This is proposal 0081's open deviation D1.
+
 ### Literals
 
 - A float is written with a dot: `1.`, `0.5`.
@@ -391,11 +423,10 @@ dimensions against device limits when it creates a pipeline.
   `xs.forEach(f)`, `xs.some(p)`, `xs.every(p)`, `xs.reduce(f, init)` (or `xs.reduce(f)` on a
   non-empty fixed-size array), and `xs.map(f)`, which returns an `array<R, N>` and so takes a
   fixed-size array only. The function is a name, an arrow or a function expression written in
-  the call, taking `(value, index, array)` with `index` an `i32`. `filter`, `find` and the rest
-  are `TS8099`: an array's length is fixed, so they are a loop.
+  the call, taking `(value, index, array)` with `index` an `i32`. `filter` is refused; use a loop or a kernel `push`. Kernel arrays also support the methods below.
 - `while` takes any `bool` condition; `while (true)` needs a `break` or a `return` in its body
   (`TS8007`). `do...while`, labels and `for...in` are refused.
-- `switch` is on an integer, with integer constant labels (`TS8017` otherwise). A case body that
+- `switch` is on an integer or a key type, with matching constant labels (`TS8017` otherwise). A case body that
   would fall through into the next case is refused (`TS8017`), so end each case with `break`
   (the last one may leave it out); `case 0: case 1:` stacked above one body share it.
 
@@ -579,22 +610,47 @@ On GLSL a texture and the sampler it is used with fuse into one `sampler2D`.
 
 ## Refused, and what to write instead
 
-| Written                                              | Instead                                     |
-| ---------------------------------------------------- | ------------------------------------------- |
-| a string, a template literal                         | an enum for cases; text belongs on the host |
-| `number`, `boolean`, `any`, `T[]`, `Array<T>`        | `f32`, `bool`, `array<T, N>`                |
-| `null`, `undefined`, `f32 \| null`                   | a `bool` flag beside the value              |
-| `var`                                                | `let` or `const`                            |
-| `==`, `!=`, `>>>`                                    | `===`, `!==`, `>>` on a `u32`               |
-| `Number`, `Array`, `Date`, `JSON` and other globals  | builtins; only `Math` and `console` exist   |
-| `new Float32Array(...)`                              | `new` builds only the program's own classes |
-| `async`, `try`, generators                           | plain functions                             |
-| `xs.filter(...)`, `find` and the other array methods | `for (const x of xs)`, a counted loop       |
-| `typeof`, `instanceof`, `'k' in s`                   | types are static                            |
-| recursion                                            | a loop                                      |
+| Written                                             | Instead                                                        |
+| --------------------------------------------------- | -------------------------------------------------------------- |
+| an open string, a template literal                  | a string-literal key union for cases; text belongs on the host |
+| `number`, `boolean`, `any`, `T[]`, `Array<T>`       | `f32`, `bool`, `array<T, N>`                                   |
+| `null`, `undefined`, `f32 \| null`                  | a `bool` flag beside the value                                 |
+| `var`                                               | `let` or `const`                                               |
+| `==`, `!=`, `>>>`                                   | `===`, `!==`, `>>` on a `u32`                                  |
+| `Number`, `Array`, `Date`, `JSON` and other globals | builtins; only `Math` and `console` exist                      |
+| `new Float32Array(...)`                             | `new` builds only the program's own classes                    |
+| `async`, `try`, generators                          | plain functions                                                |
+| `xs.filter(...)` and unsupported array methods      | `for (const x of xs)`, a counted loop                          |
+| `typeof`, `instanceof`, `'k' in s`                  | types are static                                               |
+| recursion                                           | a loop                                                         |
 
 ## Reserved names
 
 A WGSL reserved word used as a name (`shared`, `as`, `filter`, `smooth`) is `TS8068`, an error. A
 GLSL one used for a struct, a field or a binding (`input`, `out`, `sample`, `half`) is a warning
 that drops the GLSL. Rename.
+
+## Kernel array methods and collections
+
+A kernel function accepts arrays with no size (§65). Its `forEach`, `some`, `every` and `reduce`
+run on the GPU when their loops satisfy the independence rules.
+It also supports `findIndex`, `findLastIndex`, `indexOf`, `lastIndexOf`, `includes`, `fill` and `copyWithin`.
+Searches return the first or last matching index, or -1. `some`, `every` and `includes` visit every element.
+A callback cannot write a captured value. `map` needs a fixed-size result; `filter` remains refused.
+`reduce` uses the same tree order on every tier, which can differ from TypeScript's left-to-right sum.
+
+A loop can append with `out.push(v)` as a statement (§65).
+The output starts empty, and appends retain sequential iteration order on every tier.
+The host array supplies capacity. The call writes the prefix that fits and preserves its tail.
+`out.length` after the loop is the appended count, which can exceed capacity.
+Return that count so the host can retry with a larger array.
+WebGPU counts, scans offsets and writes in three dispatches. WebGL2 cannot run a loop that pushes.
+A pushing loop forms a group of its own in `fuse`.
+
+A kernel parameter may be `Set<K>` or `Map<K, V>` (§74).
+`K` is `u32`, `i32`, `f32`, or a string-literal key type. `Map<string, V>` and `Set<string>` are refused.
+A loop writes with `add(k)` or `set(k, v)` as a statement.
+A later loop reads `has`, `size`, or `get(k)!` guarded by `has(k)`.
+The host passes JavaScript's `Set` or `Map`. Keys retain their first insertion order and each Map value is the last set.
+String keys convert to ids before the loops and back to strings afterward. An unknown host string is a `TypeError`.
+WebGPU and CPU support these kernels; WebGL2 cannot run their collection loops.

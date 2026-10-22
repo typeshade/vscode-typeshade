@@ -104,3 +104,34 @@ describe('the web entry', () => {
     expect(readsOf(hostRead)).not.toContain(PACKAGE_JSON);
   });
 });
+
+describe('string keys from the pinned compiler', () => {
+  const file = '/p/keys.shade.ts';
+  const source = `"use typeshade";
+type Channel = "r" | "g" | "b";
+export function gain(c: Channel, by: Record<Channel, f32>): f32 {
+  switch (c) {
+    case "r": return by.r;
+    default: return by[c];
+  }
+}`;
+
+  it('keeps key diagnostics and hover through the tsserver adapter', () => {
+    const { info } = testCreateInfo(testProject({ [file]: source }));
+    const service = createPlugin({ typescript }).create(info);
+    expect(service.getSemanticDiagnostics(file)).toEqual([]);
+    const hover = service.getQuickInfoAtPosition(file, source.indexOf('c: Channel'));
+    expect(typescript.displayPartsToString(hover?.displayParts)).toBe(
+      '(parameter) c: "b" | "g" | "r"',
+    );
+  });
+
+  it('reports a key outside the union at the shader boundary', () => {
+    const broken = source.replace('by[c]', 'by["q"]');
+    const { info } = testCreateInfo(testProject({ [file]: broken }));
+    const service = createPlugin({ typescript }).create(info);
+    const diagnostics = service.getSemanticDiagnostics(file);
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.some((d) => d.code === 8003)).toBe(true);
+  });
+});

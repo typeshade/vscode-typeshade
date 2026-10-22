@@ -160,7 +160,7 @@ describe('the message for a fragment program alone', () => {
   });
 
   it('carries the manifest the runtime loads: its schema, the WGSL and both entries', () => {
-    expect(message.main.manifest.schema).toBe(1);
+    expect(message.main.manifest.schema).toBe(2);
     expect(message.main.manifest.wgsl).toContain('@fragment');
     expect(message.main.manifest.entries.map((e) => `${e.stage} ${e.name}`)).toEqual([
       'vertex fullscreen',
