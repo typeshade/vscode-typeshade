@@ -254,9 +254,13 @@ struct, or the GLSL output is dropped with a `TS8015` warning.
 **8. Stage input and output are explicit.** Builtins are parameters (`@builtin("position") p:
 vec4`); there are no implicit globals. An IO struct is a `class` whose every field has
 `@location(n)` or `@builtin(...)`. Share one output class between the vertex and fragment
-stages: GLSL links varyings by name. `@compute([x])` is one-dimensional (`[8, 8]` is `TS8026`).
+stages: GLSL links varyings by name. `@compute([x, y, z])` takes one to three dimensions;
+omitted dimensions are 1, so `[8, 8]` is a two-dimensional workgroup.
 Its dimensions may use a named constant or `override<u32>`; the same override may size the outer
-array of a `workgroup` array. A host can select its value when it creates the compute pipeline.
+array of a `workgroup` array. A host selects it with `program.compute(entry, { constants })`
+or an imported entry's third argument, `entry(bindings, groups, { constants })`, including
+inside `device.fuse()`. Calculate `groups` for the selected shape. WebGL2 requires the default
+workgroup shape and array lengths; [references/host.md](references/host.md) has the complete example.
 Keep one `@vertex` and one `@fragment` per file when WebGL2 matters.
 
 **9. Fragment-only operations stay out of divergent branches.** `textureSample`, `dpdx`,

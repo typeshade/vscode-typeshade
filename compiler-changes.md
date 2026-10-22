@@ -200,10 +200,21 @@ id first, then the pull request that did the work.
 - 0069, this pull request: the host reference accepts tiled and workgroup entry calls in fuse groups and removes the entry refusal.
 - 0071, this pull request: the host reference documents device ownership, options, array pooling, release and disposal.
 - 0072, this pull request: the host reference teaches both common-module faces and their shared CPU oracle.
-- 0073, this pull request: the host reference documents `fp64Flavor`, automatic selection and `recommendFp64Flavor`.
+- 0073, this pull request: the host reference documents `fp64Flavor` and selection through `recommendFp64Flavor`. The 0084 follow-up corrects the earlier automatic-selection wording to the explicit choice at the pin.
 - 0074, this pull request: the host reference documents time budgets, chunk sizing, timing and rates.
 - 0075, this pull request: the host reference documents indirect entry calls, count-buffer ownership and fuse reporting.
 - 0078, this pull request: the language reference documents ordered push, host capacity and the appended count.
 - 0079, this pull request: the language reference documents kernel array methods and reduction order.
 - 0080, this pull request: the language and host references document Map and Set parameters, tiers and insertion order.
 - 0081, this pull request: pin `ee4f9ab` moves to `94203d3c`. The references document key types, dense numeric Records and host conversions. D1 remains open upstream.
+- 0084: pin `c5fd951c81ca6efe62c7dadf91b1e27ac07daa52` includes
+  typeshade/typeshade#743 and its public host example. The skill and host/language references
+  teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and Resident
+  return types, device plans, normalized caches, owner-selected fp64, limits and report shapes.
+  A complete shader/host example covers the last partial group and CPU/WebGL2 behavior.
+  The references also correct stale one-dimensional-only and automatic-fp64 wording against
+  the actual pin. The tsserver fixture views were regenerated with the compiler's `hostFace`;
+  integration coverage accepts direct, queued and planned constants and rejects string values.
+  Build, typecheck, lint, formatting, prose and all 397 tests passed on Node 24.19.0 with
+  TypeScript 5.6.3. The pin also includes typeshade/typeshade#742's fp64 workgroup-array fix.
+  Both upstream PRs await merge; extension publication is not claimed by this record.

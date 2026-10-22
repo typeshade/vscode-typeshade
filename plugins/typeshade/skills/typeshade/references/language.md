@@ -342,8 +342,9 @@ export function leafColor(): vec3 {
 
 - `@vertex`, `@fragment`, `@compute` go on top-level functions. A function without one is a
   helper. Calling an entry is refused: move the body into a helper both call.
-- `@compute([x])`: y and z must be 1 (`TS8026`), so linearise 2-D work over `gid.x`. A bare
-  `@compute` is a workgroup of 64. A dimension may be a numeric literal, a named integer
+- `@compute([x, y, z])` takes one to three dimensions, with omitted dimensions equal to 1.
+  `[8, 8]` is a two-dimensional workgroup. A bare `@compute` is a workgroup of 64.
+  A dimension may be a numeric literal, a named integer
   constant or an `override<u32>`. The same override may size the outer count of a workgroup array:
 
 ```ts
@@ -359,7 +360,10 @@ export function copy(@builtin("local_invocation_id") lid: vec3u): void {
 ```
 
 The workgroup array must be the outer array in workgroup memory. The runtime checks specialized
-dimensions against device limits when it creates a pipeline.
+dimensions against device limits when it creates a pipeline. An imported compute entry accepts
+`entry(bindings, groups, { constants: { WG_SIZE: selected } })`, directly or in `device.fuse()`.
+The selected size determines shared-array lengths and CPU builtins too; the caller calculates
+`groups` for it. WebGL2 supports only the default shape and shared-array lengths.
 
 - **Builtins are parameters.** Vertex: `vertex_index: u32`, `instance_index: u32`. Vertex
   output and fragment input: `position: vec4`. Fragment: `front_facing: bool`,
