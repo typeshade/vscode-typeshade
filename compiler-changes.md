@@ -200,7 +200,7 @@ id first, then the pull request that did the work.
 - 0069, this pull request: the host reference accepts tiled and workgroup entry calls in fuse groups and removes the entry refusal.
 - 0071, this pull request: the host reference documents device ownership, options, array pooling, release and disposal.
 - 0072, this pull request: the host reference teaches both common-module faces and their shared CPU oracle.
-- 0073, this pull request: the host reference documents `fp64Flavor`, automatic selection and `recommendFp64Flavor`.
+- 0073, this pull request: the host reference documents `fp64Flavor` and selection through `recommendFp64Flavor`. The 0084 follow-up corrects the earlier automatic-selection wording to the explicit choice at the pin.
 - 0074, this pull request: the host reference documents time budgets, chunk sizing, timing and rates.
 - 0075, this pull request: the host reference documents indirect entry calls, count-buffer ownership and fuse reporting.
 - 0078, this pull request: the language reference documents ordered push, host capacity and the appended count.
@@ -210,3 +210,16 @@ id first, then the pull request that did the work.
 
 - 0082, #59: pin `85b803f9` includes the first private input-projection implementation from compiler PR #738. The host reference describes eligibility, complete logical validation and the full-layout fallbacks. Physical-device whole-call validation remains pending upstream.
 - 0083, #59: pin `85b803f9` includes compiler PR #736's runtime-information implementation integrated with 0082. The host reference describes `buildInfo`, `Device.info` and `Runtime.info`, nullable identity, immutable historical snapshots and truthful packaging provenance. These host names do not enter the shader ambient library.
+
+- 0084: pin `3b40e065e17fd4d6929d4c30ab45656da73f0fcd` includes
+  typeshade/typeshade#743 and its public host example. The skill and host/language references
+  teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and Resident
+  return types, device plans, normalized caches, owner-selected fp64, limits and report shapes.
+  A complete shader/host example covers the last partial group and CPU/WebGL2 behavior.
+  The references also correct stale one-dimensional-only and automatic-fp64 wording against
+  the actual pin. The tsserver fixture views were regenerated with the compiler's `hostFace`;
+  integration coverage accepts direct, queued and planned constants and rejects string values.
+  Build, typecheck, lint, formatting, prose and all 397 tests passed on Node 24.19.0 with
+  TypeScript 5.6.3. The pin also includes typeshade/typeshade#742's fp64 workgroup-array fix.
+  The pin integrates main's 0083 runtime-information API and 0082 private input projection.
+  PR #742 is merged; #743 awaits merge. Extension publication is not claimed by this record.

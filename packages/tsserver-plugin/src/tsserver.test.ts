@@ -714,6 +714,21 @@ describe('a host file that imports a shader through its host view (compiler 0009
     expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
   });
 
+  it('types direct, Resident and planned entry constants through the generated view (compiler 0084)', async () => {
+    server.open('overrides.ts');
+    expect(all(await server.diagnostics('overrides.ts'))).toEqual([]);
+
+    // The record accepts numbers and booleans. A string value is TypeScript's error at the
+    // host call; declared names and per-name scalar ranges are validated by the runtime.
+    server.reopen(
+      'overrides.ts',
+      HOST_IMPORT_PROJECT['overrides.ts'].replace('WIDTH: 32', "WIDTH: '32'"),
+    );
+    const wrong = await server.diagnostics('overrides.ts');
+    expect(wrong.semantic.map((d) => d.code)).toEqual([2769]);
+    expect(wrong.semantic.every((d) => d.source !== 'typeshade')).toBe(true);
+  });
+
   it('still answers the shader itself from the TypeShade program', async () => {
     server.open('terrain.shade.ts');
     expect(all(await server.diagnostics('terrain.shade.ts'))).toEqual([]);

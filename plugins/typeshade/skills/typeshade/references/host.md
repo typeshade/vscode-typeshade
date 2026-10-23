@@ -69,14 +69,15 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
   vectors, an array of objects for structs), and each one the function writes is read back into
   yours in place. It runs on the first tier that can run it: WebGPU, then WebGL2 (only when every
   loop writes one array of numbers at `i`), then the CPU. `configure({ prefer })` orders them.
-- **A `@compute` entry** is `entry(bindings, workgroups)`. `bindings` has one property for each
+- **A `@compute` entry** is `entry(bindings, workgroups, options?)`. `bindings` has one property for each
   binding the entry reaches, typed exactly, so a missing or misspelled binding is a type error.
   `workgroups` is `n`, `[x, y, z]`, or `{ indirect, offset }`. The indirect form reads three
   workgroup counts at the element offset of a `Resident<Uint32Array>` when the call runs.
   The count buffer must share the device owner and must contain all three words. The promise resolves once every
-  storage binding it writes has been read back into the caller's value. It runs on WebGPU, and
-  on the CPU where there is none (Node). An entry that reaches a barrier or reads a texture needs
-  WebGPU, and `configure({ prefer })` orders the two tiers.
+  storage binding it writes has been read back into the caller's value. `options.constants`
+  selects declared overrides by name; omitted constants keep their defaults. It runs on WebGPU,
+  supported WebGL2 compute, then the CPU tier. The CPU tier refuses barriers and texture reads.
+  `configure({ prefer })` orders the tiers. The specialization example below covers their limits.
 - **A `Resident`**, `resident(array)` from `typeshade`, stands for a storage array with no size, or
   a kernel function's array, and stays on the device: nothing is read back until `await r.read()`.
   When every binding or array a call writes is a `Resident`, the call only queues and returns
@@ -138,14 +139,83 @@ A `Resident` belongs to one owner for its life. Calls refuse arrays from another
 `device.release(r)` returns an array to the pool. `device.dispose()` drains calls and frees owned resources.
 `poolBytes` bounds the pool. Import `typeshade/fuse` to enable `device.fuse(body)`.
 
-`fp64Flavor` is `'auto'`, `'float'` or `'integer'` on `createDevice(options)` and `configure(options)`.
-`'auto'` chooses integer emulation on Apple GPUs and float emulation elsewhere.
-`recommendFp64Flavor({ adapterInfo: adapter.info, userAgent })` exposes the choice, and `device.fp64Flavor` reports it.
+`fp64Flavor` is `'float'` (the default) or `'integer'` on `createDevice(options)` and `configure(options)`.
+`recommendFp64Flavor({ adapterInfo: adapter.info, userAgent })` recommends integer emulation on
+Apple GPUs and float emulation elsewhere. Pass its result as `fp64Flavor`; `device.fp64Flavor`
+reports the owner's choice, which entry specializations retain.
 
 `timeBudgetMs` bounds one chunk, defaults to 250, and must be finite from 1 through 60000.
 `device.chunkSize(key, max, min = 1)` sizes the next chunk from previous timings.
 `device.fuse(body, { chunk: { key, units, timed } })` fences and times it; `timed: false` skips rate learning.
 The report carries `chunk`, and `device.chunkRates` exposes measured rates.
+
+## Specializing an imported compute entry
+
+Declare overrides in `copy.shade.ts`. This entry has no barrier, so its selected shape also runs
+on the CPU tier:
+
+```ts
+"use typeshade";
+
+const WIDTH: override<u32> = 64;
+const GAIN: override<f32> = 1.;
+declare const xs: storage<array<f32>>;
+declare const ys: storage<array<f32>, "read_write">;
+
+@compute([WIDTH])
+export function copy(@builtin("global_invocation_id") gid: vec3u): void {
+  if (gid.x < xs.length) {
+    ys[gid.x] = xs[gid.x] * GAIN;
+  }
+}
+```
+
+The third argument works in direct calls and in device plans. Two-argument calls keep the
+authored defaults. Ordinary host TypeScript chooses the width and calculates the workgroup count:
+
+```ts
+import { createDevice } from 'typeshade/runtime'
+import 'typeshade/fuse'
+import { copy } from './copy.shade.ts'
+
+const xs = Float32Array.from({ length: 259 }, (_, i) => i)
+const ys = new Float32Array(xs.length)
+await copy({ xs, ys }, Math.ceil(xs.length / 64), { constants: { GAIN: 2 } })
+
+const device = await createDevice()
+try {
+  const width = device.tier === 'webgl2' ? 64 : 32
+  const input = device.array(xs)
+  const output = device.array(xs.length, 'f32')
+  const report = await device.fuse(() => {
+    copy({ xs: input, ys: output }, Math.ceil(xs.length / width), {
+      constants: { WIDTH: width, GAIN: 2 },
+    })
+  })
+  // WebGPU: one dispatch and one submission; workgroupShapes is [[32, 1, 1]].
+  const values = await output.read()
+} finally {
+  await device.dispose()
+}
+```
+
+An entry call stays a group of its own and shares the plan's submission. Selecting constants
+adds no fence or readback. On WebGPU the group's `workgroupShapes` contains the resolved shape;
+indirect counts remain supported. The runtime snapshots constants when the call is made.
+It validates declared names, scalar types and ranges, positive extents, and the active device's
+workgroup dimensions, invocation count and workgroup-storage limits before uploads.
+
+Pipelines are cached per device, entry, normalized constants and fp64 flavor. Key order and
+equivalent boolean values reuse the same specialization. Choose a small set of measured widths
+to bound the number of pipelines; the runtime does not tune the width or change dispatch counts.
+The CPU tier uses generated closures, selected builtins and resized workgroup arrays without
+loading the compiler or generating code at run time. Specialized CPU allocations use portable
+WebGPU minimum limits. A barrier remains unsupported on that tier.
+
+WebGL2 pins ordinary constants such as `GAIN`, but requires the authored default workgroup shape
+and workgroup-array lengths. A changed shape or length is refused before submission. The
+compiler's `examples/hosts/host-compute/` contains executable default, direct and planned calls,
+checked against an independent reference on all three tiers.
 
 ## Build and device information
 
