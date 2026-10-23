@@ -1,7 +1,9 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `ee4f9ab`
-(2026-10-12). Until then this line named `45ec661` (2026-10-05). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `f32efe08`
+(2026-10-23 UTC), integrating compiler PR #743 with main's 0083 and 0082 implementations.
+The pin supports compute-entry constants, host information and private input projection.
+These changes preserve the language-service mappings in §3. Until then this line named `45ec661` (2026-10-05). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
 `claude/d1-launch-config` (PR #41, the launch configuration and the value formatter). The move

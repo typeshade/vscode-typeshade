@@ -207,7 +207,11 @@ id first, then the pull request that did the work.
 - 0079, this pull request: the language reference documents kernel array methods and reduction order.
 - 0080, this pull request: the language and host references document Map and Set parameters, tiers and insertion order.
 - 0081, this pull request: pin `ee4f9ab` moves to `94203d3c`. The references document key types, dense numeric Records and host conversions. D1 remains open upstream.
-- 0084: pin `c5fd951c81ca6efe62c7dadf91b1e27ac07daa52` includes
+
+- 0082, #59: pin `85b803f9` includes the first private input-projection implementation from compiler PR #738. The host reference describes eligibility, complete logical validation and the full-layout fallbacks. Physical-device whole-call validation remains pending upstream.
+- 0083, #59: pin `85b803f9` includes compiler PR #736's runtime-information implementation integrated with 0082. The host reference describes `buildInfo`, `Device.info` and `Runtime.info`, nullable identity, immutable historical snapshots and truthful packaging provenance. These host names do not enter the shader ambient library.
+
+- 0084: pin `f32efe086f6dabe5e774fedc0c6a465eac17482b` includes
   typeshade/typeshade#743 and its public host example. The skill and host/language references
   teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and Resident
   return types, device plans, normalized caches, owner-selected fp64, limits and report shapes.
@@ -217,4 +221,5 @@ id first, then the pull request that did the work.
   integration coverage accepts direct, queued and planned constants and rejects string values.
   Build, typecheck, lint, formatting, prose and all 397 tests passed on Node 24.19.0 with
   TypeScript 5.6.3. The pin also includes typeshade/typeshade#742's fp64 workgroup-array fix.
-  Both upstream PRs await merge; extension publication is not claimed by this record.
+  The pin integrates main's 0083 runtime-information API and 0082 private input projection.
+  PR #742 is merged; #743 awaits merge. Extension publication is not claimed by this record.
