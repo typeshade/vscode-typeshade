@@ -1,6 +1,6 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `f32efe08`
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `3b40e065`
 (2026-10-23 UTC), integrating compiler PR #743 with main's 0083 and 0082 implementations.
 The pin supports compute-entry constants, host information and private input projection.
 These changes preserve the language-service mappings in §3. Until then this line named `45ec661` (2026-10-05). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three

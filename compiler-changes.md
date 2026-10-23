@@ -211,7 +211,7 @@ id first, then the pull request that did the work.
 - 0082, #59: pin `85b803f9` includes the first private input-projection implementation from compiler PR #738. The host reference describes eligibility, complete logical validation and the full-layout fallbacks. Physical-device whole-call validation remains pending upstream.
 - 0083, #59: pin `85b803f9` includes compiler PR #736's runtime-information implementation integrated with 0082. The host reference describes `buildInfo`, `Device.info` and `Runtime.info`, nullable identity, immutable historical snapshots and truthful packaging provenance. These host names do not enter the shader ambient library.
 
-- 0084: pin `f32efe086f6dabe5e774fedc0c6a465eac17482b` includes
+- 0084: pin `3b40e065e17fd4d6929d4c30ab45656da73f0fcd` includes
   typeshade/typeshade#743 and its public host example. The skill and host/language references
   teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and Resident
   return types, device plans, normalized caches, owner-selected fp64, limits and report shapes.
