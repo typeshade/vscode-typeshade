@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Added
+
+- Nullable shader values (`T | null`) and three-state values (`T | null | undefined`) in
+  functions, callbacks, generic classes, constructors, member variables and accessors. Hover
+  preserves the declared absent states; diagnostics explain narrowing and invalid positions.
+- Optional fields and parameters, fixed-array destructuring, and implicit absent returns
+  follow the bundled compiler. Null-only implicit returns produce null; results admitting
+  undefined produce undefined.
 
 - An inlay hint `&` before each argument that an `@inout` or `@out` parameter takes, the
   compiler's parameter qualifiers (its change 0040). The call passes the variable unmarked, and
@@ -11,11 +18,16 @@
 
 ### Changed
 
-- The compiler is `typeshade` at `45ec661`. A hover on a qualified parameter shows its qualifier,
+- The compiler is `typeshade` 0.1.0 at `3e1e8420`. Its full changes are in the
+  [compiler changelog](https://github.com/typeshade/typeshade/blob/3e1e8420a5313e045beb175131148920bfdc2d07/CHANGELOG.md).
+  A hover on a qualified parameter shows its qualifier,
   and a read of a variable before it is assigned is the compiler's `TS8075`, where TypeScript
   reported TS2454.
 
 ### Fixed
+
+- Nullable reads report the compiler diagnostic without duplicate TypeScript nullability
+  errors. Valid null-only bare returns and fall-through do not retain TypeScript return errors.
 
 - The preview panel shows an untitled editor that starts with `"use typeshade"`. Its WGSL and
   GLSL tabs were empty: the panel runs its own copy of the compiler's service, which left the
