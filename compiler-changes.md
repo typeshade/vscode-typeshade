@@ -223,3 +223,21 @@ id first, then the pull request that did the work.
   TypeScript 5.6.3. The pin also includes typeshade/typeshade#742's fp64 workgroup-array fix.
   The pin integrates main's 0083 runtime-information API and 0082 private input projection.
   PR #742 is merged; #743 awaits merge. Extension publication is not claimed by this record.
+
+- 0086: this pin adds fixed-array binding patterns. The language reference covers omitted
+  positions and nesting; the editor fixture accepts a fixed-array pattern and omitted fields.
+- 0088: the authoring reference now covers undefined optional values and narrowing.
+- 0093: optional fields, array elements and parameters are documented, with the remaining
+  TS8010 and TS8020 refusals corrected and an editor fixture for omitted fields.
+- 0098: pin `3e1e8420` adds null-only and three-state optional values.
+  The language and diagnostic references cover constructors, class fields, accessors,
+  callbacks, generics, initialization and refused boundaries. Editor fixtures verify clean
+  compilation, three-state hover and TS8003 in place of duplicate TypeScript nullable errors.
+  Optional fields and parameters are no longer listed as blanket TS8010/TS8020 refusals.
+- 0096: the kernel-function reference describes the final workgroup's idle lanes without
+  changing the reported results.
+- 0099: the reference documents bare return and fall-through for optional results, including
+  null-only and three-state values. The compiler owns the corresponding diagnostic filtering.
+
+This adoption updates the compiler source pin and documentation. Publishing extension or npm
+packages is a separate release; this record does not claim publication.

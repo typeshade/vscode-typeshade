@@ -116,6 +116,52 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
 | aliases         | `type Meters = f32`                                                                                                                                                   |                                                                            |
 | handles         | `texture_2d<f32>`, `texture_2d_array`, `texture_cube`, `texture_3d`, `texture_depth_2d`, `sampler`, `sampler_comparison`, `texture_storage_2d<"rgba8unorm", "write">` | declared bare and `const`                                                  |
 
+### Optional and nullable values
+
+`T | undefined`, `T | null` and `T | null | undefined` carry a value and its absent state.
+Two-state values share the physical value/presence layout. Three-state values add a null tag.
+Locals, function parameters/results, class members and fixed-array elements may hold them.
+Aliases, generic functions/classes, callbacks, local functions and arrows retain their logical types.
+Constructor arguments, methods, static methods, getters, setters and callable fields follow the same rules.
+Private, protected, readonly and inherited fields retain their access and mutation restrictions.
+
+A present `T` lifts into an optional. Either two-state type widens to the three-state type.
+Null-only and undefined-only values cannot substitute for each other without narrowing.
+Reference parameters require the exact logical storage type.
+Strict `=== null` and `=== undefined` tests distinguish absence; loose `!= null` excludes both.
+`x ?? fallback` evaluates the fallback only when x is absent. `object?.member` gives undefined
+when the object is absent and preserves null when a present object's member is null.
+An un-narrowed read is `TS8003`; an optional condition and the assertion `x!` are refused.
+
+An uninitialized `T | null` local must be assigned before reading (`TS8075`).
+A class field without an initializer starts null if null is its only absent state,
+and undefined if its type admits undefined. This class-field rule differs from JavaScript.
+Only a field written `?` may be omitted from an object literal. `field?: T | null` admits both absent values.
+Optional static data fields, module state, bindings, entry IO, kernel interfaces and host calls remain refused.
+
+An inferred function result includes the absent states its returns use. A bare return or fall-through
+supplies the absent result: null for `T | null`, undefined when the result admits undefined (0099 D3).
+Without a written result type, a bare return beside a valued return adds undefined to the inferred result.
+
+```ts
+"use typeshade"
+class Sample<T> {
+  private stored: T | null
+  constructor(value: T | null) { this.stored = value }
+  get value(): T | null { return this.stored }
+  set value(value: T | null) { this.stored = value }
+}
+function classify(value?: f32 | null): f32 {
+  if (value === null) { return 1. }
+  if (value === undefined) { return 2. }
+  return value
+}
+export function nullableScore(x: f32): f32 {
+  const sample: Sample<f32> | null = x < 0. ? null : new Sample<f32>(null)
+  return classify(sample?.value)
+}
+```
+
 ### String keys and Record
 
 A string-literal union is a key type (§75): `type Channel = "r" | "g" | "b"`.
@@ -215,7 +261,7 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
 
 - An object literal takes its struct from the context: the return type, an annotated `const`,
   a parameter, an assignment target. Shorthand `{ pos, uv }` and spread `{ ...p, y: 9. }` work.
-- A missing, extra or optional field is `TS8010`. Two declarations of one name in one scope are
+- A missing required field or an extra field is `TS8010`. A field written `?` may be omitted. Two declarations of one name in one scope are
   `TS8023`, interfaces included (TypeScript would merge them; TypeShade does not).
 - Assigning or passing a struct copies it.
 - Classes have methods, a constructor, static members, getters and setters, `#private` members,
@@ -399,7 +445,9 @@ The selected size determines shared-array lengths and CPU builtins too; the call
 - A parameter is a value. A whole write to it (`x = 0.`) changes a local copy; a write into a
   field, element or component of it (`r.origin = o`) is `TS8018`, whose remedy names `@inout`.
   Default values work (`b: f32 = 0.8`) as long as they do not read another parameter; optional
-  (`b?: f32`) and rest parameters are `TS8020`.
+  (`b?: f32`) parameters hold `f32 | undefined`; omission supplies undefined. Rest parameters are `TS8020`.
+  An optional parameter on an entry or kernel function, a required parameter after an optional one,
+  and `b?: f32 = 1.` are also `TS8020`.
 - `const` is immutable (`TS8005`), `let` is mutable. `let x: f32` without an initializer needs
   its annotation. A read of it before it is assigned on every path is `TS8075`, by TypeScript's
   rule for TS2454 (the editor shows `TS8075` in its place), and every target starts it at zero:
@@ -408,7 +456,9 @@ The selected size determines shared-array lengths and CPU builtins too; the call
   constant, a binding, an override or a module variable (`const u = fract(p)` beside a
   `declare const u: uniform<Frame>`); the module's `u` keeps its name in the emitted code. Two
   declarations in one scope, a local that repeats a parameter included, are `TS8023`.
-- Destructuring a vector or a struct works (`const { x, y } = v`); an array pattern does not.
+- Destructuring a vector or a struct works (`const { x, y } = v`). A fixed array supports
+  `const [a, , c] = xs`, with omitted positions and nested patterns. Rest elements and defaults remain refused. The source is evaluated once.
+  A runtime-sized array pattern is refused (change 0086).
 - A local function is a nested `function` or an arrow constant, and it may read and write the
   locals around it, and an `@inout` or `@out` parameter of the function around it. A parameter
   may be a function (`h: (x: f32) => f32`), and an arrow may be written as the argument.
@@ -618,9 +668,8 @@ On GLSL a texture and the sampler it is used with fuse into one `sampler2D`.
 | --------------------------------------------------- | -------------------------------------------------------------- |
 | an open string, a template literal                  | a string-literal key union for cases; text belongs on the host |
 | `number`, `boolean`, `any`, `T[]`, `Array<T>`       | `f32`, `bool`, `array<T, N>`                                   |
-| `null`, `undefined`, `f32 \| null`                  | a `bool` flag beside the value                                 |
 | `var`                                               | `let` or `const`                                               |
-| `==`, `!=`, `>>>`                                   | `===`, `!==`, `>>` on a `u32`                                  |
+| `>>>`                                               | `>>` on a `u32`                                                |
 | `Number`, `Array`, `Date`, `JSON` and other globals | builtins; only `Math` and `console` exist                      |
 | `new Float32Array(...)`                             | `new` builds only the program's own classes                    |
 | `async`, `try`, generators                          | plain functions                                                |
@@ -658,3 +707,6 @@ A later loop reads `has`, `size`, or `get(k)!` guarded by `has(k)`.
 The host passes JavaScript's `Set` or `Map`. Keys retain their first insertion order and each Map value is the last set.
 String keys convert to ids before the loops and back to strings afterward. An unknown host string is a `TypeError`.
 WebGPU and CPU support these kernels; WebGL2 cannot run their collection loops.
+
+Kernel functions preserve their results when the final workgroup has idle lanes (0096).
+Those lanes run the last logical iteration but do not write its result.
