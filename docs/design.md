@@ -1,8 +1,9 @@
 # TypeShade in the editor: architecture and decisions
 
-Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `3b40e065`
-(2026-10-23 UTC), integrating compiler PR #743 with main's 0083 and 0082 implementations.
-The pin supports compute-entry constants, host information and private input projection.
+Status: **proposal** for review. The pinned compiler is `typeshade/typeshade` at `3e1e8420`
+(2026-10-27 UTC), integrating nullable values (0098) and optional implicit returns (0099).
+The pin also includes fixed-array destructuring, optional fields and parameters, and the
+corrected last-logical-iteration result for fused reductions.
 These changes preserve the language-service mappings in §3. Until then this line named `45ec661` (2026-10-05). The document was first written against `3c0a2d7`, then against `a2240e0` (#51, 2026-09-15) plus three
 branches that had not merged then and have since: `claude/d1-debugging-design` (PR #28, the
 debugging design), `claude/d1-stepping-oracle` (PR #35, the `./debug` subpath) and
@@ -500,6 +501,10 @@ GitHub Actions to create and approve pull requests". Without it the branch is pu
 pull request step fails, so the proposal is never silent.
 
 ## 3. The feature matrix
+
+Nullable values use the existing diagnostic and quick-info mappings below. The compiler supplies
+`T | null` and three-state hover text, and replaces nullable-read TypeScript errors with TS8003.
+The plugin adds no separate nullable type system or diagnostic code (0098).
 
 The compiler's own layering rule (`docs/language-service-api.md` §1) is that adapters convert
 and the service decides. The plugin is an adapter, so this table is a mapping table and every
