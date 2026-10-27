@@ -101,8 +101,11 @@ Observed in both contexts:
 
 - The clean file added no diagnostic. The Problems panel retained only the broken file's two errors.
 - The broken file reported `typeshade(8003)` on the nullable multiplication and `typeshade(8004)` on `nope`.
-- TypeScript's five original errors disappeared. No duplicate TypeScript diagnostic remained.
+- No duplicate TypeScript diagnostic remained.
 - The member hover was `(property) Slot.value: f32 | null | undefined`.
+
+Before installation, the first context reported five TypeScript errors on the broken file.
+Those errors disappeared after installation.
 
 The Marketplace installation also returned `function gain(value: f32 | null | undefined): f32`
 on the function hover. In the first context, `TypeShade: Open Playground Link` showed the
