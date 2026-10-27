@@ -60,4 +60,23 @@ export function score(x: f32): f32 {
 }`);
     expect(service.getSemanticDiagnostics(file).map((diagnostic) => diagnostic.code)).toEqual([]);
   });
+  it('retains optional field and parameter hover and member diagnostics (0093)', () => {
+    const source = `"use typeshade";
+class Options { bias?: f32; }
+function gain(value?: f32): f32 { return value ?? 0.; }
+export function score(): f32 { const options: Options = {}; return gain(options.bias); }`;
+    const { file, service } = serviceFor(source);
+    expect(service.getSemanticDiagnostics(file).map((diagnostic) => diagnostic.code)).toEqual([]);
+    for (const name of ['bias?:', 'value?:']) {
+      const hover = service.getQuickInfoAtPosition(file, source.indexOf(name));
+      expect(typescript.displayPartsToString(hover?.displayParts)).toContain('f32 | undefined');
+    }
+    const bad = serviceFor(`"use typeshade";
+class Options { bias?: f32; }
+export function bad(options: Options): f32 { return options.bias * 2.; }`);
+    const codes = bad.service.getSemanticDiagnostics(bad.file).map((diagnostic) => diagnostic.code);
+    expect(codes).toContain(8003);
+    expect(codes).not.toContain(18048);
+    expect(codes).not.toContain(2532);
+  });
 });
