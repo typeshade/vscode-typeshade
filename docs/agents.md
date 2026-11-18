@@ -177,9 +177,11 @@ hours. So `run` calls the two public
 resolvers that call is built from, `resolveInvocation` and `resolveBindings`, then
 `startDebugSession` with `maxSteps` of two million statements, which a real shader stays far
 below; the three nested loops reach it in about 1.6 s and end with the engine's own sentence.
-The compiler is asked to accept `maxSteps` in the launch configuration
-([typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215)), which would let
-the server make the one call (§8, item 2).
+The compiler was asked to accept `maxSteps` in the launch configuration
+([typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215)). Compiler change
+0124 adds `DebugLaunchConfig.maxSteps`, a positive integer that `startDebugSessionFromConfig`
+checks before it starts the session, and the pin `f23e1c2e` carries it, so the server can make
+the one call (§8, item 2).
 
 GPU-only intrinsics (derivatives, texture reads) have no CPU value, and the engine refuses them
 unless stand-ins are asked for. The server keeps the engine's default and its reason, "a
@@ -441,8 +443,9 @@ rather than a list of what is waiting.
    inert until it existed. §6 is how, and 0.1.0 was published the same day.
 2. ~~**Should `startDebugSessionFromConfig` take `maxSteps`?**~~ **Decided 2026-09-23: yes, as
    an issue on the compiler**, filed as
-   [typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215). When a pin
-   carries it, `run` makes the adapter's one call (§3.4).
+   [typeshade/typeshade#215](https://github.com/typeshade/typeshade/issues/215), and implemented
+   as compiler change 0124, which the pin `f23e1c2e` carries. `run` can make the adapter's one
+   call (§3.4).
 3. ~~**A call across two shader files reports `TS8004` at this pin**~~, from the service and from
    `compile()` alike: both analyse one file, and the compiler's multi-file form,
    `compileTsSources`, is not on its public surface (`src/__api__/surface.md` does not list it).

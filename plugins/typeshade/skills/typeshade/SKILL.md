@@ -14,8 +14,8 @@ a `@compute` or full-screen `@fragment` entry on the GPU.
 
 The file looks like TypeScript and is not checked like TypeScript. **The TypeShade compiler
 decides what is valid.** Plain `tsc` or a plain TypeScript language server reports errors on
-shader files that are not errors (vector arithmetic such as `a + b` on two `vec3`, decorators on
-entry functions); do not "fix" those. And it misses real ones (an integer used as an index, a
+shader files that are not errors (vector arithmetic such as `a + b` on two `vec3`, the stage
+attributes `@vertex`, `@fragment` and `@compute`); do not "fix" those. And it misses real ones (an integer used as an index, a
 loop whose step moves away from its bound). Trust the TypeShade tools below. For the same reason, do not run
 a code formatter's TypeScript rules over a shader: one that rewrites `1.` as `1` changes a float
 into an integer-written literal.
@@ -33,7 +33,7 @@ The typeshade MCP server (tools `check`, `compile`, `hover`, `definition`, `refe
    `texture`, `inversesqrt`, `float3`). `docs` with a name returns TypeShade's name for it and
    every overload; `docs` with no name lists the whole vocabulary.
 3. **Run the code when the numbers matter.** `run` executes a helper (`args`) or an entry point
-   (`invocation` keyed by `@builtin` id, `bindings` for uniforms) on the CPU at f32, and
+   (`invocation` keyed by builtin id, `bindings` for uniforms) on the CPU at f32, and
    `breakpoints` lists every local at chosen lines. It is the fastest way to find a sign error.
 4. **`compile`** shows the WGSL, the GLSL, and the reflection (bind groups, uniform byte
    offsets) the host needs.
@@ -57,13 +57,13 @@ class Frame {
 declare const frame: uniform<Frame>
 
 class VsIn {
-  @location(0) pos: vec3
-  @location(1) color: vec3
+  pos: vec3
+  color: vec3
 }
 
 class VsOut {
-  @builtin("position") pos: vec4
-  @location(0) color: vec3
+  pos: builtin<"position">
+  color: vec3
 }
 
 @vertex
@@ -93,7 +93,7 @@ declare const x: storage<array<f32>>
 declare const y: storage<array<f32>, "read_write">
 
 @compute([64])
-export function saxpy(@builtin("global_invocation_id") gid: vec3u): void {
+export function saxpy(gid: builtin<"global_invocation_id">): void {
   const i = gid.x
   if (i >= params.n || i >= y.length) {
     return
@@ -128,61 +128,63 @@ More complete examples (a fullscreen pass, textures and overrides, a workgroup r
 
 ## The rules an agent gets wrong
 
-**1. Numbers have a width, and literals follow the declaration.** Write every float with a dot
-(`1.`, `0.5`). An integer-written literal takes an integer type only where one is declared (an
-annotation, a parameter, the other operand, an index, a `for` initializer). An unannotated local
-such as `let k = -1` also takes `i32` or `u32` from a declared use: an argument of a function, a
-constructor or a method whose parameter declares it, or a typed assignment. Where nothing declares
-a type it is an `f32` today: a use of the local as an index decides nothing. So annotate integer
-locals:
+**1. Numbers have a width, and a written number takes its type from its uses.** Write a float
+with a dot (`1.`, `0.5`) when you mean one. An integer-written literal, and an unannotated local
+or constant it initializes, takes its type from every place it reaches: an annotation, a
+parameter, a typed operand beside it, a field, an index (`i32` unless a use says `u32`). So
+`let i = 0; xs[i]` works. Uses that demand two types are `TS8003`, and so is a `/` whose integer
+operands all got their type by inference: annotate the value (`let k: u32 = 7`) or convert it.
+There is no implicit conversion between declared types:
 
 <!-- expect: TS8003 -->
 
 ```ts
 "use typeshade"
-export function pick(xs: array<f32, 4>): f32 {
-  let i = 0
-  return xs[i]
+export function scale(n: i32, x: f32): f32 {
+  return x * n
 }
 ```
 
 ```ts
 "use typeshade"
-export function pick(xs: array<f32, 4>): f32 {
-  let i: i32 = 0
-  return xs[i]
+export function scale(n: i32, x: f32): f32 {
+  return x * f32(n)
 }
 ```
 
-There is no implicit conversion: `f32 + i32` and `u32 + i32` are `TS8003`. Cast with `f32(i)`,
+`f32 + i32` and `u32 + i32` are `TS8003`. Cast with `f32(i)`,
 `i32(x)`, `u32(x)`, and convert vectors with their constructors (`vec3(v3u)`, `vec2i(p)`).
 
 **2. Operators broadcast a scalar; builtin functions do not.** `v * 2.` and `v + 1.` are fine.
-`max(v, 0.)`, `clamp(v, 0., 1.)`, `step(0.5, v)` and `pow(v, 2.)` are `TS8036`: splat the scalar.
-`mix(a, b, t)` is the exception and takes a scalar `t`.
+`clamp(v, 0., 1.)` and `step(0.5, v)` are `TS8036`: splat the scalar. `max`, `min` and
+`mix(a, b, t)` take a scalar beside a vector. A power is `a ** b` with both sides of one type:
+`pow` is removed.
 
 <!-- expect: TS8036 -->
 
 ```ts
 "use typeshade"
 export function tone(c: vec3): vec3 {
-  return pow(max(c, 0.), 2.2)
+  return clamp(c, 0., 1.) ** vec3(2.2)
 }
 ```
 
 ```ts
 "use typeshade"
 export function tone(c: vec3): vec3 {
-  return pow(max(c, vec3(0.)), vec3(2.2))
+  return clamp(c, vec3(0.), vec3(1.)) ** vec3(2.2)
 }
 ```
 
-**3. Loops are counted, and the bound can be data.** A `for` steps an integer by a constant toward
-a bound: a literal, a `const`, a parameter, a uniform field or `xs.length`, with no limit on the
-trips. `for (let i = 0; i < data.length; i++)` works as written (the counter takes the bound's
-`u32`). The step must move toward the bound and the body must not write it (`TS8006`, `TS8007`).
-`for (const x of xs)` iterates an array. A `while` tests anything; `while (true)` needs a `break`
-or a `return` in its body (`TS8007`). `do...while` and labels are refused.
+**3. A `for` loop means what it means in TypeScript, and the bound can be data.** Any `for`
+compiles: a float counter, two counters, no condition with a `break`. A `for` that steps an
+integer by a constant toward a bound (a literal, a `const`, a parameter, a uniform field or
+`xs.length`) is counted, and `for (let i = 0; i < data.length; i++)` works as written (the counter
+takes the bound's `u32`). Any other `for` runs as a `while` does. A loop the compiler proves never
+ends is refused: no condition and no `break` or `return`, or a constant step that never reaches
+the bound (`TS8007`); a constant header that leaves its counter's type is `TS8006`. In a kernel
+function, only a counted loop can run on the GPU. `for (const x of xs)` iterates an array.
+`do...while` and labels are refused.
 
 ```ts
 "use typeshade"
@@ -195,40 +197,42 @@ export function march(steps: i32, dt: f32): f32 {
 }
 ```
 
-**4. Annotate every parameter, and the return type of an entry.** A helper's return type is
-inferred from its first `return` with a value (none without one); an entry (`@vertex`,
-`@fragment`, `@compute`) that returns a value without an annotation is `TS8021`.
+**4. Annotate every parameter.** A function's return type, an entry's included, is inferred
+from its body. An entry writes its return type only where the body cannot say it: another
+built-in value (`builtin<"frag_depth", f32>`) or an option on its output.
 
-**5. A parameter is a value, unless it is `@inout` or `@out`.** A whole write to a parameter
-(`x = 0.`) changes a local copy; a write into a field or component of one (`r.origin = o`,
-`v.x = 1.`) is `TS8018`. To change the caller's variable, declare the parameter `@inout` (read
-and written) or `@out` (written before it is read, and on every path, else `TS8075`), on a
-function of the file or of a namespace. The call passes the variable unmarked, and the editor
-shows `&` before it. The argument is a variable, or a field or an element of one: a literal, an
-expression or `v.x` is `TS8073`, and one variable twice in one call is `TS8074`. A method, an
-entry and a local function take values (`TS8073`). There is no `@in`: an unqualified parameter
-is GLSL's `in`. A swizzle is written one component at a time (`v.xy = ...` is `TS8018`).
+**5. An object is a reference; a number, a vector and a matrix are values.** As in JavaScript, a
+struct, a class instance or an array passed to a function is the caller's object: a write to
+`p.pos` or `xs[i]` in the callee changes it. A number, a `bool`, a vector or a matrix parameter is
+a value: a whole write (`x = 0.`) changes a local copy, and a write into one (`v.x = 1.`) is
+`TS8018`. To give back more than one value, return a tuple and destructure it:
+`[a, b] = order(a, b)`. `@inout` and `@out` are removed (`TS8073`). A swizzle of a local is a
+place: `d.xy *= d.yx` reads every old component before it writes one; a repeated component
+(`d.xx = r`) is `TS8018`.
 
 ```ts
 "use typeshade"
 
-function swap(@inout a: f32, @inout b: f32): void {
-  const t = a
-  a = b
-  b = t
+class Particle {
+  pos: vec2
+  vel: vec2
 }
 
-function add(a: f32, b: f32, @out c: f32): void {
-  c = a + b
+function nudge(p: Particle, dt: f32): void {
+  p.pos += p.vel * dt
+}
+
+function order(lo: f32, hi: f32): [f32, f32] {
+  return lo > hi ? [hi, lo] : [lo, hi]
 }
 
 export function demo(): f32 {
-  let x: f32 = 1.
-  let y: f32 = 2.
-  swap(x, y)
-  let s: f32
-  add(x, y, s)
-  return x + s
+  const [lo, hi] = order(2., 1.)
+  let p = new Particle()
+  p.vel = vec2(1., 0.)
+  nudge(p, 0.5)
+  p.pos.yx *= vec2(2., 3.)
+  return lo + hi + p.pos.x
 }
 ```
 
@@ -241,20 +245,20 @@ lines. `Math.random()` is refused; `random(seed)`
 is a hash. No `var`, `try`, `async`, `number`, `boolean`, `T[]` or `any`. Of the JavaScript
 array methods, `map`, `forEach`, `some`, `every` and `reduce` compile (`map` only on a fixed-size
 array); `filter`, `find` and the rest are `TS8099`, and the answer is a loop. Functions are written as TypeScript writes them: a nested `function` or
-an arrow constant may read and write the locals around it, an `@inout` parameter of the function
-around it included, and a function may take a function
+an arrow constant may read and write the locals around it, and a function may take a function
 (`apply(sq, x)`, an arrow as an argument). Recursion is refused (`TS8031`).
 
 **7. Resources are declared, and numbered for you.** Every `declare` resource is `@group(0)`,
 bound in declaration order, the compiled file's own before those of the files it imports;
 `compile` with the reflection target prints the slots. The compiler adds its own after yours:
-`_fp64` for emulated doubles, and `_console` under `console: 'gpu'`. Make a uniform's type a
-struct, or the GLSL output is dropped with a `TS8015` warning.
+`_fp64` for emulated doubles, and `_console` under `console: 'gpu'`. A uniform may be a struct
+or a bare scalar, vector or matrix (`uniform<f32>`); both reach GLSL.
 
-**8. Stage input and output are explicit.** Builtins are parameters (`@builtin("position") p:
-vec4`); there are no implicit globals. An IO struct is a `class` whose every field has
-`@location(n)` or `@builtin(...)`. Share one output class between the vertex and fragment
-stages: GLSL links varyings by name. `@compute([x, y, z])` takes one to three dimensions;
+**8. Stage input and output are typed.** A builtin is a parameter or a field whose type names
+it, `p: builtin<"position">`, and WGSL gives its type; there are no implicit globals. Every other
+input or output is user-defined, and the compiler numbers its location; write
+`location<n, T>` only to fix a number or state an option. Share one output class between the
+vertex and fragment stages: a value between stages is linked by its name. `@compute([x, y, z])` takes one to three dimensions;
 omitted dimensions are 1, so `[8, 8]` is a two-dimensional workgroup.
 Its dimensions may use a named constant or `override<u32>`; the same override may size the outer
 array of a `workgroup` array. A host selects it with `program.compute(entry, { constants })`
@@ -340,24 +344,24 @@ names) are in [references/language.md](references/language.md).
 
 `TS8xxx` codes are TypeShade's; plain TypeScript codes (`TS2304`) come from TypeScript's checker,
 which still runs, with its false positives on shader code filtered out. A read of a variable
-before it is assigned is the compiler's `TS8075` where TypeScript reported TS2454, since an `@out`
-argument assigns the variable and TypeScript cannot see that. The ones met most often:
+before it is assigned is the compiler's `TS8075` where TypeScript reported TS2454. The ones met
+most often:
 
 | Code   | Usual cause                                                                                                                 | Fix                                                                    |
 | ------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | TS8002 | `number`, `boolean`, `T[]`, or an unannotated parameter                                                                     | a shader type, annotated                                               |
 | TS8003 | mixed `f32`/`i32`, an f32 index, a non-bool `if`, mismatched vector sizes                                                   | cast explicitly; annotate integer locals                               |
 | TS8004 | a call to a name not declared or imported (`lerp`, another file's helper)                                                   | `docs` for the TypeShade name; import the helper                       |
-| TS8006 | a loop bound the body writes, or `!=` against a runtime bound                                                               | read the bound into a `const`; compare with `<`                        |
-| TS8015 | an emitter refused the module (a warning drops the GLSL only)                                                               | read the message: often a uniform that is not a struct                 |
-| TS8018 | a write into a field or component of a value parameter, or to a multi-component swizzle                                     | declare the parameter `@inout`; write one component                    |
-| TS8021 | an entry that returns a value with no return annotation                                                                     | annotate it                                                            |
+| TS8006 | a constant loop header that walks its counter out of its type's range                                                       | fix the bound or the counter's type                                    |
+| TS8015 | an emitter refused the module (a warning drops the GLSL only)                                                               | read the message: it names what the target has no form for             |
+| TS8018 | a write into a vector or number parameter (`v.x = 1.`); a swizzle target that repeats a component (`v.xx = r`)              | copy into a `let`, or return the value; name each component once       |
+| TS8021 | a bare `return` where a value is required                                                                                   | return a value                                                         |
 | TS8022 | an unknown name, field or swizzle; a name read before its declaration                                                       | the name the message suggests; declare before use                      |
-| TS8036 | a scalar beside a vector in a builtin (`max(v, 0.)`)                                                                        | splat: `max(v, vec3(0.))`                                              |
+| TS8036 | a scalar beside a vector in a builtin (`clamp(v, 0., 1.)`)                                                                  | splat: `clamp(v, vec3(0.), vec3(1.))`                                  |
 | TS8052 | `textureSample` or a derivative under a per-fragment branch                                                                 | sample before branching                                                |
 | TS8072 | an import not followed: a wrong path, a plain `.ts` file, a package not installed or not exporting the path, no such export | a path to a shader file, or one the package exports; `export` the name |
-| TS8073 | a literal, an expression or `v.x` passed to an `@inout` or `@out` parameter; a qualifier on a method's parameter            | pass a `let`; move the code into a function of the file                |
-| TS8075 | a variable read before it is assigned on every path; an `@out` parameter read before it is written, or left unwritten       | assign it first, or declare it with a value                            |
+| TS8073 | an `@inout` or `@out` qualifier, which is removed                                                                           | delete it; return a number or a vector, `[a, b] = f(a, b)` for two     |
+| TS8075 | a variable read before it is assigned on every path                                                                         | assign it first, or declare it with a value                            |
 | TS8099 | a string, `==`, `do...while`, `xs.filter(...)`, `declare let` on a resource                                                 | read the message: it names the construct                               |
 
 Every code, with its causes, is in [references/diagnostics.md](references/diagnostics.md).
@@ -384,17 +388,18 @@ the shader sources. `tshc sync` writes the views.
 
 A host that calls several kernel functions over the same arrays can run the chain as one plan with
 `fuse` from `typeshade/fuse`. The body is synchronous, and every array that a call in it writes is a
-`Resident`. `scope.scratch(n)` makes a scratch array, an intermediate that the host never reads:
+`Buffer`, made by `array()` or `zeros()` from `typeshade/runtime`. `scope.scratch(n)` makes a
+scratch array, an intermediate that the host never reads:
 
 ```ts
-import { resident } from 'typeshade/runtime'
+import { array } from 'typeshade/runtime'
 import { fuse } from 'typeshade/fuse'
 import { add, mul, relu } from './ops.shade.ts' // kernel functions with one loop each
 
-const a = resident(xs) // xs, ys and zs are Float32Array of n elements
-const b = resident(ys)
-const c = resident(zs)
-const out = resident(new Float32Array(n))
+const a = array(xs) // xs, ys and zs are Float32Array of n elements
+const b = array(ys)
+const c = array(zs)
+const out = array(n, 'f32') // zeros, with no upload
 const report = await fuse((scope) => {
   const t = scope.scratch(n)
   const u = scope.scratch(n)
@@ -406,8 +411,9 @@ report.dispatches // 1 on WebGPU: the three loops are one dispatch
 const y = await out.read() // relu((a + b) * c)
 ```
 
-- **Build with `typeshade({ fuse: true })`** in `vite.config.ts`. Without it the calls still work,
-  but they run apart, and the report says why.
+- **Keep the fusion facts.** `typeshade()` in `vite.config.ts` writes them by default.
+  `typeshade({ fuse: false })` leaves them out: the calls still work, but they run apart, and the
+  report says why.
 - **Write each function for it.** A call joins the group before it when its loop runs over the same
   range as theirs, an array that a call in the group wrote is written and read at the loop's counter
   alone (`t[i]`), and it writes no array that a call in the group reads or writes. Otherwise it
@@ -416,16 +422,17 @@ const y = await out.read() // relu((a + b) * c)
 - **End a chain with a reduction** when you need a sum: `sum = total(u)` in the body, and
   `await sum` after `fuse`. The reduction takes the calls before it into its loop. Nothing joins
   after it.
-- **Read the report.** `report.groups` lists the groups, each with its `calls` and whether it is
-  `fused`. A group that stands apart has a `why` in your names:
+- **Read the report.** `report.groups` lists the groups, each with its `calls`, whether it is
+  `fused`, the `tier` it ran on and its `dispatches`. A group that stands apart has a `why` in
+  your names:
   ``mul and blur run as two dispatches because blur reads `t[i - 1]` (line 9)``.
 - **Only WebGPU fuses.** WebGL2 runs the calls apart, and the CPU tier never fuses. The results are
   the same on every tier.
-- **Keep other calls out of the body.** `read()`, `write()` and `destroy()` of a `Resident`, a call
+- **Keep other calls out of the body.** `read()`, `write()` and `destroy()` of a `Buffer`, a call
   that writes a typed array, an entry call and a draw throw a `TypeError` inside it, and the message
   names the call. Put them outside `fuse`. An `async` body is a `TypeError` too.
 - **The host never reads a scratch array.** `read()` and `write()` of one are a `TypeError`. Make the
-  array with `resident()` when the host reads it after the scope.
+  array with `array()` or `zeros()` when the host reads it after the scope.
 
 To compile the file and wire the output yourself instead:
 

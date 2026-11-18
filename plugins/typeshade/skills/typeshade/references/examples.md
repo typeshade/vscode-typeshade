@@ -21,8 +21,8 @@ class Uniforms {
 declare const U: uniform<Uniforms>
 
 class VsOut {
-  @builtin("position") pos: vec4
-  @location(0) uv: vec2
+  pos: builtin<"position">
+  uv: vec2
 }
 
 function screenCoords(uv: vec2, resolution: vec2): vec2 {
@@ -31,7 +31,7 @@ function screenCoords(uv: vec2, resolution: vec2): vec2 {
 }
 
 @vertex
-export function vs(@builtin("vertex_index") vi: u32): VsOut {
+export function vs(vi: builtin<"vertex_index">): VsOut {
   const x = f32(vi & 1) * 4. - 1.
   const y = f32(vi >> 1) * 4. - 1.
   return { pos: vec4(x, y, 0., 1.), uv: vec2(x * 0.5 + 0.5, y * 0.5 + 0.5) }
@@ -82,16 +82,16 @@ const tint: override<f32> = 0.85
 declare const desaturate: override<f32>
 
 class VsOut {
-  @builtin("position") pos: vec4
-  @location(0) uv: vec2
+  pos: builtin<"position">
+  uv: vec2
 }
 
 class Color {
-  @location(0) color: vec4
+  color: vec4
 }
 
 @vertex
-export function vs(@builtin("vertex_index") vi: u32): VsOut {
+export function vs(vi: builtin<"vertex_index">): VsOut {
   const x = f32(vi & u32(1)) * 4. - 1.
   const y = f32(vi >> u32(1)) * 4. - 1.
   return { pos: vec4(x, y, 0., 1.), uv: vec2(x, y) * 0.5 + vec2(0.5, 0.5) }
@@ -125,9 +125,9 @@ let tile: workgroup<array<f32, 64>>
 
 @compute([64, 1, 1])
 export function reduce(
-  @builtin("global_invocation_id") gid: vec3u,
-  @builtin("local_invocation_id") lid: vec3u,
-  @builtin("workgroup_id") wid: vec3u,
+  gid: builtin<"global_invocation_id">,
+  lid: builtin<"local_invocation_id">,
+  wid: builtin<"workgroup_id">,
 ): void {
   tile[lid.x] = src[gid.x]
   workgroupBarrier()
