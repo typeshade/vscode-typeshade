@@ -318,7 +318,8 @@ is TypeScript's own TS2345 at the host's line. `HOST_IMPORT_PROJECT` in
 `packages/tsserver-plugin/src/fixtures.ts` pins this for a helper call; since compiler proposal
 0016, for a `@compute` entry's call and a full-screen `@fragment` entry's draw, whose bindings
 object is typed exactly; and since proposal 0013, for a kernel function called with a
-`Float32Array`, which returns a promise, and with a `Resident`, which only queues and is `void`.
+`Float32Array`, which returns a promise, and with a `Buffer` from `array()` (compiler change 0138,
+which replaced `Resident`), which only queues and is `void`.
 
 A project without that setup still resolves the import to the source itself, under the older
 `./x.shade.js` specifier, and gets approximate types (`vec4` is unresolved in the host program,
@@ -550,6 +551,12 @@ spreads the public `LanguageService` and overrides a few members passes the rest
 some of the rest answer from the project's program for a directive file. So the remainder is two
 explicit lists rather than one sentence.
 
+**Go to definition on a built-in name opens its declaration.** Since compiler change 0143,
+`getDefinition` on an ambient name (`mix`, `vec3`, `textureSample`) answers a location in
+`lib.typeshade.d.ts`, the bundled compiler's `SHADE_DTS` written beside the plugin, when the
+plugin passes that file's uri as the host field `ambientLibUri`. Without the field the answer is
+empty, as before.
+
 _Passed through, because they are syntactic and a shader file is still TypeScript syntax:_
 `getFormattingEditsForDocument`, `getFormattingEditsForRange`,
 `getFormattingEditsAfterKeystroke`, `getIndentationAtPosition`, `getOutliningSpans`,
@@ -604,13 +611,14 @@ Seven conversions carry all the risk, and each is a decision.
 
 **Diagnostic codes collide with TypeScript's own, across the whole sequential range.**
 TypeShade's codes run from `TS8001` (`MISSING_DIRECTIVE`) to `TS8038` (`F64_ENTRY_IO`) with 8011
-retired, then `TS8041` (`TEXTURE_ARGUMENT`), `TS8050` to `TS8053`, `TS8068` (`RESERVED_NAME`)
-to `TS8075` (`UNASSIGNED_READ`) and `TS8099` (`UNSUPPORTED`), all in `src/compiler/ts/codes.ts`, whose header explains the gaps:
+retired, then `TS8041` (`TEXTURE_ARGUMENT`), `TS8050` to `TS8052`, `TS8068` (`RESERVED_NAME`)
+to `TS8075` (`UNASSIGNED_READ`), `TS8077`, `TS8079` and `TS8099` (`UNSUPPORTED`), with `TS8053`
+and `TS8078` retired since (changes 0134 and 0131), all in `src/compiler/ts/codes.ts`, whose header explains the gaps:
 codes were handed out in blocks while several branches worked at once, and an unspent number is
 never reused. TypeScript's own family occupies 8001 to 8039, verified by extracting every
 `diag(...)` code from `typescript/lib/typescript.js`: 2063 distinct codes, maximum 95195. So the
-overlap covers the whole sequential range, only TS8041, TS8050 to TS8053, TS8068 to TS8075 and
-TS8099 fall outside it, and it starts at the first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
+overlap covers the whole sequential range, only TS8041, TS8050 to TS8052, TS8068 to TS8075,
+TS8077, TS8079 and TS8099 fall outside it, and it starts at the first code: TypeScript's 8001 is "You cannot rename elements that are defined in the standard
 TypeScript library", which is a rename diagnostic, and this document maps `findRenameLocations`
 and `getRenameInfo`. A `ts.Diagnostic.code` is a number, so something has to give.
 

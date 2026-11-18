@@ -10,12 +10,28 @@ compiler's normative surface, `docs/use-typeshade-surface.md` in `typeshade/type
   and `const enum`; `namespace`; module constants (`const K: f32 = 2.`); overrides
   (`const q: override<f32> = 1.`); resources (`declare const`); module variables
   (a top-level `let`); `"enable <extension>"` directives; `import` and `export`.
+- A scalar `f64` module constant folds at compile time: `const TAU2: f64 = 2 * Math.PI`. Its
+  initializer may use literals, `Math` constants, earlier scalar constants, `f64(...)`, `+ - * /`
+  and `abs`, `cos`, `floor`, `fract`, `max`, `min`, `mix`, `round`, `sin` and `sqrt`. A value that
+  is not finite is `TS8003`. An `f32(...)` inside it rounds to `f32` there.
 - Refused at the top level: an expression, an `if` or a `var` (`TS8014`), `declare function`
   (`TS8020`).
 - `export` is conventional on entries and helpers, and is what another shader file imports.
 - `"enable subgroups"` (also `f16`, `clip_distances`, `dual_source_blending`,
   `primitive_index`) goes after the file directive (§50); a builtin that needs an extension
   enables it by itself.
+- The subgroup functions are WGSL's, with WGSL's signatures: the reductions `subgroupAdd`,
+  `subgroupMul`, `subgroupMin`, `subgroupMax`, `subgroupAnd`, `subgroupOr` and `subgroupXor`;
+  the scans `subgroupExclusiveAdd`, `subgroupInclusiveAdd`, `subgroupExclusiveMul` and
+  `subgroupInclusiveMul`; the votes `subgroupAll`, `subgroupAny`, `subgroupBallot` and
+  `subgroupElect`; and the broadcasts and shuffles `subgroupBroadcast`,
+  `subgroupBroadcastFirst`, `subgroupShuffle`, `subgroupShuffleDown`, `subgroupShuffleUp` and
+  `subgroupShuffleXor`. A call enables `subgroups` by itself, and `reflect().requiredFeatures`
+  names it; the directive is needed only by a file that calls none. On the CPU tier and on GLSL ES
+  3.00 a subgroup is one invocation.
+- A kernel function needs no subgroup call: on a WebGPU device with `subgroups`, an integer
+  reduction (and an `f32` `min` or `max`) runs as a second text in which each subgroup folds
+  first, with the same bits as the tree (§65). An `f32` sum stays on the tree.
 
 ## Importing another shader file
 
@@ -26,6 +42,10 @@ variable; a namespace.
 - The forms are TypeScript's: `import { a, b as c } from "./x.shade.ts"`, `import type`,
   `import * as x from "./x.shade.ts"` read one name at a time (`x.fbm(p)`), and the re-exports
   `export { a } from`, `export { a as b } from` and `export * from`.
+- A compiled file that holds only the directive and one `export * from "./x.shade.ts"` is a pure
+  alias: the compiler follows it, through further aliases, to the first file that is not one, and
+  compiles that file as the root, with its entry points. Any other statement makes the file an
+  ordinary root.
 - The path is relative (`./`, `../`) to the importing file. `./x.shade.js` and `./x.shade.mjs`
   name `x.shade.ts`, and `.ts` is appended to any other path, so `./x.shade` names it too.
 - A package is imported by its name, `"shade-noise"`, or a subpath, `"shade-noise/hash"`. The
@@ -77,7 +97,7 @@ import { Light, shade } from "./lighting.shade.ts"
 declare const sun: uniform<Light>
 
 @fragment
-export function fs(@location(0) normal: vec3): vec4 {
+export function fs(normal: location<0, vec3>): vec4 {
   return vec4(shade(normalize(normal), sun), 1.)
 }
 ```
@@ -102,19 +122,19 @@ publishes for host code. Write `typeshade` first, so plain `tsc` with `customCon
 
 ## Types
 
-| Kind            | Spellings                                                                                                                                                             | Notes                                                                      |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| scalars         | `f32` `i32` `u32` `bool`                                                                                                                                              | `number`, `boolean`, `string`, `any` are `TS8002`                          |
-| emulated double | `f64`, `vec2f64` `vec3f64` `vec4f64` (also `vec2d` ...)                                                                                                               | two f32s; a few operations only; never on stage input or output (`TS8038`) |
-| float vectors   | `vec2` `vec3` `vec4`, the same as `vec2f` ..., `vec3<f32>`                                                                                                            |                                                                            |
-| other vectors   | `vec2i` ... `vec4i`, `vec2u` ... `vec4u`, `vec2b` ... `vec4b`                                                                                                         | a `vecNb` is what comparing two vectors gives                              |
-| matrices        | `mat2` `mat3` `mat4`, every `matCxR` (`mat2x3`, `mat4x3` ...) and WGSL's `matCxRf` aliases (`mat4x4f`)                                                                | column-major: `m[j]` is column `j`                                         |
-| arrays          | `array<T, N>`; `array<T>` runtime-sized, storage only                                                                                                                 | `T[]` is `TS8002`; an array of arrays is refused, so flatten               |
-| tuples          | `[f32, f32]` is `array<f32, 2>`                                                                                                                                       | a mixed tuple is refused: declare a struct                                 |
-| structs         | `class`, `interface`, `type X = { ... }`                                                                                                                              | the same struct; only class fields carry `@location` and `@builtin`        |
-| enums           | numeric `enum`, `const enum`                                                                                                                                          | members are `i32` constants; a string member is `TS8003`                   |
-| aliases         | `type Meters = f32`                                                                                                                                                   |                                                                            |
-| handles         | `texture_2d<f32>`, `texture_2d_array`, `texture_cube`, `texture_3d`, `texture_depth_2d`, `sampler`, `sampler_comparison`, `texture_storage_2d<"rgba8unorm", "write">` | declared bare and `const`                                                  |
+| Kind            | Spellings                                                                                                                                                             | Notes                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| scalars         | `f32` `i32` `u32` `bool`                                                                                                                                              | `number`, `boolean`, `string`, `any` are `TS8002`                            |
+| emulated double | `f64`, `vec2f64` `vec3f64` `vec4f64` (also `vec2d` ...)                                                                                                               | two f32s; a few operations only; never on stage input or output (`TS8038`)   |
+| float vectors   | `vec2` `vec3` `vec4`, the same as `vec2f` ..., `vec3<f32>`                                                                                                            |                                                                              |
+| other vectors   | `vec2i` ... `vec4i`, `vec2u` ... `vec4u`, `vec2b` ... `vec4b`                                                                                                         | a `vecNb` is what comparing two vectors gives                                |
+| matrices        | `mat2` `mat3` `mat4`, every `matCxR` (`mat2x3`, `mat4x3` ...) and WGSL's `matCxRf` aliases (`mat4x4f`)                                                                | column-major: `m[j]` is column `j`                                           |
+| arrays          | `array<T, N>`; `array<T>` runtime-sized, storage only                                                                                                                 | `T[]` is `TS8002`; an array of arrays is refused, so flatten                 |
+| tuples          | `[f32, f32]` is `array<f32, 2>`                                                                                                                                       | a mixed tuple is refused: declare a struct                                   |
+| structs         | `class`, `interface`, `type X = { ... }`                                                                                                                              | the same struct; an IO field's type may be `builtin<...>` or `location<...>` |
+| enums           | numeric `enum`, `const enum`                                                                                                                                          | members are `i32` constants; a string member is `TS8003`                     |
+| aliases         | `type Meters = f32`                                                                                                                                                   |                                                                              |
+| handles         | `texture_2d<f32>`, `texture_2d_array`, `texture_cube`, `texture_3d`, `texture_depth_2d`, `sampler`, `sampler_comparison`, `texture_storage_2d<"rgba8unorm", "write">` | declared bare and `const`                                                    |
 
 ### Optional and nullable values
 
@@ -197,21 +217,19 @@ This is proposal 0081's open deviation D1.
 ### Literals
 
 - A float is written with a dot: `1.`, `0.5`.
-- An integer-written literal takes an integer type where one is declared: an annotation, a
-  parameter, a return type, a struct field, an element of `vec3u(...)` or of an annotated list,
-  the other operand of an integer operator, an index. `let n: u32 = 7` and `gid.x < 100` are
-  fine.
-- An unannotated function-local `let` or `const` whose initializer is an integer-written literal
-  (`-1`, `(3)`) takes `i32` or `u32` from its declared uses (§13): an argument of a function, a
-  constructor, an instance or a static method whose parameter declares the type, a typed
-  initialization or assignment (`let j: i32 = k`, `j = k`), and an assignment from a field that
-  declares it (`k = hit.objectIndex`). Uses that disagree (`i32` and `f32`) are `TS8003`:
-  annotate. A generic parameter, a call through a function value, an index and arithmetic decide
-  nothing.
-- Where nothing declares a type, an integer-written literal is an `f32` today: `let i = 0` is an
-  f32, and `xs[i]` is then `TS8003`. A `for` initializer is the exception (`for (let i = 0; ...)`
-  is an `i32`). The default will change to `i32`; `compile(src, { deprecations: true })` warns
-  about each such literal as `TS8053`.
+- An integer-written literal takes its type from where it stands: an annotation, a parameter, a
+  return type, a struct field, an element of `vec3u(...)` or of an annotated list, a typed operand
+  beside it. `let n: u32 = 7` and `gid.x < 100` are fine.
+- An unannotated `let`, a module variable or a written field initialized by an integer-written
+  literal takes its type from every place the value reaches (§13): a typed operand, a builtin
+  argument beside a typed one, a constructor's element, a conditional's other arm, a field, a
+  declared parameter or result, a compound assignment. An index makes it an integer, `i32` unless
+  another use says `u32`, so `let i = 0; xs[i]` works. A `const` of a written number has no
+  fixed type until a read gives it one, as WGSL's abstract `const`. A function with no result
+  type that returns a written number takes the type its callers use.
+- Uses that demand two types are `TS8003`: annotate. A `/` whose integer operands all got their
+  type by inference is `TS8003` too: annotate the value for integer division (`let k: u32 = 7`)
+  or convert it (`f32(k) / 2`).
 - An integer array is written as an annotated list, `const w: array<i32, 3> = [1, 2, 1]`.
 
 ### Conversions
@@ -263,10 +281,15 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   a parameter, an assignment target. Shorthand `{ pos, uv }` and spread `{ ...p, y: 9. }` work.
 - A missing required field or an extra field is `TS8010`. A field written `?` may be omitted. Two declarations of one name in one scope are
   `TS8023`, interfaces included (TypeScript would merge them; TypeShade does not).
-- Assigning or passing a struct copies it.
+- An object (a struct, a class instance, an array) has the identity a JavaScript object has:
+  passing it to a function passes the caller's object, and a write to its field or element there
+  changes it. A number, a `bool`, a vector and a matrix are values.
 - Classes have methods, a constructor, static members, getters and setters, `#private` members,
   parameter properties and `readonly`, and are built with `new` (§26). A method that assigns to
-  `this` needs a `let` receiver (`TS8035` on a `const`). Generic functions and classes are
+  `this` needs a `let` receiver (`TS8035` on a `const`). A method that changes its object, called
+  on an element (`voices[v].tick(x)`), is a write to that element, for the kernel proof (§65) as
+  for any other write. A class is one thing on every tier and on the host: the host imports an
+  exported class as a class, and `new` runs its constructor on the CPU tier. Generic functions and classes are
   compiled once per type used (§30, §32). `namespace N { export function f() }` becomes `N_f`.
 - A class may have no instance fields (§26): `class Empty {}`, a class of methods or getters
   only, and a class of static members are built with `new` like any other. The host and a CPU
@@ -277,9 +300,10 @@ export function shade(n: vec3, l: Light, mode: Mode, id: u32): vec3 {
   method or an alias. The value is then copied as the base. What the proof cannot show is
   `TS8003`, whose remedy is to keep the derived type: there is no runtime dispatch through a
   base type.
-- Field attributes: `@location(n)`, `@builtin("...")`, `@interpolate("flat")` or
-  `@interpolate("perspective", "centroid")`, `@invariant`, `@blend_src`. `@align`, `@size` and
-  `@offset` are refused: the compiler lays out buffers itself.
+- IO fields carry their meaning in their type: `builtin<"position">`, `location<1, u32, {
+interpolate: "flat" }>`, `builtin<"position", { invariant: true }>`, `location<0, vec4, {
+blend_src: 1 }>`. `@align`, `@size` and `@offset` are refused: the compiler lays out buffers
+  itself.
 
 ```ts
 "use typeshade"
@@ -349,8 +373,8 @@ export function leafColor(): vec3 {
 
 ## Resources
 
-- `declare const u: uniform<T>`: a uniform buffer. Make `T` a struct: a bare `uniform<f32>` is
-  valid WGSL, and the GLSL emitter refuses it (a `TS8015` warning that drops the GLSL).
+- `declare const u: uniform<T>`: a uniform buffer. `T` is a struct, or a bare scalar, vector or
+  `f32` matrix of three or four rows (`uniform<f32>`), which GLSL holds in a block of its own.
 - `declare const s: storage<T>` is read-only storage; `declare const s: storage<T, "read_write">`
   is read-write. The access mode is the second type argument, `"read"` (the default) or
   `"read_write"`. Every resource is `declare const`: `declare let` on one is `TS8099`, which names
@@ -374,7 +398,7 @@ export function leafColor(): vec3 {
   `_fp64` when emulated doubles need it, and `_console` under
   `compile(src, { console: 'gpu' })`.
 - **Runtime-sized arrays.** `array<T>` only as a storage binding or the last field of a storage
-  struct. Its `.length` (or `arrayLength(xs)`) is a runtime `u32`; on anything not in storage
+  struct. Its `.length` is a runtime `u32`; on anything not in storage
   it is `TS8032`.
 - **Layout.** A `bool` field in a buffer struct is `TS8051` (use `u32`). `mat2`, `mat3x2` and
   `mat4x2` in a uniform drop the GLSL, since std140 and WGSL lay a two-row matrix out
@@ -386,8 +410,10 @@ export function leafColor(): vec3 {
 
 ## Entry points
 
-- `@vertex`, `@fragment`, `@compute` go on top-level functions. A function without one is a
-  helper. Calling an entry is refused: move the body into a helper both call.
+- The stage attributes `@vertex`, `@fragment` and `@compute` go on top-level exported
+  functions: `@vertex export function vs(...)`. A function without one is a helper. Calling an
+  entry is refused: move the body into a helper both call. A kernel function may state its
+  workgroup size with `@workgroup_size([128])`.
 - `@compute([x, y, z])` takes one to three dimensions, with omitted dimensions equal to 1.
   `[8, 8]` is a two-dimensional workgroup. A bare `@compute` is a workgroup of 64.
   A dimension may be a numeric literal, a named integer
@@ -400,7 +426,7 @@ const WG_SIZE: override<u32> = 64;
 let tile: workgroup<array<f32, WG_SIZE>>;
 
 @compute([WG_SIZE])
-export function copy(@builtin("local_invocation_id") lid: vec3u): void {
+export function copy(lid: builtin<"local_invocation_id">): void {
   tile[lid.x] = 0.;
 }
 ```
@@ -411,20 +437,27 @@ dimensions against device limits when it creates a pipeline. An imported compute
 The selected size determines shared-array lengths and CPU builtins too; the caller calculates
 `groups` for it. WebGL2 supports only the default shape and shared-array lengths.
 
-- **Builtins are parameters.** Vertex: `vertex_index: u32`, `instance_index: u32`. Vertex
-  output and fragment input: `position: vec4`. Fragment: `front_facing: bool`,
-  `sample_index: u32` and `sample_mask: u32` (both WGSL-only), `frag_depth: f32` (output).
-  Compute: `global_invocation_id`, `local_invocation_id`, `workgroup_id`, `num_workgroups` (all
-  `vec3u`), `local_invocation_index: u32`. An unknown id is `TS8024`, the wrong stage `TS8025`.
-- **Stage IO.** Parameters can carry `@location(n)` directly (`fs(@location(0) uv: vec2)`), or be
-  one IO struct: a `class` whose every field has `@location(n)` or `@builtin(...)` (`TS8029`).
-  Integer varyings are `flat` automatically; a `bool` varying is refused. The vertex output and
-  the fragment input at one location must have the same field name and type (`TS8010`): share
-  one class.
+- **A builtin is a typed parameter or field**, `vi: builtin<"vertex_index">`, and WGSL gives its
+  type. Vertex: `vertex_index` and `instance_index` (`u32`). Vertex output and fragment input:
+  `position` (`vec4`). Fragment: `front_facing` (`bool`), `sample_index` and `sample_mask`
+  (`u32`, both WGSL-only), `frag_depth` (`f32`, output). Compute: `global_invocation_id`,
+  `local_invocation_id`, `workgroup_id`, `num_workgroups` (all `vec3u`),
+  `local_invocation_index` (`u32`), and with subgroups `subgroup_invocation_id`,
+  `subgroup_size`, `subgroup_id` and `num_subgroups` (`u32`). Only `clip_distances` writes its
+  type: `builtin<"clip_distances", array<f32, 4>>`. An unknown id is `TS8024`, the wrong stage
+  `TS8025`.
+- **Stage IO.** Every other input or output is user-defined, and the compiler gives it its
+  location: a vertex entry's parameters and fields, a vertex result's fields and a fragment
+  result's fields each in declaration order. A fragment input takes the location of the vertex
+  result field of the same name (`TS8010` when no vertex result has it). `location<n, T>` fixes a
+  number or states an option, as in a fragment-only file. A compute entry has no user-defined
+  input (`TS8029`). Integer varyings are `flat` automatically; a `bool` varying is refused. Share
+  one class between the stages: a value between stages is linked by its name.
 - **Returns.** A vertex entry returns `vec4` (the position) or a struct with a
-  `@builtin("position")` field. A fragment entry returns `f32` ... `vec4` (location 0), a struct of
-  `@location(n)` fields (several render targets, optionally `@builtin("frag_depth")`), or
-  `void`. A compute entry returns nothing. An entry that returns a value must annotate it.
+  `builtin<"position">` field. A fragment entry returns `f32` ... `vec4` (location 0), a struct of
+  render targets (optionally with `builtin<"frag_depth">`), or `void`. A compute entry returns
+  nothing. The return type is inferred from the body; write it only for another built-in value
+  (`builtin<"frag_depth", f32>`) or an option on the output.
 - **Stage-only calls.** Fragment only: `discard`, `textureSample`, `textureSampleBias`,
   `textureSampleCompare`, `dpdx`, `dpdy`, `fwidth` and their variants, followed through helper
   calls. Fragment or compute: atomics and `textureStore`. Compute only: `workgroupBarrier()` and
@@ -440,10 +473,11 @@ The selected size determines shared-array lengths and CPU builtins too; the call
 
 ## Functions and control flow
 
-- Annotate every parameter. A helper's return type is inferred from its first `return` with a
-  value; an entry that returns a value needs its annotation (`TS8021`).
-- A parameter is a value. A whole write to it (`x = 0.`) changes a local copy; a write into a
-  field, element or component of it (`r.origin = o`) is `TS8018`, whose remedy names `@inout`.
+- Annotate every parameter. A function's return type, an entry's included, is inferred from its
+  body. A bare `return` where a value is required is `TS8021`.
+- An object parameter (a struct, a class instance, an array) is the caller's object, and a write
+  into it changes the caller's. A number, `bool`, vector or matrix parameter is a value: a whole
+  write (`x = 0.`) changes a local copy, and a write into one (`v.x = 1.`) is `TS8018`.
   Default values work (`b: f32 = 0.8`) as long as they do not read another parameter; optional
   (`b?: f32`) parameters hold `f32 | undefined`; omission supplies undefined. Rest parameters are `TS8020`.
   An optional parameter on an entry or kernel function, a required parameter after an optional one,
@@ -460,18 +494,22 @@ The selected size determines shared-array lengths and CPU builtins too; the call
   `const [a, , c] = xs`, with omitted positions and nested patterns. Rest elements and defaults remain refused. The source is evaluated once.
   A runtime-sized array pattern is refused (change 0086).
 - A local function is a nested `function` or an arrow constant, and it may read and write the
-  locals around it, and an `@inout` or `@out` parameter of the function around it. A parameter
+  locals and parameters around it. A parameter
   may be a function (`h: (x: f32) => f32`), and an arrow may be written as the argument.
 - Recursion, direct or mutual, is `TS8031`.
 - A call alone on a line is fine; a value alone on a line (`vec3(1.)`) is refused.
 - `if` needs a `bool` condition (`if (x)` on an `f32` is `TS8003`). The ternary works on any
   type. `select(f, t, cond)` puts the condition last, as WGSL does.
-- `for`: an integer `let`, stepped by a constant (`++`, `--`, `+=`, `-=`, `*=`, `/=`) toward a
-  bound. The start and the bound may be runtime values (a parameter, a uniform field,
-  `xs.length`) and there is no limit on the trips. An unannotated counter starting at a
-  non-negative literal takes the type of a `u32` bound. A bound the body writes, or `!=`
-  against a runtime bound, is `TS8006`; a float induction variable is `TS8008`; a missing
-  condition or a step away from the bound is `TS8007`.
+- `for` means what it means in TypeScript: the initializer once, the condition before each trip
+  (none is `true`), the update after each trip and at each `continue`. A `for` that steps one
+  integer `let` by a constant (`++`, `--`, `+=`, `-=`, `*=`, `/=`) toward a bound is counted; the
+  start and the bound may be runtime values (a parameter, a uniform field, `xs.length`), with no
+  limit on the trips. An unannotated counter starting at a non-negative literal takes the type of
+  a `u32` bound. Any other `for` (a float counter, two counters, a bound the body writes, no
+  condition) runs as a `while` does. Refused: a loop the compiler proves never ends, with no
+  condition and no `break` or `return`, or a constant step that never moves the counter toward
+  the bound (`TS8007`); a constant header that leaves its counter's type (`TS8006`). In a kernel
+  function, a `for` that is not counted runs on the CPU (`TS8070`).
 - `for (const x of xs)` iterates an `array<T, N>` or a runtime-sized storage array.
 - Five array methods run as TypeScript runs them, each lowered to a counted loop:
   `xs.forEach(f)`, `xs.some(p)`, `xs.every(p)`, `xs.reduce(f, init)` (or `xs.reduce(f)` on a
@@ -513,7 +551,7 @@ function vignette(uv: vec2, strength: f32 = 0.8): f32 {
 }
 
 @fragment
-export function fs(@location(0) uv: vec2): vec4 {
+export function fs(uv: location<0, vec2>): vec4 {
   let acc = 0.
   for (let i = 0; i < MAX_STEPS; i++) {
     if (i >= params.steps) {
@@ -529,35 +567,21 @@ export function fs(@location(0) uv: vec2): vec4 {
 }
 ```
 
-## Parameters that change the caller's variable
+## Objects are references, numbers are values
 
-A parameter declared `@inout` or `@out` names the caller's variable (§70): reading it reads that
-variable, and assigning to it, or to a field, element or component of it, writes that variable.
-The call passes the variable unmarked, as GLSL and HLSL do, and the editor shows `&` before such
-an argument.
+An object has the identity a JavaScript object has. A struct, a class instance and an array (with
+a size or with none) are objects; a number, a `bool`, a vector and a matrix are values, as a
+JavaScript primitive is.
 
-- `@inout p: T` is read and written. `@out p: T` starts with no value: the body writes it whole
-  before it reads it, and on every path before it returns, or it is `TS8075`. A variable with no
-  value yet may be passed to `@out`, and it is assigned after the call.
-- There is no `@in`: TypeScript does not parse it, and a parameter with no qualifier is GLSL's
-  `in`.
-- A qualifier goes on a parameter of a function declared at the top of the file or of a
-  namespace. On a method, a constructor, an accessor, an entry, a local function or a generic
-  function it is `TS8073`, and so are two qualifiers on one parameter.
-- The argument is a variable a function may write: a `let`, a `const` whose initializer built
-  its value (`const p = new P()`), a module variable, an element of a `read_write` storage
-  binding, a qualified parameter passed on, a column of a matrix, or a field or an element of
-  one of those. A literal, an expression (`a * b`, `f()`), a value parameter, a read-only binding
-  and a vector's component (`v.x`) are `TS8073`.
-- One call may not take two references that reach one variable when the callee writes either:
-  `swap(x, x)`, `swap(o.a, o.b)` and `swap(xs[i], xs[j])` are `TS8074`. A method's object and a
-  variable a local function writes count as references.
-- The place is fixed when the call is made: `xs[i]` is evaluated once, before the call.
-- A local function reads and writes a qualified parameter of the function around it as it does
-  any variable it captures, and passes it on to another qualified parameter as itself.
-- WGSL takes a pointer (`swap(&x, &y)`, `*a = *b`), GLSL ES 3.00 an `inout` parameter, and the
-  CPU copies the value in and stores it back. A host call passes values, so an export with a
-  qualified parameter is `never` in the host view; a function of the module calls it.
+- A function that writes a field or an element of an object parameter changes the caller's
+  object: `advance(r, t)`, `advance(rays[i], t)` on an element of a storage binding, a
+  fixed-size array passed whole. The compiler passes the place.
+- A function that gives back a number or a vector returns it. For more than one, it returns a
+  tuple and the caller destructures it: `const [lo, hi] = order(a, b)`.
+- `@inout` and `@out` are removed. A parameter that carries one is `TS8073`, and the message says
+  what to write instead; `tshc migrate` deletes them.
+- Where the compiler does not yet implement JavaScript's sharing for a form, it refuses the
+  program with a diagnostic that says "not supported yet".
 
 ```ts
 "use typeshade"
@@ -567,39 +591,20 @@ class Ray {
   dir: vec3
 }
 
-function swap(@inout a: f32, @inout b: f32): void {
-  const t = a
-  a = b
-  b = t
-}
-
-function add(a: f32, b: f32, @out c: f32): void {
-  c = a + b
-}
-
-function advance(@inout r: Ray, t: f32): void {
+function advance(r: Ray, t: f32): void {
   r.origin = r.origin + r.dir * t
 }
 
-function scaleBoth(@inout a: f32, @inout b: f32, k: f32): void {
-  const scale = (): void => {
-    a = a * k
-    b = b * k
-  }
-  scale()
+function order(lo: f32, hi: f32): [f32, f32] {
+  return lo > hi ? [hi, lo] : [lo, hi]
 }
 
 export function demo(): f32 {
-  let x: f32 = 1.
-  let y: f32 = 2.
-  swap(x, y)
-  let s: f32
-  add(x, y, s)
+  const [lo, hi] = order(2., 1.)
   let r = new Ray()
   r.dir = vec3(1., 0., 0.)
   advance(r, 3.)
-  scaleBoth(x, y, 2.)
-  return x + s + r.origin.x
+  return lo + hi + r.origin.x
 }
 ```
 
@@ -615,8 +620,9 @@ function swap(@inout a: f32, @inout b: f32): void {
 }
 
 export function demo(): f32 {
+  let x: f32 = 1.
   let y: f32 = 2.
-  swap(1., y)
+  swap(x, y)
   return y
 }
 ```
@@ -626,19 +632,26 @@ export function demo(): f32 {
 - `+ - * / %` work componentwise on vectors of one size, and a scalar broadcasts in an operator.
   Different sizes are `TS8003`, and so is `mat4 * vec3`. `m * v` is the column-vector product and
   `v * m` the row-vector one. Integer `/` truncates; `%` truncates; `mod(x, y)` floors. `a ** b`
-  is `pow`, floats only.
-- Builtin functions do not broadcast (`TS8036`): `max(v, vec3(0.))`, `step(vec3(0.5), v)`,
-  `pow(v, vec3(2.))`. `mix(a, b, t)` takes a scalar `t`.
-- Swizzles read any mix of `xyzw` or `rgba` (`v.zyx`, `c.rgb`); `st` is refused. Write one
-  component at a time. `v[i]` indexes.
+  is the power, floats only, with both sides of one type (`v ** vec3(2.)`).
+- Builtin functions do not broadcast (`TS8036`): `clamp(v, vec3(0.), vec3(1.))`,
+  `step(vec3(0.5), v)`. `max`, `min` and `mix(a, b, t)` take a scalar beside a vector.
+- One spelling for one meaning: where ECMAScript has a spelling, the WGSL or extra name is
+  removed. Write `a ** b` (not `pow`), `xs.length` (not `arrayLength`), `Math.PI` and `Math.E`
+  (not `PI`, `E`, `LN2` ...), `Math.log10`, `Math.log1p`, `Math.expm1`, `Math.cbrt` and
+  `Math.hypot`, `xs.some(p)`, `xs.every(p)` and `!xs.some(p)` (not `any(xs, p)`, `all(xs, p)`,
+  `none(xs, p)`), and `xs.reduce((a, b) => a + b)` (not `sum(xs)`). `TAU`, `select`, `atan2`,
+  `any(v)` and `all(v)` on bools, `mod`, `fill`, `zip` and `random` stay.
+- Swizzles read any mix of `xyzw` or `rgba` (`v.zyx`, `c.rgb`); `st` is refused. A swizzle of a
+  local is an assignment target, with `=` and every compound operator: `d.xy *= d.yx` reads
+  every old component before it writes one. A swizzle that names a component twice (`d.xx = r`)
+  is `TS8018`. `v[i]` indexes.
 - Compound assignment covers `+= -= *= /= %= &= |= ^= <<= >>=`. `++` and `--` work on scalars.
 - `===` and `!==`; `==` is refused. Comparing vectors gives a `vecNb`: reduce it with `all` or
   `any`, or pick with `select(a, b, mask)`. `&&` and `||` take scalar `bool`s.
 - Bits: `& | ^ ~ << >>` on `i32` and `u32`; `>>` on a `u32` is already logical, and `>>>` is
   refused. A constant shift of 32 or more, a constant zero divisor and a constant index out of
   range are compile errors.
-- `Math.sin` and the rest of `Math` map to the builtins, and `Math.PI`, `PI` and `TAU` are
-  constants. `Math.random()` is refused; `random(seed)` is a `fract(sin(...))` hash of an f32,
+- `Math.sin` and the rest of `Math` map to the builtins, and `Math.PI` and `TAU` are constants. `Math.random()` is refused; `random(seed)` is a `fract(sin(...))` hash of an f32,
   vec2 or vec3 seed, whose result can differ between drivers.
 - `console.log(...)` (also `info`, `debug`, `warn`, `error`) takes values of any fixed size
   (numbers, vectors, matrices, arrays, structs) and string literals, which are labels the host

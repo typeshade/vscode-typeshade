@@ -37,10 +37,11 @@ read it in place of the source. `tshc sync` writes every view before `tsc` runs 
 checkout.
 
 ```ts
-import { resident } from 'typeshade'
+import { array } from 'typeshade/runtime'
 import { height, render } from './terrain.shade.ts'
 import { scale, blockSum } from './kernels.shade.ts'
 import { fs } from './plasma.shade.ts'
+import { fs as solid } from './solid.shade.ts'
 
 const k = [1, 0.5, 2, 0.25] as const
 const h = height([0.5, 0.5], k) // a number
@@ -48,13 +49,14 @@ const img = new Float32Array(512 * 512)
 await render(k, 512, img) // each loop the compiler proves ran on the GPU; img is filled in place
 await scale({ k: 2.5, xs, ys }, 4) // four workgroups; ys, a Float32Array, is filled in place
 
-const onGpu = resident(new Float32Array(256))
-const sums = resident(new Float32Array(4))
-scale({ k: 2.5, xs, ys: onGpu }, 4) // queued: every binding it writes is a Resident
-blockSum({ xs: onGpu, sums, scratch: resident(new Float32Array(256)) }, 4) // reads scale's output
+const onGpu = array(256, 'f32') // a Buffer of zeros, with no upload
+const sums = array(4, 'f32')
+scale({ k: 2.5, xs, ys: onGpu }, 4) // queued: every binding it writes is a Buffer
+blockSum({ xs: onGpu, sums, scratch: array(256, 'f32') }, 4) // reads scale's output
 const out = await sums.read() // the one wait
 
 fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is read back
+solid(canvas) // an entry that reaches no binding may leave out the bindings
 ```
 
 - **A helper** a host can call is exported, not generic, takes no function, and reaches no
@@ -72,28 +74,45 @@ fs(canvas, { frame: { time: 0, scale: 0.02 } }) // draws one frame; nothing is r
 - **A `@compute` entry** is `entry(bindings, workgroups, options?)`. `bindings` has one property for each
   binding the entry reaches, typed exactly, so a missing or misspelled binding is a type error.
   `workgroups` is `n`, `[x, y, z]`, or `{ indirect, offset }`. The indirect form reads three
-  workgroup counts at the element offset of a `Resident<Uint32Array>` when the call runs.
+  workgroup counts at the element offset of a `Buffer` of `u32` when the call runs.
   The count buffer must share the device owner and must contain all three words. The promise resolves once every
   storage binding it writes has been read back into the caller's value. `options.constants`
   selects declared overrides by name; omitted constants keep their defaults. It runs on WebGPU,
   supported WebGL2 compute, then the CPU tier. The CPU tier refuses barriers and texture reads.
   `configure({ prefer })` orders the tiers. The specialization example below covers their limits.
-- **A `Resident`**, `resident(array)` from `typeshade`, stands for a storage array with no size, or
-  a kernel function's array, and stays on the device: nothing is read back until `await r.read()`.
-  When every binding or array a call writes is a `Resident`, the call only queues and returns
-  nothing. Entry calls and kernel calls run in the order they were made, and so does a draw that
-  reads a `Resident`, so one call's output can be the next one's input.
-- **A `fuse` scope** runs a chain of kernel calls over `Resident` arrays as one plan. On WebGPU the
-  calls reach the queue in one submission, and calls that follow each other become one dispatch
-  when the compiler's facts allow it. `fuse` comes from `typeshade/fuse`, and the plugin needs
-  `typeshade({ fuse: true })`. The section "A chain of kernel calls in one dispatch" has the
-  example, the facts, the report and the scratch arrays.
+- **A `Buffer`** is a host resource from `typeshade/runtime`: `array(typedArray)` uploads data,
+  `array(n, 'f32')` makes `n` zeros, `zeros(Particle, n)` and `array(Particle, data)` make an
+  array of an exported class, and `uniform(Params, { ... })` makes a uniform. It stands for a
+  storage array with no size, or a kernel function's array, and stays on the device: nothing is
+  read back until `await b.read()`. When every binding or array a call writes is a `Buffer`, the
+  call only queues and returns nothing. Entry calls and kernel calls run in the order they were
+  made, and so does a draw that reads a `Buffer`, so one call's output can be the next one's
+  input.
+- **A failure follows the data.** A queued call that fails stores its error on each `Buffer` it
+  would write. A later call that reads one of them rejects with that same error and stores it on
+  what it writes, so `read()` of the last output of a chain throws the first failure. Calls that
+  read none of them still run, and a call that only writes a failed `Buffer` recovers it.
+- **A `fuse` scope** runs a chain of kernel calls over `Buffer`s as one plan. On WebGPU the calls
+  reach the queue in one submission, and calls that follow each other become one dispatch when
+  the compiler's facts allow it. `fuse` comes from `typeshade/fuse`, and the plugin writes the
+  facts by default. The section "A chain of kernel calls in one dispatch" has the example, the
+  facts, the report and the scratch arrays.
 - **A full-screen `@fragment` entry** is `entry(canvas, bindings)`, into an `HTMLCanvasElement`
   or an `OffscreenCanvas`. It draws one frame that fills the canvas, on WebGPU, then WebGL2, then
   the CPU, and the first draw into a canvas decides its tier. The promise resolves when the frame
   is submitted, and nothing is read back. An entry that reads a storage buffer has no WebGL2 tier,
-  and one that reads a texture has no CPU tier.
+  and one that reads a texture has no CPU tier. An entry that reaches no binding the host
+  supplies takes `entry(canvas)`; `undefined` and `{}` work too.
+- **An exported class** is a class of the view, `export declare class OnePole { ... }`, and the
+  module exports it as a JavaScript class: `new OnePole(0.1)` runs the constructor on the CPU
+  tier, and an admissible method is a method of the instance. An `interface` and a `type` stay
+  types. A `Buffer` of instances reads back as instances.
 - Every other export is `never` in the view, with the reason, so calling one is a type error.
+- **The view reads like the shader.** It spells each value with the family of host types that
+  `typeshade/runtime` exports as types, named as the shader names them (`f32`, `u32`, `vec3`,
+  `mat4`, `array<f32>`), so a signature keeps the difference between `f32` and `u32`. It also
+  carries the JSDoc you wrote above each export, verbatim, and the compiler's sentence (how a
+  call queues, or why it is `never`) follows yours in the same comment.
 - **Host values:**
   - a number for a scalar, a boolean for a `bool`
   - a union member string for a key-type parameter or result
@@ -125,7 +144,7 @@ Field use includes every loop and reachable helper. Unproved uses keep the full 
 The host still passes complete objects. Every declared field is validated, including omitted GPU fields.
 Getter and property-read order remain unchanged. Element indices and array length keep their meaning.
 
-Written arrays, `Resident` arrays, fused calls and modules built with `typeshade({ fuse: true })` retain the full layout.
+Written arrays, `Buffer`s and fused calls retain the full layout.
 Authored entry bindings, reflection, manifests and raw bytes keep their external layout.
 CPU and WebGL2 calls keep their original representation. No host or shader spelling changes.
 This reduces eligible input bytes; physical-device whole-call performance validation remains pending.
@@ -135,7 +154,7 @@ This reduces eligible input bytes; physical-device whole-call performance valida
 `createDevice(options)` from `typeshade/runtime` opens an owner on the first available tier in `prefer`.
 It can use the host's `device`, or a program runtime through `{ runtime }`.
 `device.array(values)` uploads an array; `device.array(length, 'f32')` obtains a pooled array.
-A `Resident` belongs to one owner for its life. Calls refuse arrays from another owner.
+A `Buffer` belongs to one owner for its life. Calls refuse arrays from another owner.
 `device.release(r)` returns an array to the pool. `device.dispose()` drains calls and frees owned resources.
 `poolBytes` bounds the pool. Import `typeshade/fuse` to enable `device.fuse(body)`.
 
@@ -163,7 +182,7 @@ declare const xs: storage<array<f32>>;
 declare const ys: storage<array<f32>, "read_write">;
 
 @compute([WIDTH])
-export function copy(@builtin("global_invocation_id") gid: vec3u): void {
+export function copy(gid: builtin<"global_invocation_id">): void {
   if (gid.x < xs.length) {
     ys[gid.x] = xs[gid.x] * GAIN;
   }
@@ -280,14 +299,14 @@ export function total(xs: array<f32>): f32 {
 Call them inside `fuse`:
 
 ```ts
-import { resident } from 'typeshade/runtime'
+import { array } from 'typeshade/runtime'
 import { fuse } from 'typeshade/fuse'
 import { add, mul, relu } from './ops.shade.ts'
 
-const a = resident(xs) // xs, ys and zs are Float32Array of n elements
-const b = resident(ys)
-const c = resident(zs)
-const out = resident(new Float32Array(n))
+const a = array(xs) // xs, ys and zs are Float32Array of n elements
+const b = array(ys)
+const c = array(zs)
+const out = array(n, 'f32') // zeros, with no upload
 const report = await fuse((scope) => {
   const t = scope.scratch(n)
   const u = scope.scratch(n)
@@ -300,29 +319,33 @@ report.submissions // 1
 const y = await out.read() // relu((a + b) * c)
 ```
 
-**The option.** The plan is made from facts that the compiler writes into the module. It writes them
-only under `typeshade({ fuse: true })`, in `vite dev` and in `vite build`:
+**The option.** The plan is made from facts that the compiler writes into the module. `typeshade()`
+and `hostFace()` write them by default, in `vite dev` and in `vite build`. `fuse: false` leaves
+them out to save size:
 
 ```ts
 // vite.config.ts
-export default defineConfig({ plugins: [typeshade({ fuse: true })] })
+export default defineConfig({ plugins: [typeshade({ fuse: false })] })
 ```
 
-The record of a kernel function adds, minified and gzipped, about 0.7 kB to a module of one function
-that maps and about 1.3 kB to a module of one that reduces. A module of five functions adds 1.8 kB.
-The option is off by default for that reason. A module built without it works as before, and every
-call of a scope runs apart:
-`add and mul run as two dispatches because mul was built without typeshade({ fuse: true })`.
+For the five functions of the compiler's `journeys/loop-fuse/ops.shade.ts`, the module is 4,289
+bytes with the facts and 2,575 without. A module built without them works as before, and every call
+of a scope runs apart, with a `why` that says so.
+
+**The origin.** A module's fusion records are keyed by its file name. A package that is built
+apart and shares a scope with others sets `typeshade({ originNamespace: 'my-package' })`, and the
+plugin keys each module by the namespace and its path from the Vite root, so the keys are the same
+on every machine. `hostFace({ origin })` sets one module's key directly.
 
 **Entries and tiles.** A compute entry call is recorded as a group of its own.
 A tiled or workgroup entry retains its barriers and dispatch shape in that group.
-Its runtime-sized storage arrays must be resident, and it cannot write a plain host value.
+Its runtime-sized storage arrays must be `Buffer`s, and it cannot write a plain host value.
 An indirect entry reports `indirect: true`; the device reads its count buffer after earlier calls.
 The host reads no scheduling word between these calls.
 
 **The body.** `fuse(body)` runs `body` once, and the body is synchronous. A kernel call in the body
-is recorded, and not run, when every array it writes is a `Resident`. A scratch array is a
-`Resident`. A recorded call may read a typed array, and it reads its arguments when the plan runs.
+is recorded, and not run, when every array it writes is a `Buffer`. A scratch array counts as one.
+A recorded call may read a typed array, and it reads its arguments when the plan runs.
 It returns the promise that the call returns outside a scope, which resolves once the plan has run.
 Keep a promise you need, and await it after `fuse` resolves: `sum = total(u)` in the body, and
 `await sum` after it. `scope.recorded` counts the calls recorded so far.
@@ -332,7 +355,7 @@ place where `fuse` was called. The calls made before `fuse` run before the plan.
 `read()` made after `fuse` was called sees what the plan wrote, whether or not its promise has
 resolved. The promise resolves to the report, and rejects with the first error. The runtime checks
 every recorded call before it runs the first one. A call that fails its check fails the plan before
-any call runs, and the error stays on each `Resident` that the plan writes, for `read()` to throw.
+any call runs, and the error stays on each `Buffer` that the plan writes, for `read()` to throw.
 
 **What fuses.** On WebGPU the plan walks the calls in the order the host made them. A call joins the
 group before it when all of these hold against every call in the group, and not against the last
@@ -362,20 +385,28 @@ A call that joins no group starts a group of its own. The results are the same e
 
 - `tier` is the best tier that any call of the plan ran on: `'webgpu'`, then `'webgl2'`, then
   `'cpu'`.
-- `dispatches` counts the dispatches the plan made on WebGPU, or the draws on WebGL2. A fused group
-  counts once.
-- `submissions` counts the `queue.submit` calls of the plan, and the reads of a `Resident` from the
+- `dispatches` counts the dispatches the plan made on WebGPU, or the draws on WebGL2, each
+  reduction fold included.
+- `submissions` counts the `queue.submit` calls of the plan, and the reads of a `Buffer` from the
   device that a call on the host needed.
   The copy of a folded value is in a submission that is counted already, and adds none.
-- `groups` lists the groups in order. Each has its `calls`, the names of its kernel functions, and
-  `fused`, whether it is one dispatch. A group that stands apart from the one before it also has a
-  `why`.
+- `groups` lists the groups in order. Each has its `calls`, the names of its kernel functions;
+  `fused`, whether it is one dispatch; `tier`, the tier its calls ran on; and `dispatches`, its
+  own count (0 on the CPU tier). The groups' counts sum to the plan's. A group may also have
+  `workgroupShapes`, `indirect` and `gpuTime`. A group that stands apart from the one before it
+  also has a `why`, and so does a group that ran on a later tier than the plan's `tier`
+  (`total runs on the CPU, ` and the reason of each tier before it).
+- `webgpuScratch` counts the WebGPU storage buffers the plan acquired for scratch arrays:
+  `allocations` and `allocatedBytes` for new buffers, `reuses` and `reusedBytes` for buffers
+  borrowed from the owner's pool. A scope with no scratch buffer reports four zeros. A report with
+  no `webgpuScratch` (an older or hand-built one) means unrecorded, not zero.
+- A hand-built `FuseReport` gives every group its `tier` and its `dispatches`, or `tsc` refuses it.
 
 **The `why`** is `a and b run as two dispatches because` and a reason, in your names. An access that
 is not at the counter is given as you wrote it, with its one-based line:
 ``mul and blur run as two dispatches because blur reads `t[i - 1]` (line 9)``. Some other reasons:
 
-- `b was built without typeshade({ fuse: true })`
+- `b was built without typeshade({ fuse: true })`, for a module built with `fuse: false`
 - `b has more than one loop`, `b scatters` and `` b has a loop with a `continue` ``
 - `a reduces`, for a call that follows a reduction
 - `the trip counts differ (1000 and 999)` and `the loops start at different indices (0 and 1)`
@@ -398,8 +429,8 @@ Make it while the body runs.
   success and on failure.
 - `read()` rejects with a `TypeError`, and `write()` throws one. `destroy()` does nothing. A kernel
   call that takes it outside the body that made it, or after the plan has run, is a `TypeError`.
-- A `Resident` from `resident()` keeps its buffer and its write inside a fused group, so the host
-  can read it after the scope.
+- A `Buffer` from `array()` or `zeros()` keeps its buffer and its write inside a fused group, so
+  the host can read it after the scope.
 
 **A reduction at the end.** `total(u)` as the last call of a scope takes the calls before it into
 its own loop. Its folds of the partials and its result are the ones the call has outside a scope, so
@@ -419,9 +450,9 @@ three calls `add`, `mul` and `total` over 1,000 elements report 2 dispatches and
 run before the calls recorded earlier. Call it outside `fuse`. These are the calls:
 
 - a kernel call that writes a typed array:
-  `add(): parameter "out" is a Float32Array, and a call inside fuse() writes only a Resident.`
+  `add(): parameter "out" is a Float32Array, and a call inside fuse() writes only a Buffer. fuse() reads nothing back. Pass array(...), or call add() outside fuse().`
 - a draw, which cannot be recorded in a compute plan.
-- `read()`, `write()` and `destroy()` of a `Resident`, and every other use of the kernel queue.
+- `read()`, `write()` and `destroy()` of a `Buffer`, and every other use of the kernel queue.
 
 An `async` body is a `TypeError` too, since a call after its first `await` would run outside the
 scope. A body that throws leaves nothing to run, and `fuse` rejects with its error. A `fuse` call in
@@ -493,24 +524,23 @@ await frame.submit() // the console lines print here
   `unfilterable-float`, so an `r32float` texture binds; one a sampler reads takes a filterable
   format.
 - **Bindings go by name**, `{ name: value }`: a plain host value, packed by the binding's layout;
-  a `Resident`; a `Texture` or `Sampler` from `rt.texture()` and `rt.sampler()`; or the host's
+  a `Buffer`; a `Texture` or `Sampler` from `rt.texture()` and `rt.sampler()`; or the host's
   own `GPUBuffer`, `GPUTexture` or `GPUSampler`. An unknown name, a missing binding and a value of
   the wrong shape are a `TypeError` naming the entry, its line and the binding.
 - **Host bindings are checked from the module view.** The generated `name.shade.typeshade.ts` view
   gives each compute and render entry the bindings its shader reaches, so `tsc` can catch a missing
   or misspelled binding. A manifest read from JSON has no static binding type; cast it to
   `Pack<BindingsOf<typeof module, 'entry'>>` for the entry it names.
-- **Geometry may stay resident.** `Geometry.vertices` accepts a `Resident<Float32Array>`,
-  `Resident<Int32Array>` or `Resident<Uint32Array>`. `Geometry.indices` accepts a
-  `Resident<Uint32Array>`; its index format is `uint32`. Both remain on the device after their
-  first upload.
+- **Geometry may stay on the device.** `Geometry.vertices` accepts a `Buffer` of `f32`, `i32` or
+  `u32`. `Geometry.indices` accepts a `Buffer` of `u32`; its index format is `uint32`. Both remain
+  on the device after their first upload.
 - **A frame** is one encoder: `frame.dispatch()`, `frame.pass(targets, record)`, then `submit()`,
   which resolves to `{ console: [{ entry, lines, dropped }, …] }`, a row per dispatch or draw that
   recorded.
   A host with encoders of its own records with `pipeline.dispatch(encoder, …)` and
   `pipeline.draw(pass, …)` and submits with `rt.submit(encoder)`.
 - **One device for both layers.** `configure({ runtime: rt })` puts the imported module's calls on
-  `rt`'s device, so a `Resident` or a `Texture` made on either is used on the other.
+  `rt`'s device, so a `Buffer` or a `Texture` made on either is used on the other.
 - **The console.** A program loaded with its recorded variant, `rt.load(m, { console: true })`
   (the default when the manifest carries one), prints each event after the submit that ran it, or
   hands it to `createRuntime({ console: sink })`.
@@ -592,7 +622,7 @@ const layout = reflect(result.module)
   texture.
 - Vertex attributes are `layout(location = N) in ... a_<field>`.
 - An override becomes `#ifndef NAME` / `#define NAME <default>`, replaceable before compiling.
-- The fragment `@builtin("position")` has its y origin at the bottom on WebGL2 and at the top on
+- The fragment `builtin<"position">` has its y origin at the bottom on WebGL2 and at the top on
   WebGPU; flip per target if the shader uses `.y`.
 
 ## Checking without the MCP server
@@ -620,7 +650,7 @@ the MCP server's `check` returns.
 ## Editor noise and compiler truth
 
 - Plain `tsc` over a shader file (with `lib: []` and `types: ["typeshade/shade"]`) reports
-  `TS1206` on every stage decorator and `@builtin` parameter, and `TS2362`, `TS2365` or `TS2345`
+  `TS1206` on every stage attribute, and `TS2362`, `TS2365` or `TS2345`
   on vector arithmetic, because TypeScript has no operator overloading. Both are expected.
   **`compile()` is the authority.** Annotating a local (`const c: vec3 = a * s`) quiets the
   editor without changing the emitted code.

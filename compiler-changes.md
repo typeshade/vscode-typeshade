@@ -74,9 +74,9 @@ id first, then the pull request that did the work.
 - 0016: a host file calls a `@compute` entry and draws a full-screen `@fragment` entry through
   the host view: the skill's host section (SKILL.md) gains the draw beside the helper call and
   the entry call, and references/host.md says how the bindings object is typed, what a
-  `Resident` keeps on the device and in what order the calls run, where an entry runs and what
-  `configure` orders, and what a draw draws into and on which tier; `HOST_IMPORT_PROJECT` gains a
-  compute module, a fragment module, the views the pin writes for them and `gpu.ts`, which the
+  device-held array (the runtime's handle at that pin) keeps and in what order the calls run,
+  where an entry runs and what `configure` orders, and what a draw draws into and on which tier;
+  `HOST_IMPORT_PROJECT` gains a compute module, a fragment module, the views the pin writes for them and `gpu.ts`, which the
   tsserver test type-checks with the pinned compiler linked as `node_modules/typeshade`, a missing
   binding and a missing uniform field being TypeScript's own TS2769 and TS2741; docs/design.md's
   host-side paragraph says what the fixture pins, handled in #32.
@@ -88,10 +88,10 @@ id first, then the pull request that did the work.
   compiler proves its iterations independent: the skill's compute section (SKILL.md) gains the
   kernel function beside the `@compute` entry, with an example the skill test compiles, and its
   host section the call; references/host.md says what a kernel function is, how the call is
-  typed and awaited, what a `Resident` of its array does, and which tier runs it;
+  typed and awaited, what a device-held handle of its array did, and which tier runs it;
   references/diagnostics.md's `TS8070` row already said what the pin says; `HOST_IMPORT_PROJECT`
   gains a module of kernel functions, the view the pin writes for it and `kernel.ts`, which the
-  tsserver test type-checks with a `Float32Array` (a promise) and with a `Resident` (`void`), and
+  tsserver test type-checks with a `Float32Array` (a promise) and with a device-held array (`void`), and
   the fixture's other views take the default export every view now carries, handled in #33.
 - 0024: a shader file imports a package's shader module by the package's name: the readers
   that served only a file beginning with the directive serve a `package.json` too (the
@@ -178,8 +178,8 @@ id first, then the pull request that did the work.
 - 0047: `array<T, N>()` is the zero value of a fixed-size array: references/language.md's
   Constructors line names `array<u32, 32>()` beside `vec3()`, handled in the pull request that
   pins the compiler at e56b886.
-- 0053: `Geometry.vertices` and `Geometry.indices` accept resident buffers: references/host.md
-  names the accepted `Resident` types and their device residency, handled in #47.
+- 0053: `Geometry.vertices` and `Geometry.indices` accept device-held buffers: references/host.md
+  named the accepted device-held types of that pin and their device residency, handled in #47.
 - 0057: an `override<u32>` may set a compute dimension and a workgroup array's outer length:
   SKILL.md and references/language.md document the source form; references/host.md shows host
   selection through `compute(..., { constants })`, `workgroupShape` and the WebGL2 limitation,
@@ -188,7 +188,7 @@ id first, then the pull request that did the work.
   `typeshade/fuse`: SKILL.md's kernel-function passage gains the shader side of a chain, and its
   host section gains the call, the `typeshade({ fuse: true })` option, what lets a call join a
   group, the report and its `why`, scratch arrays, the tiers and the refusals inside the body;
-  references/host.md gains the `fuse` bullet beside `Resident`, a section with the same parts in
+  references/host.md gains the `fuse` bullet beside the device-held handle of that pin, a section with the same parts in
   full, and the fuse scope beside the load-time emitter in the program runtime section;
   references/diagnostics.md is unchanged, since 0058 adds no diagnostic code, handled in the pull
   request that pins the compiler at 5fb79c7.
@@ -213,7 +213,7 @@ id first, then the pull request that did the work.
 
 - 0084: pin `3b40e065e17fd4d6929d4c30ab45656da73f0fcd` includes
   typeshade/typeshade#743 and its public host example. The skill and host/language references
-  teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and Resident
+  teach `entry(bindings, workgroups, { constants })`, authored defaults, direct and device-held
   return types, device plans, normalized caches, owner-selected fp64, limits and report shapes.
   A complete shader/host example covers the last partial group and CPU/WebGL2 behavior.
   The references also correct stale one-dimensional-only and automatic-fp64 wording against
